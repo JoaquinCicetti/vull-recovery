@@ -1,0 +1,138 @@
+@import "tailwindcss";
+
+@theme {
+  /* Matte-black industrial system. See DESIGN.md. */
+  --color-bg: #000000;
+  --color-surface: #0d0d0d;
+  --color-surface-2: #161616;
+  --color-border: #262626;
+  --color-border-strong: #3a3a3a;
+  --color-fg: #f4f4f4;
+  --color-fg-muted: #bdbdbd;
+  --color-fg-faint: #7d7d7d;
+  --color-accent: #61b33b;
+  --color-accent-hover: #6ccb45;
+  --color-accent-dark: #3e7d25;
+  --color-on-accent: #0a0f08;
+  --color-danger: #e5484d;
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@layer base {
+  :root {
+    color-scheme: dark;
+    --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+    --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    background-color: var(--color-bg);
+    /* subtle green glow from the top */
+    background-image: radial-gradient(
+      52% 42% at 50% -6%,
+      oklch(0.7 0.16 140 / 0.12),
+      transparent 70%
+    );
+    background-attachment: fixed;
+    color: var(--color-fg);
+  }
+  ::selection {
+    background: var(--color-accent);
+    color: var(--color-on-accent);
+  }
+}
+
+@layer components {
+  .surface-card {
+    @apply rounded-lg border border-border bg-surface;
+  }
+  .field {
+    @apply w-full rounded-md border border-border bg-surface-2 px-3 py-2.5 text-sm text-fg outline-none transition-colors duration-150 placeholder:text-fg-faint focus:border-accent focus:ring-2 focus:ring-accent/25;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-md bg-accent px-4 py-2.5 text-sm font-semibold text-on-accent transition duration-150 hover:bg-accent-hover active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center rounded-md border border-border bg-transparent px-4 py-2.5 text-sm font-semibold text-fg transition duration-150 hover:border-border-strong hover:bg-surface-2 active:scale-[0.98] disabled:opacity-50;
+  }
+  .chip {
+    @apply inline-flex items-center rounded-md px-2.5 py-1 text-xs font-medium;
+  }
+  .eyebrow {
+    @apply text-xs font-semibold uppercase tracking-[0.22em] text-accent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ── Motion ─────────────────────────────────────────────────────────────── */
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes pulse-soft {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+@layer utilities {
+  .animate-fade-up {
+    animation: fade-up 0.5s var(--ease-out-expo) both;
+  }
+  .animate-fade-in {
+    animation: fade-in 0.55s var(--ease-out-quart) both;
+  }
+  .skeleton {
+    animation: pulse-soft 1.4s ease-in-out infinite;
+  }
+}
+
+/* Demo mode: blur all copy so the *style* can be shown without the placeholder
+   text implying any content decisions. Toggle with NEXT_PUBLIC_BLUR_TEXT=true.
+   Layout, colors, borders and the green accents stay crisp. */
+html[data-blur] :where(
+    h1, h2, h3, h4, h5, h6, p, a, span, button, label, li, strong, em, small,
+    time, th, td, figcaption, blockquote, input, textarea, select, option
+  ) {
+  color: transparent !important;
+  text-shadow: 0 0 7px rgba(244, 244, 244, 0.5);
+}
+html[data-blur] ::placeholder {
+  color: transparent !important;
+}
+html[data-blur] input,
+html[data-blur] textarea {
+  caret-color: transparent;
+}

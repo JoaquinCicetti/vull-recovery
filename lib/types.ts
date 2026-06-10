@@ -1,0 +1,49 @@
+export type Profile = {
+  id: string;
+  full_name: string | null;
+  whatsapp_phone: string | null;
+  is_admin: boolean;
+};
+
+export type Service = {
+  id: string;
+  name: string;
+  description: string | null;
+  price_ars: number;
+  duration_minutes: number;
+  active: boolean;
+  sort_order: number;
+};
+
+export type BookingStatus =
+  | "pending"
+  | "awaiting_payment"
+  | "confirmed"
+  | "cancelled"
+  | "expired";
+
+export type Booking = {
+  id: string;
+  user_id: string;
+  service_id: string;
+  starts_at: string;
+  ends_at: string;
+  status: BookingStatus;
+  google_event_id: string | null;
+  hold_expires_at: string | null;
+  created_at: string;
+};
+
+// A bookable open slot returned by the `availability` Edge Function.
+export type Slot = {
+  starts_at: string; // ISO
+  ends_at: string; // ISO
+};
+
+// Center configuration (singleton row, id = true). Drives availability.
+export type Settings = {
+  working_hours_start: string; // "HH:MM" / "HH:MM:SS"
+  working_hours_end: string; // "HH:MM" / "HH:MM:SS"
+  working_days: number[]; // JS weekday numbers: 0=Sun … 6=Sat
+  timezone: string; // IANA tz, e.g. "America/Argentina/Buenos_Aires"
+};
