@@ -1,5 +1,19 @@
 // Centralized site/brand config.
 export const SITE_NAME = "VULL";
+
+// Resolve the app's base URL, preferring explicit env over the request origin.
+// NEXT_PUBLIC_SITE_URL   -> set per-env in Vercel (production custom domain)
+// NEXT_PUBLIC_VERCEL_URL -> auto-injected per deployment (covers previews)
+// Used for OAuth redirects so they don't fall back to Supabase's Site URL.
+export function getURL(path = "") {
+  let url =
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    process.env.NEXT_PUBLIC_VERCEL_URL ||
+    "http://localhost:3000";
+  url = url.startsWith("http") ? url : `https://${url}`;
+  url = url.replace(/\/+$/, ""); // strip trailing slash
+  return `${url}${path}`;
+}
 export const SITE_TAGLINE =
   "Recuperación deportiva. Entrenás al límite, recuperá igual.";
 

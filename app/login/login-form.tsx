@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { getURL } from "@/lib/site";
 
 export function LoginForm({ next }: { next: string }) {
   const router = useRouter();
@@ -32,7 +33,7 @@ export function LoginForm({ next }: { next: string }) {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
+        redirectTo: getURL(`/auth/callback?next=${encodeURIComponent(next)}`),
       },
     });
     // On success the browser redirects to Google; only reached on error.

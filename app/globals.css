@@ -106,6 +106,25 @@
     opacity: 0.4;
   }
 }
+/* Cinematic hero: near-imperceptible continuous zoom. */
+@keyframes hero-zoom {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.08);
+  }
+}
+/* Ambient green glow breathing between 0.2 and 0.5 opacity. */
+@keyframes glow-pulse {
+  0%,
+  100% {
+    opacity: 0.2;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
 
 @layer utilities {
   .animate-fade-up {
@@ -116,6 +135,31 @@
   }
   .skeleton {
     animation: pulse-soft 1.4s ease-in-out infinite;
+  }
+  .animate-hero-zoom {
+    animation: hero-zoom 40s linear infinite alternate;
+    transform-origin: 60% 45%;
+    will-change: transform;
+  }
+  .animate-glow-pulse {
+    animation: glow-pulse 9s ease-in-out infinite;
+  }
+  /* Film-grain overlay (fractal noise). Pair with low opacity + mix-blend. */
+  .bg-noise {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  /* Legibility shadow for text laid over photography. */
+  .text-shadow-hero {
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 40px rgba(0, 0, 0, 0.5);
+  }
+}
+
+/* Belt-and-suspenders: freeze the ambient hero motion when the user asks for
+   reduced motion (the global rule above also collapses these). */
+@media (prefers-reduced-motion: reduce) {
+  .animate-hero-zoom,
+  .animate-glow-pulse {
+    animation: none !important;
   }
 }
 
