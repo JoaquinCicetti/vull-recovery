@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { SiteHeader } from "@/components/site-header";
+import { SiteFooter } from "@/components/site-footer";
 import { AmbientBackground } from "@/components/ui/ambient-background";
-import { WhatsAppFab } from "@/components/whatsapp-fab";
 import { SITE_NAME, SITE_TAGLINE } from "@/lib/site";
 
 const geistSans = Geist({
@@ -36,7 +36,7 @@ export default function RootLayout({
         <AmbientBackground />
         <SiteHeader />
         <main className="relative z-0 flex-1">{children}</main>
-        <WhatsAppFab />
+        <SiteFooter />
       </body>
     </html>
   );
