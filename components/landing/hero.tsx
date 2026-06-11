@@ -11,6 +11,7 @@ import {
   type Variants,
 } from "framer-motion";
 import { HeroParticles } from "@/components/landing/hero-particles";
+import { Button } from "@/components/ui/button";
 
 const container: Variants = {
   hidden: {},
@@ -124,15 +125,21 @@ export function Hero() {
             variants={item}
             className="mt-10 flex flex-wrap items-center gap-3"
           >
-            <Link
-              href="#planes"
-              className="btn-primary px-7 py-3.5 text-base shadow-[0_8px_40px_-12px_rgba(97,179,59,0.7)]"
+            <Button
+              asChild
+              size="lg"
+              className="h-13 px-7 text-base shadow-[0_8px_40px_-12px_rgba(97,179,59,0.7)]"
             >
-              Reservar sesión
-            </Link>
-            <Link href="#recuperacion" className="btn-ghost px-7 py-3.5 text-base">
-              Ver el proceso
-            </Link>
+              <Link href="#planes">Reservar sesión</Link>
+            </Button>
+            <Button
+              asChild
+              variant="outline"
+              size="lg"
+              className="h-13 px-7 text-base"
+            >
+              <Link href="#recuperacion">Ver el proceso</Link>
+            </Button>
           </motion.div>
 
           <motion.p

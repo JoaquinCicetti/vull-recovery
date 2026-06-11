@@ -2,8 +2,10 @@ import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { formatARS, waLink } from "@/lib/site";
-import { fmtDateTime, STATUS_LABEL, STATUS_STYLE } from "@/lib/format";
+import { fmtDateTime } from "@/lib/format";
 import { PaymentPanel } from "./payment-panel";
+import { StatusBadge } from "@/components/status-badge";
+import { Button } from "@/components/ui/button";
 import type { Booking } from "@/lib/types";
 
 type BookingWithService = Booking & {
@@ -47,9 +49,7 @@ export default async function TurnoPage({
       <div className="surface-card mt-6 p-6">
         <div className="flex items-start justify-between gap-4">
           <p className="capitalize text-fg-muted">{when}</p>
-          <span className={`chip ${STATUS_STYLE[booking.status]}`}>
-            {STATUS_LABEL[booking.status]}
-          </span>
+          <StatusBadge status={booking.status} />
         </div>
 
         <div className="mt-4 flex items-center justify-between border-t border-border pt-4 text-sm text-fg-muted">
@@ -76,25 +76,19 @@ export default async function TurnoPage({
             tu email. Escribinos por WhatsApp con tu nombre así coordinamos los
             últimos detalles; si no, mostrá el comprobante del email al llegar.
           </p>
-          <a
-            href={waLink(waMsg)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="btn-primary mt-4 w-full py-3"
-          >
-            Escribinos por WhatsApp
-          </a>
+          <Button asChild size="lg" className="mt-4 w-full">
+            <a href={waLink(waMsg)} target="_blank" rel="noopener noreferrer">
+              Escribinos por WhatsApp
+            </a>
+          </Button>
         </div>
       ) : (
         <>
-          <a
-            href={waLink(waMsg)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="btn-ghost mt-6 w-full py-3"
-          >
-            ¿Dudas? Escribinos por WhatsApp
-          </a>
+          <Button asChild variant="outline" size="lg" className="mt-6 w-full">
+            <a href={waLink(waMsg)} target="_blank" rel="noopener noreferrer">
+              ¿Dudas? Escribinos por WhatsApp
+            </a>
+          </Button>
           <p className="mt-2 text-center text-xs text-fg-faint">
             Al escribirnos primero, podemos responderte sin costo.
           </p>

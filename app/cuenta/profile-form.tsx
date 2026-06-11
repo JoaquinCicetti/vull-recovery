@@ -4,6 +4,9 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { Profile } from "@/lib/types";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export function ProfileForm({ profile }: { profile: Profile }) {
   const router = useRouter();
@@ -42,11 +45,11 @@ export function ProfileForm({ profile }: { profile: Profile }) {
   return (
     <form onSubmit={save} className="mt-8 flex flex-col gap-4">
       <div className="flex flex-col gap-1.5">
-        <label className="text-sm font-medium text-fg-muted">
+        <Label htmlFor="profile-name" className="text-fg-muted">
           Nombre y apellido
-        </label>
-        <input
-          className="field"
+        </Label>
+        <Input
+          id="profile-name"
           value={fullName}
           onChange={(e) => setFullName(e.target.value)}
           placeholder="Tu nombre"
@@ -54,9 +57,11 @@ export function ProfileForm({ profile }: { profile: Profile }) {
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <label className="text-sm font-medium text-fg-muted">WhatsApp</label>
-        <input
-          className="field"
+        <Label htmlFor="profile-phone" className="text-fg-muted">
+          WhatsApp
+        </Label>
+        <Input
+          id="profile-phone"
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
           placeholder="+54 9 11 2233 4455"
@@ -68,21 +73,23 @@ export function ProfileForm({ profile }: { profile: Profile }) {
       </div>
 
       <div className="flex items-center gap-3">
-        <button className="btn-primary" disabled={saving}>
+        <Button disabled={saving} className="self-start">
           {saving ? "Guardando…" : "Guardar"}
-        </button>
+        </Button>
         {saved && <span className="text-sm text-accent">Guardado ✓</span>}
       </div>
 
       {error && <p className="text-sm text-danger">{error}</p>}
 
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="sm"
         onClick={signOut}
-        className="mt-4 self-start text-sm text-fg-faint transition-colors hover:text-danger"
+        className="mt-4 self-start font-normal text-fg-faint hover:bg-transparent hover:text-danger"
       >
         Cerrar sesión
-      </button>
+      </Button>
     </form>
   );
 }

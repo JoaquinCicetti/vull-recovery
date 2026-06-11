@@ -2,8 +2,17 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { REGEXP_ONLY_DIGITS } from "input-otp";
 import { createClient } from "@/lib/supabase/client";
 import { getURL } from "@/lib/site";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  InputOTP,
+  InputOTPGroup,
+  InputOTPSlot,
+} from "@/components/ui/input-otp";
 
 export function LoginForm({ next }: { next: string }) {
   const router = useRouter();
@@ -43,8 +52,8 @@ export function LoginForm({ next }: { next: string }) {
     }
   }
 
-  async function verify(e: React.FormEvent) {
-    e.preventDefault();
+  async function verify(e?: React.FormEvent) {
+    e?.preventDefault();
     setLoading(true);
     setError(null);
     const { error } = await supabase.auth.verifyOtp({
@@ -65,11 +74,12 @@ export function LoginForm({ next }: { next: string }) {
     <div className="mt-8">
       {step === "email" ? (
         <div className="flex flex-col gap-4">
-          <button
+          <Button
             type="button"
+            variant="outline"
             onClick={signInWithGoogle}
             disabled={loading}
-            className="btn-ghost w-full gap-2.5"
+            className="w-full gap-2.5"
           >
             <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
               <path
@@ -90,50 +100,62 @@ export function LoginForm({ next }: { next: string }) {
               />
             </svg>
             Continuar con Google
-          </button>
+          </Button>
 
           <div className="flex items-center gap-3 text-xs text-fg-faint">
             <span className="h-px flex-1 bg-border" />o<span className="h-px flex-1 bg-border" />
           </div>
 
           <form onSubmit={sendCode} className="flex flex-col gap-3">
-          <label className="text-sm font-medium text-fg-muted">Email</label>
-          <input
-            className="field"
-            type="email"
-            required
-            autoFocus
-            placeholder="vos@email.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-          <button className="btn-primary mt-1 w-full" disabled={loading}>
-            {loading ? "Enviando…" : "Enviar código"}
-          </button>
+            <Label htmlFor="login-email" className="text-fg-muted">
+              Email
+            </Label>
+            <Input
+              id="login-email"
+              type="email"
+              required
+              autoFocus
+              placeholder="vos@email.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+            <Button className="mt-1 w-full" disabled={loading}>
+              {loading ? "Enviando…" : "Enviar código"}
+            </Button>
           </form>
         </div>
       ) : (
         <form onSubmit={verify} className="flex flex-col gap-3">
-          <label className="text-sm font-medium text-fg-muted">
-            Código enviado a {email}
-          </label>
-          <input
-            className="field text-center font-mono text-lg tracking-[0.5em]"
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            required
-            autoFocus
+          <Label className="text-fg-muted">Código enviado a {email}</Label>
+          <InputOTP
             maxLength={6}
-            placeholder="••••••"
+            pattern={REGEXP_ONLY_DIGITS}
+            autoFocus
+            required
+            autoComplete="one-time-code"
             value={code}
-            onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
-          />
-          <button className="btn-primary mt-1 w-full" disabled={loading}>
+            onChange={setCode}
+            onComplete={() => verify()}
+            containerClassName="justify-center"
+          >
+            <InputOTPGroup>
+              {Array.from({ length: 6 }).map((_, i) => (
+                <InputOTPSlot
+                  key={i}
+                  index={i}
+                  className="size-12 bg-secondary font-mono text-lg"
+                />
+              ))}
+            </InputOTPGroup>
+          </InputOTP>
+          <Button className="mt-1 w-full" disabled={loading}>
             {loading ? "Verificando…" : "Ingresar"}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
-            className="text-sm text-fg-faint transition-colors hover:text-fg"
+            variant="ghost"
+            size="sm"
+            className="font-normal text-fg-faint hover:text-fg"
             onClick={() => {
               setStep("email");
               setCode("");
@@ -141,7 +163,7 @@ export function LoginForm({ next }: { next: string }) {
             }}
           >
             Usar otro email
-          </button>
+          </Button>
         </form>
       )}
 

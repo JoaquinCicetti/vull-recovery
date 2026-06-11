@@ -4,6 +4,17 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { Settings } from "@/lib/types";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 // Weekdays in display order (Mon→Sun), mapped to JS getUTCDay() numbers
 // (0=Sun … 6=Sat) — the same convention the availability function uses.
@@ -79,92 +90,103 @@ export function SettingsForm({ initial }: { initial: Settings }) {
   }
 
   return (
-    <form onSubmit={save} className="mt-8 surface-card p-5">
-      <h2 className="font-mono text-xs uppercase tracking-[0.18em] text-fg-faint">
-        Ventana de atención
-      </h2>
+    <Card className="mt-8 [--card-spacing:--spacing(5)]">
+      <CardContent>
+        <form onSubmit={save}>
+          <h2 className="font-mono text-xs uppercase tracking-[0.18em] text-fg-faint">
+            Ventana de atención
+          </h2>
 
-      <div className="mt-4 flex flex-col gap-5">
-        <div className="flex flex-wrap gap-4">
-          <label className="flex flex-col gap-1.5 text-sm text-fg-muted">
-            Abre
-            <input
-              type="time"
-              className="field font-mono"
-              value={start}
-              onChange={(e) => {
-                setSaved(false);
-                setStart(e.target.value);
-              }}
-              required
-            />
-          </label>
-          <label className="flex flex-col gap-1.5 text-sm text-fg-muted">
-            Cierra
-            <input
-              type="time"
-              className="field font-mono"
-              value={end}
-              onChange={(e) => {
-                setSaved(false);
-                setEnd(e.target.value);
-              }}
-              required
-            />
-          </label>
-        </div>
+          <div className="mt-4 flex flex-col gap-5">
+            <div className="flex flex-wrap gap-4">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="hours-start" className="text-fg-muted">
+                  Abre
+                </Label>
+                <Input
+                  id="hours-start"
+                  type="time"
+                  className="w-fit font-mono"
+                  value={start}
+                  onChange={(e) => {
+                    setSaved(false);
+                    setStart(e.target.value);
+                  }}
+                  required
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="hours-end" className="text-fg-muted">
+                  Cierra
+                </Label>
+                <Input
+                  id="hours-end"
+                  type="time"
+                  className="w-fit font-mono"
+                  value={end}
+                  onChange={(e) => {
+                    setSaved(false);
+                    setEnd(e.target.value);
+                  }}
+                  required
+                />
+              </div>
+            </div>
 
-        <div className="flex flex-col gap-2">
-          <span className="text-sm text-fg-muted">Días de atención</span>
-          <div className="flex flex-wrap gap-2">
-            {DAYS.map((d) => {
-              const on = days.includes(d.value);
-              return (
-                <button
-                  key={d.value}
-                  type="button"
-                  onClick={() => toggleDay(d.value)}
-                  aria-pressed={on}
-                  className={
-                    on
-                      ? "rounded-md border border-accent bg-accent px-3 py-2 text-sm font-semibold text-on-accent transition"
-                      : "rounded-md border border-border bg-surface-2 px-3 py-2 text-sm text-fg-muted transition hover:border-border-strong"
-                  }
-                >
-                  {d.label}
-                </button>
-              );
-            })}
+            <div className="flex flex-col gap-2">
+              <span className="text-sm text-fg-muted">Días de atención</span>
+              <div className="flex flex-wrap gap-2">
+                {DAYS.map((d) => {
+                  const on = days.includes(d.value);
+                  return (
+                    <Button
+                      key={d.value}
+                      type="button"
+                      variant={on ? "default" : "outline"}
+                      onClick={() => toggleDay(d.value)}
+                      aria-pressed={on}
+                      className={on ? undefined : "font-normal text-fg-muted"}
+                    >
+                      {d.label}
+                    </Button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-fg-muted">Zona horaria</Label>
+              <Select
+                value={tz}
+                onValueChange={(value) => {
+                  setSaved(false);
+                  setTz(value);
+                }}
+              >
+                <SelectTrigger className="w-full sm:w-fit">
+                  <SelectValue placeholder="Zona horaria" />
+                </SelectTrigger>
+                <SelectContent>
+                  {TIMEZONES.map((z) => (
+                    <SelectItem key={z} value={z}>
+                      {z}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <Button className="self-start" disabled={busy}>
+                {busy ? "Guardando…" : "Guardar"}
+              </Button>
+              {saved && <span className="text-sm text-accent">Guardado ✓</span>}
+            </div>
+
+            {error && <p className="text-sm text-danger">{error}</p>}
           </div>
-        </div>
-
-        <label className="flex flex-col gap-1.5 text-sm text-fg-muted">
-          Zona horaria
-          <select
-            className="field"
-            value={tz}
-            onChange={(e) => {
-              setSaved(false);
-              setTz(e.target.value);
-            }}
-          >
-            {TIMEZONES.map((z) => (
-              <option key={z} value={z}>
-                {z}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <div className="flex items-center gap-3">
-          <button className="btn-primary self-start" disabled={busy}>
-            {busy ? "Guardando…" : "Guardar"}
-          </button>
-          {saved && <span className="text-sm text-accent">Guardado ✓</span>}
-        </div>
-
-        {error && <p className="text-sm text-danger">{error}</p>}
-      </div>
-    </form>
+        </form>
+      </CardContent>
+    </Card>
   );
 }

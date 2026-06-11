@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getUserAndProfile } from "@/lib/auth";
 import { Logo } from "@/components/logo";
 import { SiteChrome } from "@/components/landing/site-chrome";
+import { Button } from "@/components/ui/button";
 
 export async function SiteHeader() {
   const { user, profile } = await getUserAndProfile();
@@ -32,14 +33,14 @@ export async function SiteHeader() {
                 Admin
               </Link>
             )}
-            <Link href="/cuenta" className="btn-ghost ml-1">
-              Mi cuenta
-            </Link>
+            <Button asChild variant="outline" className="ml-1">
+              <Link href="/cuenta">Mi cuenta</Link>
+            </Button>
           </>
         ) : (
-          <Link href="/login" className="btn-primary">
-            Ingresar
-          </Link>
+          <Button asChild>
+            <Link href="/login">Ingresar</Link>
+          </Button>
         )}
       </nav>
     </SiteChrome>

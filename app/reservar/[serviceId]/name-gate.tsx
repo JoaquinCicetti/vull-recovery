@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 // Shown before booking when the signed-in user has no name on file yet, so
 // every appointment is tied to a real name (and optional WhatsApp). Google
@@ -50,24 +52,23 @@ export function NameGate() {
         Lo usamos para tu turno y para coordinar con vos.
       </p>
       <div className="mt-4 flex flex-col gap-3">
-        <input
-          className="field"
+        <Input
           placeholder="Nombre y apellido"
           value={name}
           onChange={(e) => setName(e.target.value)}
           autoFocus
           required
         />
-        <input
-          className="field font-mono"
+        <Input
+          className="font-mono"
           inputMode="tel"
           placeholder="WhatsApp (opcional)"
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
         />
-        <button className="btn-primary self-start" disabled={busy}>
+        <Button className="self-start" disabled={busy}>
           {busy ? "Guardando…" : "Continuar"}
-        </button>
+        </Button>
       </div>
       {error && <p className="mt-3 text-sm text-danger">{error}</p>}
     </form>

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { formatARS } from "@/lib/site";
 import { fmtDateTime } from "@/lib/format";
+import { Button } from "@/components/ui/button";
 
 type PendingPayment = {
   id: string;
@@ -78,20 +79,19 @@ export function AdminPayments({ payments }: { payments: PendingPayment[] }) {
             )}
           </div>
           <div className="mt-4 flex gap-2">
-            <button
+            <Button
               onClick={() => act(p.id, "approve")}
               disabled={busy === p.id}
-              className="btn-primary"
             >
               Aprobar
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="destructive"
               onClick={() => act(p.id, "reject")}
               disabled={busy === p.id}
-              className="inline-flex items-center justify-center rounded-md border border-danger/40 px-4 py-2.5 text-sm font-semibold text-danger transition-colors duration-150 hover:bg-danger/10 disabled:opacity-50"
             >
               Rechazar
-            </button>
+            </Button>
           </div>
         </li>
       ))}

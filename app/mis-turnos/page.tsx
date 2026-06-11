@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { fmtDateTime, STATUS_LABEL, STATUS_STYLE } from "@/lib/format";
+import { fmtDateTime } from "@/lib/format";
+import { StatusBadge } from "@/components/status-badge";
 import type { Booking } from "@/lib/types";
 
 type Row = Booking & { services: { name: string } | null };
@@ -49,9 +50,7 @@ export default async function MisTurnosPage() {
                     {fmtDateTime(b.starts_at)}
                   </p>
                 </div>
-                <span className={`chip ${STATUS_STYLE[b.status]}`}>
-                  {STATUS_LABEL[b.status]}
-                </span>
+                <StatusBadge status={b.status} />
               </Link>
             </li>
           ))}

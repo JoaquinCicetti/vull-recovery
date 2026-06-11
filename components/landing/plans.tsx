@@ -4,6 +4,16 @@ import Link from "next/link";
 import { motion, type Variants } from "framer-motion";
 import { formatARS, waLink } from "@/lib/site";
 import type { Service } from "@/lib/types";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 
 const grid: Variants = {
   hidden: {},
@@ -62,35 +72,37 @@ export function Plans({ services }: { services: Service[] }) {
             className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-3"
           >
             {services.map((s) => (
-              <motion.div
-                key={s.id}
-                variants={card}
-                className="group relative flex flex-col overflow-hidden rounded-2xl border border-border bg-surface p-6 transition-all duration-300 hover:-translate-y-1 hover:border-accent/40 hover:shadow-[0_24px_60px_-30px_rgba(97,179,59,0.55)]"
-              >
-                {/* hover glow */}
-                <div className="pointer-events-none absolute -right-12 -top-12 h-40 w-40 rounded-full bg-accent/10 opacity-0 blur-2xl transition-opacity duration-300 group-hover:opacity-100" />
-                <h3 className="relative text-xl font-semibold text-fg">
-                  {s.name}
-                </h3>
-                {s.description && (
-                  <p className="relative mt-2 flex-1 text-sm leading-relaxed text-fg-muted">
-                    {s.description}
-                  </p>
-                )}
-                <div className="relative mt-6 flex items-end justify-between">
-                  <span className="font-mono text-3xl font-semibold tracking-tight text-fg">
-                    {formatARS(s.price_ars)}
-                  </span>
-                  <span className="chip bg-surface-2 font-mono text-fg-muted">
-                    {s.duration_minutes} min
-                  </span>
-                </div>
-                <Link
-                  href={`/reservar/${s.id}`}
-                  className="btn-primary relative mt-6 w-full py-3"
-                >
-                  Reservar
-                </Link>
+              <motion.div key={s.id} variants={card} className="h-full">
+                <Card className="group relative flex h-full flex-col rounded-2xl border border-border bg-surface ring-0 transition-all duration-300 [--card-spacing:--spacing(6)] hover:-translate-y-1 hover:border-accent/40 hover:shadow-[0_24px_60px_-30px_rgba(97,179,59,0.55)] has-data-[slot=card-footer]:pb-(--card-spacing)">
+                  {/* hover glow */}
+                  <div className="pointer-events-none absolute -right-12 -top-12 h-40 w-40 rounded-full bg-accent/10 opacity-0 blur-2xl transition-opacity duration-300 group-hover:opacity-100" />
+                  <CardHeader className="relative gap-0">
+                    <CardTitle className="text-xl font-semibold text-fg">
+                      {s.name}
+                    </CardTitle>
+                    {s.description && (
+                      <CardDescription className="mt-2 leading-relaxed text-fg-muted">
+                        {s.description}
+                      </CardDescription>
+                    )}
+                  </CardHeader>
+                  <CardContent className="relative mt-auto flex items-end justify-between">
+                    <span className="font-mono text-3xl font-semibold tracking-tight text-fg">
+                      {formatARS(s.price_ars)}
+                    </span>
+                    <Badge
+                      variant="secondary"
+                      className="h-auto rounded-md px-2.5 py-1 font-mono font-medium text-fg-muted"
+                    >
+                      {s.duration_minutes} min
+                    </Badge>
+                  </CardContent>
+                  <CardFooter className="relative border-t-0 bg-transparent p-0 px-(--card-spacing)">
+                    <Button asChild size="lg" className="w-full">
+                      <Link href={`/reservar/${s.id}`}>Reservar</Link>
+                    </Button>
+                  </CardFooter>
+                </Card>
               </motion.div>
             ))}
           </motion.div>

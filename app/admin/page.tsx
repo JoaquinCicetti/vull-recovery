@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { requireAdmin } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { fmtDateTime, STATUS_LABEL, STATUS_STYLE } from "@/lib/format";
+import { fmtDateTime } from "@/lib/format";
 import { AdminPayments } from "./admin-payments";
+import { StatusBadge } from "@/components/status-badge";
+import { Button } from "@/components/ui/button";
 import type { BookingStatus } from "@/lib/types";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -61,12 +63,12 @@ export default async function AdminPage() {
           <h1 className="mt-3 text-3xl font-bold tracking-tight">Administración</h1>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Link href="/admin/configuracion" className="btn-ghost">
-            Disponibilidad
-          </Link>
-          <Link href="/admin/servicios" className="btn-ghost">
-            Planes y precios
-          </Link>
+          <Button asChild variant="outline">
+            <Link href="/admin/configuracion">Disponibilidad</Link>
+          </Button>
+          <Button asChild variant="outline">
+            <Link href="/admin/servicios">Planes y precios</Link>
+          </Button>
         </div>
       </div>
 
@@ -104,9 +106,7 @@ export default async function AdminPage() {
                       : ""}
                   </p>
                 </div>
-                <span className={`chip ${STATUS_STYLE[b.status as BookingStatus]}`}>
-                  {STATUS_LABEL[b.status as BookingStatus]}
-                </span>
+                <StatusBadge status={b.status as BookingStatus} />
               </li>
             ))}
           </ul>
