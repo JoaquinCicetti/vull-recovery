@@ -14,7 +14,7 @@ export async function SiteHeader() {
         aria-label="Inicio"
         className="transition-opacity hover:opacity-80"
       >
-        <Logo />
+        <Logo imgClassName="h-12" />
       </Link>
       <nav className="flex items-center gap-1 text-sm">
         {user ? (

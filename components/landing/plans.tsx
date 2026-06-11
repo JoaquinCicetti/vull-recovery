@@ -6,6 +6,7 @@ import { formatARS, waLink } from "@/lib/site";
 import type { Service } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { LocalAmbient } from "@/components/ui/local-ambient";
 import {
   Card,
   CardContent,
@@ -32,9 +33,10 @@ export function Plans({ services }: { services: Service[] }) {
   return (
     <section
       id="planes"
-      className="relative scroll-mt-16 border-t border-border bg-black px-5 py-24 sm:py-32"
+      className="relative isolate scroll-mt-16 overflow-hidden border-t border-border bg-black px-5 py-24 sm:py-32"
     >
-      <div className="mx-auto max-w-6xl">
+      <LocalAmbient className="[mask-image:linear-gradient(to_bottom,transparent,black_20%,black_80%,transparent)]" />
+      <div className="relative mx-auto max-w-6xl">
         <motion.div
           initial={{ opacity: 0, y: 24 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -73,9 +75,9 @@ export function Plans({ services }: { services: Service[] }) {
           >
             {services.map((s) => (
               <motion.div key={s.id} variants={card} className="h-full">
-                <Card className="group relative flex h-full flex-col rounded-2xl border border-border bg-surface ring-0 transition-all duration-300 [--card-spacing:--spacing(6)] hover:-translate-y-1 hover:border-accent/40 hover:shadow-[0_24px_60px_-30px_rgba(97,179,59,0.55)] has-data-[slot=card-footer]:pb-(--card-spacing)">
+                <Card className="surface-lift group relative flex h-full flex-col rounded-2xl ring-0 transition-all duration-300 [--card-spacing:--spacing(6)] hover:-translate-y-1.5 hover:border-accent/50 hover:shadow-[0_28px_70px_-28px_rgba(97,179,59,0.65)] has-data-[slot=card-footer]:pb-(--card-spacing)">
                   {/* hover glow */}
-                  <div className="pointer-events-none absolute -right-12 -top-12 h-40 w-40 rounded-full bg-accent/10 opacity-0 blur-2xl transition-opacity duration-300 group-hover:opacity-100" />
+                  <div className="pointer-events-none absolute -right-12 -top-12 h-44 w-44 rounded-full bg-accent/15 opacity-0 blur-2xl transition-opacity duration-300 group-hover:opacity-100" />
                   <CardHeader className="relative gap-0">
                     <CardTitle className="text-xl font-semibold text-fg">
                       {s.name}

@@ -6,9 +6,11 @@ import { addDays, format, isAfter, isBefore, parse } from "date-fns";
 import { Check } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { fmtTime, fmtDayLabel, DEFAULT_TZ } from "@/lib/format";
-import type { Service, Slot } from "@/lib/types";
+import type { Profile, Service, Slot } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   MiniCalendar,
@@ -62,9 +64,11 @@ async function readError(error: unknown): Promise<string> {
 export function BookingFlow({
   service,
   isAuthed,
+  profile,
 }: {
   service: Service;
   isAuthed: boolean;
+  profile: Profile | null;
 }) {
   const router = useRouter();
   const supabase = createClient();
@@ -76,6 +80,12 @@ export function BookingFlow({
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Contact details, captured at confirm time when missing on the profile.
+  const [name, setName] = useState(profile?.full_name ?? "");
+  const [phone, setPhone] = useState(profile?.whatsapp_phone ?? "");
+  const [showDetails, setShowDetails] = useState(false);
+  const detailsMissing = !profile?.full_name || !profile?.whatsapp_phone;
 
   function apply(data: AvailabilityResponse) {
     const ds: Day[] = data.days ?? [];
@@ -125,8 +135,35 @@ export function BookingFlow({
       router.push(`/login?next=${encodeURIComponent(`/reservar/${service.id}`)}`);
       return;
     }
+
+    // Capture name (required) + phone (optional) before booking when missing.
+    if (detailsMissing && !showDetails) {
+      setShowDetails(true);
+      return;
+    }
+    if (showDetails && !name.trim()) {
+      setError("Necesitamos tu nombre para el turno.");
+      return;
+    }
+
     setSubmitting(true);
     setError(null);
+
+    if (showDetails) {
+      const { error: pErr } = await supabase
+        .from("profiles")
+        .update({
+          full_name: name.trim(),
+          whatsapp_phone: phone.trim() || null,
+        })
+        .eq("id", profile?.id ?? "");
+      if (pErr) {
+        setSubmitting(false);
+        setError("No se pudieron guardar tus datos. Probá de nuevo.");
+        return;
+      }
+    }
+
     const { data, error } = await supabase.functions.invoke("create-booking", {
       body: { service_id: service.id, starts_at: selected.starts_at },
     });
@@ -258,6 +295,40 @@ export function BookingFlow({
             </p>
           )}
 
+          {/* Contact details — revealed at confirm when missing on the profile */}
+          {showDetails && (
+            <div className="surface-card surface-lift mt-8 animate-fade-up p-5">
+              <p className="eyebrow">Tus datos</p>
+              <p className="mt-2 text-sm text-fg-muted">
+                Los usamos para tu turno y para coordinar con vos.
+              </p>
+              <div className="mt-4 flex flex-col gap-3">
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="booking-name">Nombre y apellido</Label>
+                  <Input
+                    id="booking-name"
+                    autoFocus
+                    required
+                    placeholder="Nombre y apellido"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="booking-phone">WhatsApp (opcional)</Label>
+                  <Input
+                    id="booking-phone"
+                    className="font-mono"
+                    inputMode="tel"
+                    placeholder="Ej. 341 123 4567"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Confirm — sticky on mobile so booking stays one-handed */}
           <div className="sticky bottom-0 z-10 -mx-5 mt-8 border-t border-border bg-bg/95 px-5 py-4 sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:p-0">
             <Button
@@ -268,11 +339,13 @@ export function BookingFlow({
             >
               {submitting
                 ? "Reservando…"
-                : isAuthed
-                  ? selected
-                    ? `Reservar ${fmtTime(selected.starts_at, tz)}`
-                    : "Elegí un horario"
-                  : "Ingresar y reservar"}
+                : !isAuthed
+                  ? "Ingresar y reservar"
+                  : !selected
+                    ? "Elegí un horario"
+                    : showDetails
+                      ? "Confirmar reserva"
+                      : `Reservar ${fmtTime(selected.starts_at, tz)}`}
             </Button>
           </div>
         </>

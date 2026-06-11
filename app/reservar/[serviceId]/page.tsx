@@ -4,7 +4,6 @@ import { getUserAndProfile } from "@/lib/auth";
 import { formatARS } from "@/lib/site";
 import { PageShell } from "@/components/ui/page-shell";
 import { BookingFlow } from "./booking-flow";
-import { NameGate } from "./name-gate";
 
 export default async function ReservarPage({
   params,
@@ -16,10 +15,10 @@ export default async function ReservarPage({
   if (!service || !service.active) notFound();
 
   const { user, profile } = await getUserAndProfile();
-  const needsName = Boolean(user) && !profile?.full_name?.trim();
 
   return (
     <PageShell
+      ambient
       eyebrow="Reservar"
       title={service.name}
       description={
@@ -36,11 +35,11 @@ export default async function ReservarPage({
         </span>
       }
     >
-      {needsName ? (
-        <NameGate />
-      ) : (
-        <BookingFlow service={service} isAuthed={Boolean(user)} />
-      )}
+      <BookingFlow
+        service={service}
+        isAuthed={Boolean(user)}
+        profile={profile}
+      />
     </PageShell>
   );
 }

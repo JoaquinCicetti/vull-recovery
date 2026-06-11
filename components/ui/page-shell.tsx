@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { LocalAmbient } from "@/components/ui/local-ambient";
 
 const WIDTHS = {
   narrow: "max-w-md", // auth, single-column forms
@@ -18,6 +19,8 @@ type PageShellProps = {
   size?: keyof typeof WIDTHS;
   /** Center the column contents (used by auth). */
   center?: boolean;
+  /** Render a hero-like particle + glow band behind the header. */
+  ambient?: boolean;
   className?: string;
   children: ReactNode;
 };
@@ -35,6 +38,7 @@ export function PageShell({
   actions,
   size = "default",
   center = false,
+  ambient = false,
   className,
   children,
 }: PageShellProps) {
@@ -45,9 +49,15 @@ export function PageShell({
         "mx-auto w-full px-5 py-14 sm:py-16",
         WIDTHS[size],
         center && "flex flex-col items-center text-center",
+        ambient && "relative isolate",
         className,
       )}
     >
+      {ambient && (
+        <div className="absolute inset-x-0 top-0 -z-10 h-[460px] overflow-hidden [mask-image:linear-gradient(to_bottom,black,transparent)]">
+          <LocalAmbient />
+        </div>
+      )}
       {nav && <div className="mb-6 animate-fade-up">{nav}</div>}
       {hasHeader && (
         <header

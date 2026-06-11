@@ -116,7 +116,7 @@ export const MiniCalendar = ({
     <MiniCalendarContext.Provider value={contextValue}>
       <div
         className={cn(
-          "flex items-center gap-1.5 rounded-lg border border-border bg-surface p-1.5",
+          "glass flex items-center gap-1.5 rounded-lg p-1.5",
           className
         )}
         {...props}

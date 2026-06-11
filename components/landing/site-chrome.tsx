@@ -28,7 +28,7 @@ export function SiteChrome({ children }: { children: React.ReactNode }) {
       <header
         className={`fixed inset-x-0 top-0 z-40 transition-colors duration-300 ${
           solid
-            ? "border-b border-border bg-surface/80 backdrop-blur"
+            ? "border-b border-border bg-surface/60 backdrop-blur-[14px] backdrop-saturate-[1.15]"
             : "border-b border-transparent bg-transparent"
         }`}
       >

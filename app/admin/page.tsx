@@ -43,24 +43,32 @@ export default async function AdminPage() {
     }),
   );
 
-  const { data: rawUpcoming } = await supabase
+  // Upcoming + the last 7 days, every status (cancelled shown muted). Filtering
+  // by status here is what made the list look empty.
+  const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const { data: rawBookings } = await supabase
     .from("bookings")
     .select(
-      "id, starts_at, status, services(name), profiles(full_name, whatsapp_phone)",
+      "id, starts_at, status, services(name), profiles(full_name, whatsapp_phone, email)",
     )
-    .gte("starts_at", new Date().toISOString())
-    .in("status", ["pending", "awaiting_payment", "confirmed"])
+    .gte("starts_at", since)
     .order("starts_at", { ascending: true })
-    .limit(50);
+    .limit(100);
 
-  const upcoming: AdminBookingRow[] = ((rawUpcoming ?? []) as any[]).map((b) => ({
+  const bookings: AdminBookingRow[] = ((rawBookings ?? []) as any[]).map((b) => ({
     id: b.id as string,
     startsAt: b.starts_at as string,
     status: b.status as BookingStatus,
     service: b.services?.name ?? "Servicio",
     client: b.profiles?.full_name ?? "—",
     phone: (b.profiles?.whatsapp_phone as string) ?? null,
+    email: (b.profiles?.email as string) ?? null,
   }));
+
+  const nowISO = new Date().toISOString();
+  const upcoming = bookings.filter((b) => b.startsAt >= nowISO);
+  // Most-recent past first.
+  const past = bookings.filter((b) => b.startsAt < nowISO).reverse();
 
   return (
     <PageShell
@@ -87,9 +95,9 @@ export default async function AdminPage() {
 
       <section className="mt-12">
         <h2 className="font-mono text-xs uppercase tracking-[0.18em] text-fg-faint">
-          Próximos turnos
+          Turnos
         </h2>
-        <AdminBookings bookings={upcoming} />
+        <AdminBookings upcoming={upcoming} past={past} />
       </section>
     </PageShell>
   );

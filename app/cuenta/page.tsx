@@ -10,6 +10,7 @@ export default async function CuentaPage() {
     id: user!.id,
     full_name: null,
     whatsapp_phone: null,
+    email: user!.email ?? null,
     is_admin: false,
   };
 

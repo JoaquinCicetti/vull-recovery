@@ -60,8 +60,18 @@
 @layer components {
   /* Form fields, buttons and chips live in components/ui (shadcn + Kibo UI).
      Only layout/typography idioms remain here. */
+  /* Glass: one translucent, blurred material so cards/inputs/calendar stop
+     reading as mismatched flat grays and let the ambient field glow through.
+     (Deliberate, per the owner — overrides DESIGN.md's no-glass default.) */
+  .glass,
   .surface-card {
-    @apply rounded-lg border border-border bg-surface;
+    background-color: color-mix(in oklch, var(--color-surface) 60%, transparent);
+    border: 1px solid color-mix(in oklch, white 9%, transparent);
+    -webkit-backdrop-filter: blur(14px) saturate(1.15);
+    backdrop-filter: blur(14px) saturate(1.15);
+  }
+  .surface-card {
+    @apply rounded-lg;
   }
   .eyebrow {
     @apply text-xs font-semibold uppercase tracking-[0.22em] text-accent;
