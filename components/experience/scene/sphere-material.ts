@@ -12,6 +12,8 @@ export type SphereUniforms = {
   uRise: { value: number };
   uAssembly: { value: number };
   uAccent: { value: THREE.Color };
+  uPointer: { value: THREE.Vector3 };
+  uPointerStrength: { value: number };
 };
 
 export function makeSphereMaterial(): {
@@ -34,6 +36,8 @@ export function makeSphereMaterial(): {
     uRise: { value: 0 },
     uAssembly: { value: 0 },
     uAccent: { value: new THREE.Color("#61b33b") },
+    uPointer: { value: new THREE.Vector3() },
+    uPointerStrength: { value: 0 },
   };
 
   mat.onBeforeCompile = (shader) => {
@@ -50,6 +54,8 @@ export function makeSphereMaterial(): {
         uniform float uTime;
         uniform float uRise;
         uniform float uAssembly;
+        uniform vec3 uPointer;
+        uniform float uPointerStrength;
         varying vec3 vTint;`,
       )
       .replace(
@@ -75,6 +81,16 @@ export function makeSphereMaterial(): {
           float ap = clamp((uAssembly - aDelay * 0.55) / 0.6, 0.0, 1.0);
           ap = 1.0 - pow(1.0 - ap, 5.0);
           vec3 worldPos = mix(driftPos, aTarget, ap);
+
+          // pointer repulsion — radial push in the screen plane, eased falloff
+          vec2 toPtr = worldPos.xy - uPointer.xy;
+          float dist = length(toPtr);
+          float falloff = 1.0 - smoothstep(0.0, 2.4, dist);
+          falloff *= falloff; // sharper near the cursor
+          float mass = 0.7 + aRandom.z * 0.6;  // lighter balls fly further
+          float hold = 1.0 - ap * 0.85;        // assembled logo barely reacts
+          vec2 dir = dist > 0.0001 ? toPtr / dist : vec2(0.0);
+          worldPos.xy += dir * falloff * uPointerStrength * mass * hold * 1.6;
 
           // Shrink each sphere as it lands so the assembled logo reads crisp.
           float shrink = mix(1.0, 0.46, ap);

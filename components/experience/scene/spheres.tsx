@@ -16,6 +16,66 @@ export function Spheres({ count = 1600 }: { count?: number }) {
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const targetsReady = useRef(false);
   const { mat, uniforms } = useMemo(() => makeSphereMaterial(), []);
+  // Pointer in NDC; `active` gates the repulsion strength, `fresh` snaps uPointer to
+  // the first hit so the push doesn't sweep in from the origin.
+  const pointer = useRef({ x: 0, y: 0, active: false, fresh: true });
+  const pick = useMemo(
+    () => ({
+      raycaster: new THREE.Raycaster(),
+      plane: new THREE.Plane(new THREE.Vector3(0, 0, 1), 0),
+      ndc: new THREE.Vector2(),
+      hit: new THREE.Vector3(),
+    }),
+    [],
+  );
+
+  // Listeners on window so the HeroIntro/Captions overlays can't block them. Touch
+  // pushes only while the finger is down; the mouse pushes whenever it moves over
+  // the hero.
+  useEffect(() => {
+    const ptr = pointer.current;
+    const update = (e: PointerEvent) => {
+      ptr.x = (e.clientX / window.innerWidth) * 2 - 1;
+      ptr.y = -((e.clientY / window.innerHeight) * 2 - 1);
+    };
+    const onMove = (e: PointerEvent) => {
+      if (window.scrollY > 2) {
+        ptr.active = false;
+        return;
+      }
+      update(e);
+      if (e.pointerType === "mouse") activate();
+    };
+    const activate = () => {
+      if (!ptr.active) ptr.fresh = true;
+      ptr.active = true;
+    };
+    const onDown = (e: PointerEvent) => {
+      if (window.scrollY > 2) return;
+      update(e);
+      activate();
+    };
+    const deactivate = () => {
+      ptr.active = false;
+    };
+    const onUp = (e: PointerEvent) => {
+      if (e.pointerType !== "mouse") deactivate();
+    };
+    window.addEventListener("pointermove", onMove, { passive: true });
+    window.addEventListener("pointerdown", onDown, { passive: true });
+    window.addEventListener("pointerup", onUp, { passive: true });
+    window.addEventListener("pointercancel", onUp, { passive: true });
+    document.documentElement.addEventListener("pointerleave", deactivate);
+    window.addEventListener("blur", deactivate);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerdown", onDown);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+      document.documentElement.removeEventListener("pointerleave", deactivate);
+      window.removeEventListener("blur", deactivate);
+    };
+  }, []);
 
   const { geo, bases, scales } = useMemo(() => {
     const g = new THREE.IcosahedronGeometry(1, 3);
@@ -89,13 +149,30 @@ export function Spheres({ count = 1600 }: { count?: number }) {
     };
   }, [geo, count]);
 
-  useFrame((state) => {
+  useFrame((state, dt) => {
     const p = useProgressStore.getState().progress;
     uniforms.uTime.value = state.clock.elapsedTime;
     uniforms.uRise.value = E.expoOut(phaseLocal(p, PHASES.rise));
     uniforms.uAssembly.value = targetsReady.current
       ? phaseLocal(p, PHASES.assembly)
       : 0;
+
+    // Project the pointer onto the z=0 plane every frame (the camera moves via the
+    // rig) and damp the uniforms so the push eases in/out.
+    const ptr = pointer.current;
+    pick.ndc.set(ptr.x, ptr.y);
+    pick.raycaster.setFromCamera(pick.ndc, state.camera);
+    if (pick.raycaster.ray.intersectPlane(pick.plane, pick.hit)) {
+      if (ptr.fresh) {
+        uniforms.uPointer.value.copy(pick.hit);
+        ptr.fresh = false;
+      } else {
+        uniforms.uPointer.value.lerp(pick.hit, 1 - Math.exp(-dt * 7));
+      }
+    }
+    const target = ptr.active ? 1 : 0;
+    uniforms.uPointerStrength.value +=
+      (target - uniforms.uPointerStrength.value) * (1 - Math.exp(-dt * 5));
   });
 
   return (

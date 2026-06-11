@@ -7,7 +7,7 @@ import { loadLogoShapes, shapesCenter, LOGO_VIEWBOX } from "./logo-loader";
 // a tint (white for the triangle/wordmark, green for the check). Spheres morph to
 // these in Phase E. World transform: scale to ~7u, flip Y, center on the mark.
 const WORLD = 4.6 / LOGO_VIEWBOX;
-const LOGO_Y = 1.0; // lift the assembled logo up so it clears the bottom captions
+const LOGO_Y = 0.55; // lift the assembled logo up so it clears the bottom captions
 
 export type LogoTargets = { positions: Float32Array; tints: Float32Array };
 
