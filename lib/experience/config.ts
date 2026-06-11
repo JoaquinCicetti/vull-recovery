@@ -2,16 +2,13 @@
 // `progress` 0→1; each phase reads its own local 0→1 from a sub-range. Ranges
 // overlap on purpose so transitions cross-dissolve. See docs/experience-architecture.md.
 
-export const STAGE_VH = 650; // scroll length of the pinned stage
-
-// Balls-only timeline over a static hero:
-//   rise     — spheres rise from the bottom across the full width (few → many)
-//   assembly — they reorganize into the logo silhouette
-//   reveal   — resolve to the crisp flat SVG logo (3D fades out)
+// Three discrete steps drive this (progress 0 → 0.5 → 1):
+//   step 0 (p=0)   — hero
+//   step 1 (p=0.5) — spheres risen across the width + "Tu cuerpo, suspendido"
+//   step 2 (p=1)   — spheres assembled into the logo + "Todo encuentra su lugar"
 export const PHASES = {
-  rise: [0.04, 0.55],
-  assembly: [0.5, 0.84],
-  reveal: [0.82, 1.0],
+  rise: [0.08, 0.5],
+  assembly: [0.5, 1.0],
 } as const;
 
 export type PhaseRange = readonly [number, number];

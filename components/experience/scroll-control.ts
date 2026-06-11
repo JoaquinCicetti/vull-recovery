@@ -1,19 +1,12 @@
-import type Lenis from "lenis";
+// Shared scroll hook so UI (the hero CTA) can run the whole animation down to the
+// plans. The experience registers a scroller; fallback is a plain smooth scroll.
+let scroller: (() => void) | null = null;
 
-// Shared handle to the experience's Lenis instance so UI (e.g. the hero CTA) can
-// drive a smooth scroll that runs the whole animation, then settles on the plans.
-let lenis: Lenis | null = null;
-
-export function setLenis(instance: Lenis | null) {
-  lenis = instance;
+export function setScroller(fn: (() => void) | null) {
+  scroller = fn;
 }
 
-// Smooth-scroll to the plans section below the pinned stage, running the ball
-// animation on the way down.
 export function scrollToPlans() {
-  if (lenis) {
-    lenis.scrollTo("#planes", { duration: 3.4 });
-  } else {
-    document.getElementById("planes")?.scrollIntoView({ behavior: "smooth" });
-  }
+  if (scroller) scroller();
+  else document.getElementById("planes")?.scrollIntoView({ behavior: "smooth" });
 }

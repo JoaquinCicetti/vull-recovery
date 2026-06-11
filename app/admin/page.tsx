@@ -46,14 +46,20 @@ export default async function AdminPage() {
   // Upcoming + the last 7 days, every status (cancelled shown muted). Filtering
   // by status here is what made the list look empty.
   const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-  const { data: rawBookings } = await supabase
-    .from("bookings")
-    .select(
-      "id, starts_at, status, services(name), profiles(full_name, whatsapp_phone, email)",
-    )
-    .gte("starts_at", since)
-    .order("starts_at", { ascending: true })
-    .limit(100);
+  const sel = (withEmail: boolean) =>
+    `id, starts_at, status, services(name), profiles(full_name, whatsapp_phone${withEmail ? ", email" : ""})`;
+  const query = (withEmail: boolean) =>
+    supabase
+      .from("bookings")
+      .select(sel(withEmail))
+      .gte("starts_at", since)
+      .order("starts_at", { ascending: true })
+      .limit(100);
+
+  // Email lives on profiles only after the profile_email migration is pushed; fall
+  // back to without it so the schedule always loads.
+  let { data: rawBookings, error: bookingsError } = await query(true);
+  if (bookingsError) ({ data: rawBookings } = await query(false));
 
   const bookings: AdminBookingRow[] = ((rawBookings ?? []) as any[]).map((b) => ({
     id: b.id as string,

@@ -2,28 +2,48 @@
 
 import { useEffect, useRef } from "react";
 import { useProgressStore } from "./progress-store";
-import { PHASES, phaseLocal, phaseFade, type PhaseRange } from "@/lib/experience/config";
 
-// Narrative copy stays in the DOM (crisp, selectable, translatable). Each caption
-// fades in/out over its phase. Driven by a transient store subscribe that writes
-// opacity/transform directly — no React re-render per scroll tick.
-type Caption = { range: PhaseRange; eyebrow: string; title: string };
+// Narrative copy in the DOM (crisp, selectable). The first caption fades in/out
+// around step 1; the last fades in and holds through the final logo step. Driven by
+// a transient store subscribe — no React re-render per frame.
+type Caption = {
+  in: [number, number];
+  out: [number, number] | null;
+  eyebrow: string;
+  title: string;
+};
 
 const CAPTIONS: Caption[] = [
-  { range: PHASES.rise, eyebrow: "Recuperación deportiva", title: "Tu cuerpo, suspendido" },
-  { range: PHASES.assembly, eyebrow: "Precisión", title: "Todo encuentra su lugar" },
+  {
+    in: [0.18, 0.3],
+    out: [0.52, 0.6],
+    eyebrow: "Recuperación deportiva",
+    title: "Tu cuerpo, suspendido",
+  },
+  {
+    in: [0.74, 0.93],
+    out: null,
+    eyebrow: "VULL",
+    title: "Todo encuentra su lugar",
+  },
 ];
+
+const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
+function fade(p: number, c: Caption) {
+  const i = clamp01((p - c.in[0]) / (c.in[1] - c.in[0]));
+  if (!c.out) return i;
+  const o = clamp01((p - c.out[0]) / (c.out[1] - c.out[0]));
+  return Math.min(i, 1 - o);
+}
 
 export function Captions() {
   const refs = useRef<(HTMLDivElement | null)[]>([]);
-
   useEffect(() => {
     const apply = (p: number) => {
-      CAPTIONS.forEach((c, i) => {
-        const el = refs.current[i];
+      CAPTIONS.forEach((c, idx) => {
+        const el = refs.current[idx];
         if (!el) return;
-        const lp = phaseLocal(p, c.range);
-        const o = phaseFade(lp);
+        const o = fade(p, c);
         el.style.opacity = String(o);
         el.style.transform = `translateY(${(1 - o) * 14}px)`;
       });
@@ -33,18 +53,25 @@ export function Captions() {
   }, []);
 
   return (
-    <div className="pointer-events-none absolute inset-0 z-20 flex items-end justify-center pb-[14vh]">
-      {CAPTIONS.map((c, i) => (
+    <div className="pointer-events-none absolute inset-0 z-20 flex items-end justify-center pb-[9vh]">
+      {CAPTIONS.map((c, idx) => (
         <div
-          key={c.title + i}
+          key={c.title}
           ref={(el) => {
-            refs.current[i] = el;
+            refs.current[idx] = el;
           }}
           style={{ opacity: 0 }}
-          className="absolute px-6 text-center will-change-[opacity,transform]"
+          className="absolute flex flex-col items-center px-6 text-center will-change-[opacity,transform]"
         >
-          <p className="eyebrow">{c.eyebrow}</p>
-          <p className="mt-3 text-4xl font-extrabold tracking-tight text-balance sm:text-6xl">
+          {/* soft darkening so the type reads against bright scene areas without a box */}
+          <div
+            aria-hidden="true"
+            className="absolute inset-0 -z-10 -m-10 blur-2xl [background:radial-gradient(60%_120%_at_50%_55%,rgba(0,0,0,0.5),transparent_72%)]"
+          />
+          <p className="text-[11px] font-semibold uppercase tracking-[0.34em] text-accent/90 [text-shadow:0_1px_14px_rgba(0,0,0,0.6)]">
+            {c.eyebrow}
+          </p>
+          <p className="mt-3 text-3xl font-semibold tracking-tight text-balance text-fg/95 [text-shadow:0_2px_30px_rgba(0,0,0,0.7)] sm:text-5xl">
             {c.title}
           </p>
         </div>

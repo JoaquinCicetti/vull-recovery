@@ -130,7 +130,7 @@ export function LoginForm({ next }: { next: string }) {
         <form onSubmit={verify} className="flex flex-col gap-3">
           <Label className="text-fg-muted">Código enviado a {email}</Label>
           <InputOTP
-            maxLength={6}
+            maxLength={8}
             pattern={REGEXP_ONLY_DIGITS}
             autoFocus
             required
@@ -140,12 +140,12 @@ export function LoginForm({ next }: { next: string }) {
             onComplete={() => verify()}
             containerClassName="justify-center"
           >
-            <InputOTPGroup>
-              {Array.from({ length: 6 }).map((_, i) => (
+            <InputOTPGroup className="gap-1.5">
+              {Array.from({ length: 8 }).map((_, i) => (
                 <InputOTPSlot
                   key={i}
                   index={i}
-                  className="size-12 bg-secondary font-mono text-lg"
+                  className="size-10 rounded-md border-l bg-secondary font-mono text-base sm:size-11"
                 />
               ))}
             </InputOTPGroup>

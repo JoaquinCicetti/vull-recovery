@@ -33,7 +33,6 @@
     --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
   }
   html {
-    scroll-behavior: smooth;
     @apply font-sans;
   }
   body {
@@ -126,21 +125,6 @@
   }
 }
 
-/* Lenis smooth scroll (experience). Overrides the global smooth scroll-behavior
-   so Lenis owns scrolling; only active once Lenis adds the `.lenis` class. */
-html.lenis,
-html.lenis body {
-  height: auto;
-}
-.lenis.lenis-smooth {
-  scroll-behavior: auto !important;
-}
-.lenis.lenis-smooth [data-lenis-prevent] {
-  overscroll-behavior: contain;
-}
-.lenis.lenis-stopped {
-  overflow: hidden;
-}
 
 /* ── Motion ─────────────────────────────────────────────────────────────── */
 @keyframes fade-up {
@@ -170,6 +154,19 @@ html.lenis body {
     transform: scale(1.08);
   }
 }
+/* Hero entrance: rise + un-blur (the blur masks the entrance, reads premium). */
+@keyframes hero-enter {
+  from {
+    opacity: 0;
+    transform: translateY(26px);
+    filter: blur(7px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: blur(0);
+  }
+}
 /* Ambient green glow breathing between 0.2 and 0.5 opacity. */
 @keyframes glow-pulse {
   0%,
@@ -195,6 +192,9 @@ html.lenis body {
   }
   .animate-glow-pulse {
     animation: glow-pulse 9s ease-in-out infinite;
+  }
+  .animate-hero-enter {
+    animation: hero-enter 0.9s var(--ease-out-expo) both;
   }
   /* Film-grain overlay (fractal noise). Pair with low opacity + mix-blend. */
   .bg-noise {

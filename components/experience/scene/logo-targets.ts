@@ -7,6 +7,7 @@ import { loadLogoShapes, shapesCenter, LOGO_VIEWBOX } from "./logo-loader";
 // a tint (white for the triangle/wordmark, green for the check). Spheres morph to
 // these in Phase E. World transform: scale to ~7u, flip Y, center on the mark.
 const WORLD = 4.6 / LOGO_VIEWBOX;
+const LOGO_Y = 1.0; // lift the assembled logo up so it clears the bottom captions
 
 export type LogoTargets = { positions: Float32Array; tints: Float32Array };
 
@@ -45,8 +46,8 @@ export async function sampleLogoTargets(count: number): Promise<LogoTargets> {
   for (let i = 0; i < count; i++) {
     sampler.sample(p, n, col);
     positions[i * 3] = (p.x - center.x) * WORLD;
-    positions[i * 3 + 1] = -(p.y - center.y) * WORLD; // flip SVG y-down → world y-up
-    positions[i * 3 + 2] = (Math.random() - 0.5) * 0.05; // nearly flat → crisp silhouette
+    positions[i * 3 + 1] = -(p.y - center.y) * WORLD + LOGO_Y; // flip y + lift up
+    positions[i * 3 + 2] = (Math.random() - 0.5) * 0.025; // nearly flat → crisp silhouette
     tints[i * 3] = col.r;
     tints[i * 3 + 1] = col.g;
     tints[i * 3 + 2] = col.b;

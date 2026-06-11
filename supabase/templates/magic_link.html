@@ -35,15 +35,9 @@
                 </p>
               </td>
             </tr>
-            <!-- Fallback link -->
-            <tr>
-              <td style="padding:20px 4px 0;">
-                <p style="margin:0; font-family:Arial,Helvetica,sans-serif; font-size:12px; line-height:1.5; color:#7d7d7d;">
-                  ¿No funciona el código?
-                  <a href="{{ .ConfirmationURL }}" style="color:#61b33b; text-decoration:underline;">Ingresá con este enlace</a>.
-                </p>
-              </td>
-            </tr>
+            <!-- No magic-link here on purpose: email security scanners pre-fetch
+                 links and consume the single-use token, which made the code read as
+                 "expired". Code only. -->
           </table>
         </td>
       </tr>

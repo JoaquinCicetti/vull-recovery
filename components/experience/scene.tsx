@@ -1,6 +1,7 @@
 "use client";
 
 import { Canvas } from "@react-three/fiber";
+import { AdaptiveDpr, AdaptiveEvents } from "@react-three/drei";
 import * as THREE from "three";
 import { Spheres } from "./scene/spheres";
 import { Lighting } from "./scene/lighting";
@@ -31,6 +32,9 @@ export default function Scene() {
       <Spheres count={count} />
       <Rig />
       <Effects dof={!isMobile} />
+      {/* Drop DPR/events while scrolling so the scrub stays smooth. */}
+      <AdaptiveDpr pixelated={false} />
+      <AdaptiveEvents />
     </Canvas>
   );
 }

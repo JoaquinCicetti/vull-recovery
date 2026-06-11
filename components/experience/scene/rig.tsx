@@ -12,12 +12,10 @@ export function Rig() {
     const p = useProgressStore.getState().progress;
     const rise = E.inOutSine(phaseLocal(p, PHASES.rise));
     const asm = E.quintOut(phaseLocal(p, PHASES.assembly));
-    const rev = E.quintOut(phaseLocal(p, PHASES.reveal));
     const cam = state.camera;
 
     let z = lerp(13.5, 11.5, rise);
-    z = lerp(z, 10.0, asm);
-    z = lerp(z, 9.2, rev);
+    z = lerp(z, 9.5, asm);
 
     const lookY = lerp(-1.2, 0.0, asm); // start low (balls from bottom) → center
     cam.position.set(0, lookY * 0.45, z);
