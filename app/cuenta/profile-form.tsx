@@ -43,7 +43,7 @@ export function ProfileForm({ profile }: { profile: Profile }) {
   }
 
   return (
-    <form onSubmit={save} className="mt-8 flex flex-col gap-4">
+    <form onSubmit={save} className="flex flex-col gap-4">
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="profile-name" className="text-fg-muted">
           Nombre y apellido

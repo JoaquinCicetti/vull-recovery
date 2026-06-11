@@ -116,7 +116,7 @@ export const MiniCalendar = ({
     <MiniCalendarContext.Provider value={contextValue}>
       <div
         className={cn(
-          "flex items-center gap-2 rounded-lg border bg-background p-2",
+          "flex items-center gap-1.5 rounded-lg border border-border bg-surface p-1.5",
           className
         )}
         {...props}
@@ -185,7 +185,10 @@ export const MiniCalendarDays = ({
   const days = getDays(startDate, dayCount);
 
   return (
-    <div className={cn("flex items-center gap-1", className)} {...props}>
+    <div
+      className={cn("flex w-full flex-1 items-stretch gap-1", className)}
+      {...props}
+    >
       {days.map((date) => children(date))}
     </div>
   );
@@ -198,35 +201,53 @@ export type MiniCalendarDayProps = ComponentProps<typeof Button> & {
 export const MiniCalendarDay = ({
   date,
   className,
+  disabled,
   ...props
 }: MiniCalendarDayProps) => {
   const { selectedDate, onDateSelect } = useMiniCalendar();
   const { weekday, day } = formatDate(date);
   const isSelected = selectedDate && isSameDay(date, selectedDate);
   const isTodayDate = isToday(date);
+  const isAvailable = !disabled;
 
   return (
     <Button
       className={cn(
-        "h-auto min-w-[3rem] flex-col gap-0 p-2 text-xs capitalize",
-        isTodayDate && !isSelected && "bg-secondary",
+        "h-auto min-w-0 flex-1 flex-col gap-1 px-1 py-2.5 text-xs",
+        // Today (when not selected): a thin lit ring instead of a heavy fill.
+        isTodayDate &&
+          !isSelected &&
+          "ring-1 ring-inset ring-border-strong",
+        // Unavailable days read as muted, not just dimmed by the disabled state.
+        disabled && "opacity-30",
         className
       )}
       onClick={() => onDateSelect(date)}
       size="sm"
       type="button"
       variant={isSelected ? "default" : "ghost"}
+      disabled={disabled}
       {...props}
     >
       <span
         className={cn(
-          "font-medium text-[10px] text-muted-foreground",
-          isSelected && "text-primary-foreground/70"
+          "text-[10px] font-semibold uppercase tracking-wider text-fg-faint",
+          isTodayDate && !isSelected && "text-accent",
+          isSelected && "text-primary-foreground/75"
         )}
       >
         {weekday}
       </span>
-      <span className="font-semibold text-sm">{day}</span>
+      <span className="font-mono text-sm font-semibold tabular-nums">{day}</span>
+      {/* Availability affordance — paired with the disabled/opacity state above,
+          never color alone. */}
+      <span
+        aria-hidden="true"
+        className={cn(
+          "h-1 w-1 rounded-full transition-colors",
+          isAvailable && !isSelected ? "bg-accent" : "bg-transparent"
+        )}
+      />
     </Button>
   );
 };

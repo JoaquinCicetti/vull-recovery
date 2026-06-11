@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { fmtDateTime } from "@/lib/format";
 import { StatusBadge } from "@/components/status-badge";
+import { PageShell } from "@/components/ui/page-shell";
 import type { Booking } from "@/lib/types";
 
 type Row = Booking & { services: { name: string } | null };
@@ -19,12 +20,9 @@ export default async function MisTurnosPage() {
   const bookings = (data ?? []) as Row[];
 
   return (
-    <div className="mx-auto max-w-xl px-5 py-16">
-      <p className="eyebrow">Tus reservas</p>
-      <h1 className="mt-4 text-3xl font-bold tracking-tight">Mis turnos</h1>
-
+    <PageShell eyebrow="Tus reservas" title="Mis turnos">
       {bookings.length === 0 ? (
-        <div className="mt-8 rounded-lg border border-dashed border-border bg-surface p-10 text-center text-fg-muted">
+        <div className="surface-card animate-fade-up border-dashed p-10 text-center text-fg-muted">
           Todavía no tenés turnos.{" "}
           <Link
             href="/"
@@ -35,12 +33,12 @@ export default async function MisTurnosPage() {
           .
         </div>
       ) : (
-        <ul className="mt-6 flex flex-col gap-3">
+        <ul className="stagger-children flex flex-col gap-3">
           {bookings.map((b) => (
             <li key={b.id}>
               <Link
                 href={`/turno/${b.id}`}
-                className="surface-card flex items-center justify-between gap-4 p-5 transition-colors duration-150 hover:border-border-strong"
+                className="surface-card surface-lift flex items-center justify-between gap-4 p-5 transition-colors duration-150 hover:border-border-strong"
               >
                 <div>
                   <p className="font-semibold text-fg">
@@ -56,6 +54,6 @@ export default async function MisTurnosPage() {
           ))}
         </ul>
       )}
-    </div>
+    </PageShell>
   );
 }

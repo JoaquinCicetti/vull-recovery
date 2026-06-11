@@ -1,13 +1,52 @@
 <!doctype html>
 <html lang="es">
-  <body style="font-family: Arial, Helvetica, sans-serif; color: #1a1a1a; line-height: 1.5;">
-    <h2 style="margin-bottom: 8px;">Tu código de acceso</h2>
-    <p>Usá este código para ingresar:</p>
-    <p style="font-size: 30px; font-weight: 700; letter-spacing: 6px; margin: 16px 0;">{{ .Token }}</p>
-    <p>El código vence en 1 hora. Si no solicitaste esto, podés ignorar este correo.</p>
-    <p style="color: #888; font-size: 12px; margin-top: 24px;">
-      ¿No funciona el código? También podés
-      <a href="{{ .ConfirmationURL }}">ingresar con este enlace</a>.
-    </p>
+  <body style="margin:0; padding:0; background-color:#000000;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#000000;">
+      <tr>
+        <td align="center" style="padding:40px 16px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:440px; width:100%;">
+            <!-- Wordmark -->
+            <tr>
+              <td style="padding-bottom:24px;">
+                <span style="font-family:Arial,Helvetica,sans-serif; font-size:13px; font-weight:700; letter-spacing:0.22em; text-transform:uppercase; color:#61b33b;">VULL</span>
+              </td>
+            </tr>
+            <!-- Card -->
+            <tr>
+              <td style="background-color:#0d0d0d; border:1px solid #262626; border-radius:12px; padding:32px;">
+                <h1 style="margin:0 0 6px; font-family:Arial,Helvetica,sans-serif; font-size:20px; font-weight:700; color:#f4f4f4;">
+                  Tu código de acceso
+                </h1>
+                <p style="margin:0 0 24px; font-family:Arial,Helvetica,sans-serif; font-size:14px; line-height:1.5; color:#bdbdbd;">
+                  Ingresá este código para entrar a tu cuenta:
+                </p>
+
+                <!-- Code -->
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+                  <tr>
+                    <td align="center" style="background-color:#161616; border:1px solid #3a3a3a; border-radius:10px; padding:20px 12px;">
+                      <span style="font-family:'Courier New',Courier,monospace; font-size:34px; font-weight:700; letter-spacing:12px; color:#f4f4f4;">{{ .Token }}</span>
+                    </td>
+                  </tr>
+                </table>
+
+                <p style="margin:24px 0 0; font-family:Arial,Helvetica,sans-serif; font-size:13px; line-height:1.5; color:#7d7d7d;">
+                  El código vence en 1 hora. Si no lo solicitaste, ignorá este correo.
+                </p>
+              </td>
+            </tr>
+            <!-- Fallback link -->
+            <tr>
+              <td style="padding:20px 4px 0;">
+                <p style="margin:0; font-family:Arial,Helvetica,sans-serif; font-size:12px; line-height:1.5; color:#7d7d7d;">
+                  ¿No funciona el código?
+                  <a href="{{ .ConfirmationURL }}" style="color:#61b33b; text-decoration:underline;">Ingresá con este enlace</a>.
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
   </body>
 </html>

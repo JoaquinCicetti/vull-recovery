@@ -3,9 +3,11 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { addDays, format, isAfter, isBefore, parse } from "date-fns";
+import { Check } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { fmtTime, fmtDayLabel, DEFAULT_TZ } from "@/lib/format";
 import type { Service, Slot } from "@/lib/types";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -18,7 +20,25 @@ import {
 type Day = { date: string; slots: Slot[] };
 type AvailabilityResponse = { days?: Day[]; timezone?: string };
 
-const VISIBLE_DAYS = 5;
+const VISIBLE_DAYS = 7;
+
+// Split a day's slots into parts-of-day so a long list reads as a schedule, not
+// a wall of buttons. Uses the salon-timezone hour (parsed from the formatted
+// "HH:MM"), so it stays correct regardless of the viewer's own timezone.
+type Period = { key: string; label: string; slots: Slot[] };
+function groupByPeriod(slots: Slot[], tz: string): Period[] {
+  const groups: Record<string, Slot[]> = { manana: [], tarde: [], noche: [] };
+  for (const slot of slots) {
+    const hour = Number(fmtTime(slot.starts_at, tz).slice(0, 2));
+    const key = hour < 12 ? "manana" : hour < 18 ? "tarde" : "noche";
+    groups[key].push(slot);
+  }
+  return [
+    { key: "manana", label: "Mañana", slots: groups.manana },
+    { key: "tarde", label: "Tarde", slots: groups.tarde },
+    { key: "noche", label: "Noche", slots: groups.noche },
+  ].filter((g) => g.slots.length > 0);
+}
 
 // Availability dates are plain "YYYY-MM-DD" strings in the salon's timezone.
 // Parse/format them as *local* dates — `new Date("YYYY-MM-DD")` would parse as
@@ -166,9 +186,9 @@ export function BookingFlow({
 
       {!loading && days && days.length > 0 && startDate && (
         <>
-          {/* Day selector */}
+          {/* Day selector — full-width week strip */}
           <MiniCalendar
-            className="mt-4 w-fit max-w-full animate-fade-in bg-card"
+            className="surface-lift mt-4 w-full animate-fade-in"
             days={VISIBLE_DAYS}
             value={activeDay ? toDate(activeDay) : undefined}
             onValueChange={(date) => {
@@ -180,7 +200,7 @@ export function BookingFlow({
             onStartDateChange={clampStart}
           >
             <MiniCalendarNavigation direction="prev" disabled={atStart} />
-            <MiniCalendarDays className="overflow-x-auto">
+            <MiniCalendarDays>
               {(date) => (
                 <MiniCalendarDay
                   key={toStr(date)}
@@ -193,41 +213,68 @@ export function BookingFlow({
           </MiniCalendar>
 
           {activeDay && (
-            <p className="mt-4 text-sm capitalize text-fg-muted">
+            <p className="mt-5 text-sm capitalize text-fg-muted">
               {fmtDayLabel(activeDay)}
             </p>
           )}
 
-          {/* Slots */}
-          <div className="mt-3 grid animate-fade-in grid-cols-3 gap-2 sm:grid-cols-4">
-            {day?.slots.map((slot) => {
-              const isSel = selected?.starts_at === slot.starts_at;
-              return (
-                <Button
-                  key={slot.starts_at}
-                  type="button"
-                  variant={isSel ? "default" : "outline"}
-                  onClick={() => setSelected(slot)}
-                  className="font-mono font-normal"
-                >
-                  {fmtTime(slot.starts_at, tz)}
-                </Button>
-              );
-            })}
-          </div>
+          {/* Slots, grouped by part of day */}
+          {day && day.slots.length > 0 ? (
+            <div className="mt-4 flex flex-col gap-5">
+              {groupByPeriod(day.slots, tz).map((period) => (
+                <div key={period.key} className="animate-fade-in">
+                  <div className="flex items-baseline gap-2">
+                    <p className="eyebrow">{period.label}</p>
+                    <span className="font-mono text-[11px] text-fg-faint">
+                      {period.slots.length}
+                    </span>
+                  </div>
+                  <div className="mt-2.5 grid grid-cols-3 gap-2 sm:grid-cols-4">
+                    {period.slots.map((slot) => {
+                      const isSel = selected?.starts_at === slot.starts_at;
+                      return (
+                        <Button
+                          key={slot.starts_at}
+                          type="button"
+                          variant={isSel ? "default" : "outline"}
+                          onClick={() => setSelected(slot)}
+                          className={cn(
+                            "font-mono font-normal tabular-nums",
+                            isSel && "ring-2 ring-accent/30 ring-offset-0",
+                          )}
+                        >
+                          {isSel && <Check className="size-3.5" />}
+                          {fmtTime(slot.starts_at, tz)}
+                        </Button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-4 text-sm text-fg-faint">
+              No quedan horarios este día. Probá otro.
+            </p>
+          )}
 
-          <Button
-            size="lg"
-            onClick={confirm}
-            disabled={!selected || submitting}
-            className="mt-8 w-full"
-          >
-            {submitting
-              ? "Reservando…"
-              : isAuthed
-                ? "Reservar este horario"
-                : "Ingresar y reservar"}
-          </Button>
+          {/* Confirm — sticky on mobile so booking stays one-handed */}
+          <div className="sticky bottom-0 z-10 -mx-5 mt-8 border-t border-border bg-bg/95 px-5 py-4 sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:p-0">
+            <Button
+              size="lg"
+              onClick={confirm}
+              disabled={!selected || submitting}
+              className="w-full"
+            >
+              {submitting
+                ? "Reservando…"
+                : isAuthed
+                  ? selected
+                    ? `Reservar ${fmtTime(selected.starts_at, tz)}`
+                    : "Elegí un horario"
+                  : "Ingresar y reservar"}
+            </Button>
+          </div>
         </>
       )}
 

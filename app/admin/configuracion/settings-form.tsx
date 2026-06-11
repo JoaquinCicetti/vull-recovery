@@ -90,7 +90,7 @@ export function SettingsForm({ initial }: { initial: Settings }) {
   }
 
   return (
-    <Card className="mt-8 [--card-spacing:--spacing(5)]">
+    <Card className="surface-lift animate-fade-up [--card-spacing:--spacing(5)]">
       <CardContent>
         <form onSubmit={save}>
           <h2 className="font-mono text-xs uppercase tracking-[0.18em] text-fg-faint">

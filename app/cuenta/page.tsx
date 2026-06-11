@@ -1,5 +1,6 @@
 import { requireUser } from "@/lib/auth";
 import { ProfileForm } from "./profile-form";
+import { PageShell } from "@/components/ui/page-shell";
 import type { Profile } from "@/lib/types";
 
 export default async function CuentaPage() {
@@ -13,11 +14,17 @@ export default async function CuentaPage() {
   };
 
   return (
-    <div className="mx-auto max-w-md px-5 py-16">
-      <p className="eyebrow">Tu cuenta</p>
-      <h1 className="mt-4 text-3xl font-bold tracking-tight">Mi cuenta</h1>
-      <p className="mt-2 font-mono text-sm text-fg-faint">{user!.email}</p>
-      <ProfileForm profile={initial} />
-    </div>
+    <PageShell
+      size="narrow"
+      eyebrow="Tu cuenta"
+      title="Mi cuenta"
+      description={
+        <span className="font-mono text-fg-faint">{user!.email}</span>
+      }
+    >
+      <div className="surface-card surface-lift animate-fade-up p-6">
+        <ProfileForm profile={initial} />
+      </div>
+    </PageShell>
   );
 }

@@ -1,7 +1,7 @@
-// Transactional email via the Resend HTTP API. No-ops if RESEND_API_KEY is
-// unset, so the booking flow keeps working without email configured.
-// EMAIL_FROM must be a sender on the Resend-verified domain,
-// e.g. `VULL <hola@your-domain>`.
+// Transactional email via the Resend HTTP API. No-ops if RESEND_API_KEY /
+// EMAIL_FROM are unset, so the booking flow keeps working without email
+// configured. EMAIL_FROM must be a sender on the Resend-verified domain,
+// e.g. `VULL <hola@vull.com.ar>`.
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 
 async function sendMail(
@@ -31,71 +31,229 @@ const money = (ars: number) =>
     maximumFractionDigits: 0,
   }).format(ars);
 
-// Sends the "turno confirmado" receipt. Best-effort: any failure (including
-// email not configured) is swallowed so it never breaks payment confirmation.
+// ─── VULL-branded email shell ───────────────────────────────────────────────
+// Matte black + green accent, mono for "instrument" data (matches the app and
+// the OTP email). Inline styles + tables for email-client compatibility.
+type Row = { label: string; value: string; mono?: boolean };
+type Shell = {
+  heading: string;
+  lead: string;
+  rows?: Row[];
+  note?: string;
+  cta?: { label: string; url: string };
+  accent?: string; // heading tint (defaults to fg)
+};
+
+function shell({ heading, lead, rows = [], note, cta, accent }: Shell): string {
+  const rowsHtml = rows
+    .map(
+      (r, i) => `
+      <tr>
+        <td style="padding:10px 0;${i ? "border-top:1px solid #262626;" : ""}font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#7d7d7d">${r.label}</td>
+        <td style="padding:10px 0;${i ? "border-top:1px solid #262626;" : ""}text-align:right;font-size:14px;font-weight:600;color:#f4f4f4;${r.mono ? "font-family:'Courier New',Courier,monospace;" : "font-family:Arial,Helvetica,sans-serif;"}">${r.value}</td>
+      </tr>`,
+    )
+    .join("");
+
+  return `<!doctype html>
+<html lang="es">
+  <body style="margin:0; padding:0; background-color:#000000;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#000000;">
+      <tr>
+        <td align="center" style="padding:40px 16px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:460px; width:100%;">
+            <tr>
+              <td style="padding-bottom:24px;">
+                <span style="font-family:Arial,Helvetica,sans-serif; font-size:13px; font-weight:700; letter-spacing:0.22em; text-transform:uppercase; color:#61b33b;">VULL</span>
+              </td>
+            </tr>
+            <tr>
+              <td style="background-color:#0d0d0d; border:1px solid #262626; border-radius:12px; padding:32px;">
+                <h1 style="margin:0 0 6px; font-family:Arial,Helvetica,sans-serif; font-size:20px; font-weight:700; color:${accent ?? "#f4f4f4"};">${heading}</h1>
+                <p style="margin:0 0 ${rows.length ? "24px" : "8px"}; font-family:Arial,Helvetica,sans-serif; font-size:14px; line-height:1.5; color:#bdbdbd;">${lead}</p>
+                ${
+                  rows.length
+                    ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${rowsHtml}</table>`
+                    : ""
+                }
+                ${
+                  note
+                    ? `<p style="margin:24px 0 0; font-family:Arial,Helvetica,sans-serif; font-size:13px; line-height:1.5; color:#7d7d7d;">${note}</p>`
+                    : ""
+                }
+                ${
+                  cta
+                    ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:24px;"><tr><td style="border-radius:8px; background-color:#61b33b;">
+                        <a href="${cta.url}" style="display:inline-block; padding:11px 20px; font-family:Arial,Helvetica,sans-serif; font-size:14px; font-weight:700; color:#0a0f08; text-decoration:none;">${cta.label}</a>
+                      </td></tr></table>`
+                    : ""
+                }
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:20px 4px 0;">
+                <p style="margin:0; font-family:Arial,Helvetica,sans-serif; font-size:12px; color:#7d7d7d;">VULL · Recuperación deportiva</p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
+}
+
+// ─── Shared booking context loader ──────────────────────────────────────────
+type BookingEmailCtx = {
+  email: string;
+  firstName: string;
+  svc: string;
+  price: number;
+  when: string;
+  ref: string;
+  appUrl: string;
+  bookingId: string;
+};
+
+async function loadBookingCtx(
+  admin: SupabaseClient,
+  bookingId: string,
+): Promise<BookingEmailCtx | null> {
+  const { data: b } = await admin
+    .from("bookings")
+    .select("id, user_id, starts_at, services(name, price_ars)")
+    .eq("id", bookingId)
+    .single();
+  if (!b) return null;
+
+  const { data: u } = await admin.auth.admin.getUserById(b.user_id);
+  const email = u?.user?.email;
+  if (!email) return null;
+
+  const { data: profile } = await admin
+    .from("profiles")
+    .select("full_name")
+    .eq("id", b.user_id)
+    .single();
+  const { data: settings } = await admin
+    .from("settings")
+    .select("timezone")
+    .eq("id", true)
+    .single();
+
+  const tz = settings?.timezone ?? "America/Argentina/Buenos_Aires";
+  // deno-lint-ignore no-explicit-any
+  const svc = (b.services as any)?.name ?? "Sesión";
+  // deno-lint-ignore no-explicit-any
+  const price = (b.services as any)?.price_ars ?? 0;
+  const firstName = (profile?.full_name ?? "").split(" ")[0] || "Hola";
+  const when = new Intl.DateTimeFormat("es-AR", {
+    timeZone: tz,
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(b.starts_at));
+
+  return {
+    email,
+    firstName,
+    svc,
+    price,
+    when,
+    ref: b.id.slice(0, 8).toUpperCase(),
+    appUrl: Deno.env.get("APP_URL") ?? "",
+    bookingId: b.id,
+  };
+}
+
+// All senders are best-effort: any failure (including email not configured) is
+// swallowed so it never breaks the booking flow.
+
+/** Acknowledgement when a booking is first created (slot held, payment pending). */
+export async function sendBookingReceived(
+  admin: SupabaseClient,
+  bookingId: string,
+): Promise<void> {
+  try {
+    const c = await loadBookingCtx(admin, bookingId);
+    if (!c) return;
+    const html = shell({
+      heading: "Reserva tomada",
+      lead: `Hola ${c.firstName}, te guardamos el horario. Falta el pago para confirmar el turno.`,
+      rows: [
+        { label: "Servicio", value: c.svc },
+        { label: "Fecha y hora", value: c.when },
+        { label: "Importe", value: money(c.price), mono: true },
+        { label: "Reserva", value: c.ref, mono: true },
+      ],
+      note: "Si no completás el pago, el horario se libera y queda disponible para otra persona.",
+      cta: c.appUrl
+        ? { label: "Pagar y confirmar", url: `${c.appUrl}/turno/${c.bookingId}` }
+        : undefined,
+    });
+    await sendMail(c.email, `Reserva tomada · VULL (${c.ref})`, html);
+  } catch (_) {
+    /* best-effort */
+  }
+}
+
+/** Receipt when payment is accredited and the booking becomes confirmed. */
 export async function sendBookingConfirmation(
   admin: SupabaseClient,
   bookingId: string,
 ): Promise<void> {
   try {
-    const { data: b } = await admin
-      .from("bookings")
-      .select("id, user_id, starts_at, services(name, price_ars)")
-      .eq("id", bookingId)
-      .single();
-    if (!b) return;
-
-    const { data: u } = await admin.auth.admin.getUserById(b.user_id);
-    const email = u?.user?.email;
-    if (!email) return;
-
-    const { data: profile } = await admin
-      .from("profiles")
-      .select("full_name")
-      .eq("id", b.user_id)
-      .single();
-    const { data: settings } = await admin
-      .from("settings")
-      .select("timezone")
-      .eq("id", true)
-      .single();
-
-    const tz = settings?.timezone ?? "America/Argentina/Buenos_Aires";
-    // deno-lint-ignore no-explicit-any
-    const svc = (b.services as any)?.name ?? "Sesión";
-    // deno-lint-ignore no-explicit-any
-    const price = (b.services as any)?.price_ars ?? 0;
-    const firstName = (profile?.full_name ?? "").split(" ")[0] || "Hola";
-    const ref = b.id.slice(0, 8).toUpperCase();
-    const appUrl = Deno.env.get("APP_URL") ?? "";
-
-    const when = new Intl.DateTimeFormat("es-AR", {
-      timeZone: tz,
-      weekday: "long",
-      day: "numeric",
-      month: "long",
-      hour: "2-digit",
-      minute: "2-digit",
-    }).format(new Date(b.starts_at));
-
-    const html = `
-<div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;max-width:520px;margin:0 auto;color:#111">
-  <h2 style="margin:0 0 4px">Turno confirmado ✓</h2>
-  <p style="color:#555;margin:0 0 20px">Hola ${firstName}, tu pago fue acreditado.</p>
-  <table style="width:100%;border-collapse:collapse;font-size:15px">
-    <tr><td style="padding:8px 0;color:#777">Servicio</td><td style="padding:8px 0;text-align:right;font-weight:600">${svc}</td></tr>
-    <tr><td style="padding:8px 0;color:#777;border-top:1px solid #eee">Fecha y hora</td><td style="padding:8px 0;text-align:right;font-weight:600;border-top:1px solid #eee;text-transform:capitalize">${when}</td></tr>
-    <tr><td style="padding:8px 0;color:#777;border-top:1px solid #eee">Pagado</td><td style="padding:8px 0;text-align:right;font-weight:600;border-top:1px solid #eee">${money(price)}</td></tr>
-    <tr><td style="padding:8px 0;color:#777;border-top:1px solid #eee">Comprobante</td><td style="padding:8px 0;text-align:right;font-family:monospace;border-top:1px solid #eee">${ref}</td></tr>
-  </table>
-  <p style="margin:20px 0 4px;font-weight:600">Antes de tu turno</p>
-  <p style="color:#555;margin:0 0 16px">Escribinos por WhatsApp con tu nombre así coordinamos los últimos detalles. Si no, mostrá este email (comprobante <strong>${ref}</strong>) al llegar.</p>
-  ${appUrl ? `<a href="${appUrl}/turno/${b.id}" style="display:inline-block;background:#111;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600">Ver mi turno</a>` : ""}
-  <p style="color:#999;font-size:12px;margin-top:28px">VULL · Recuperación deportiva</p>
-</div>`;
-
-    await sendMail(email, `Turno confirmado · VULL (${ref})`, html);
+    const c = await loadBookingCtx(admin, bookingId);
+    if (!c) return;
+    const html = shell({
+      heading: "Turno confirmado ✓",
+      accent: "#61b33b",
+      lead: `Hola ${c.firstName}, tu pago fue acreditado.`,
+      rows: [
+        { label: "Servicio", value: c.svc },
+        { label: "Fecha y hora", value: c.when },
+        { label: "Pagado", value: money(c.price), mono: true },
+        { label: "Comprobante", value: c.ref, mono: true },
+      ],
+      note: "Escribinos por WhatsApp con tu nombre para coordinar los últimos detalles. Si no, mostrá este email al llegar.",
+      cta: c.appUrl
+        ? { label: "Ver mi turno", url: `${c.appUrl}/turno/${c.bookingId}` }
+        : undefined,
+    });
+    await sendMail(c.email, `Turno confirmado · VULL (${c.ref})`, html);
   } catch (_) {
-    // Best-effort — never break the confirmation flow on an email error.
+    /* best-effort */
+  }
+}
+
+/** Notice when a booking is cancelled, by the client or by the center. */
+export async function sendBookingCancellation(
+  admin: SupabaseClient,
+  bookingId: string,
+  opts: { byAdmin: boolean },
+): Promise<void> {
+  try {
+    const c = await loadBookingCtx(admin, bookingId);
+    if (!c) return;
+    const lead = opts.byAdmin
+      ? `Hola ${c.firstName}, cancelamos tu turno. Si tenés dudas, escribinos por WhatsApp.`
+      : `Hola ${c.firstName}, tu turno quedó cancelado.`;
+    const html = shell({
+      heading: "Turno cancelado",
+      accent: "#e5484d",
+      lead,
+      rows: [
+        { label: "Servicio", value: c.svc },
+        { label: "Fecha y hora", value: c.when },
+        { label: "Reserva", value: c.ref, mono: true },
+      ],
+      note: "Si fue un error o querés otro horario, podés reservar de nuevo cuando quieras.",
+      cta: c.appUrl ? { label: "Reservar de nuevo", url: c.appUrl } : undefined,
+    });
+    await sendMail(c.email, `Turno cancelado · VULL (${c.ref})`, html);
+  } catch (_) {
+    /* best-effort */
   }
 }

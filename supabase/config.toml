@@ -245,7 +245,7 @@ content_path = "./supabase/templates/magic_link.html"
 # port = 465
 # user = "resend"
 # pass = "env(RESEND_API_KEY)"
-# admin_email = "hola@your-domain.com"
+# admin_email = "hola@vull.com.ar"
 # sender_name = "VULL"
 
 # Uncomment to customize email template

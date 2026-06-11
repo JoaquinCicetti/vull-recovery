@@ -4,6 +4,7 @@
 import { json, handleOptions, errMessage } from "../_shared/cors.ts";
 import { adminClient, userClient } from "../_shared/supabase.ts";
 import { createEvent } from "../_shared/google.ts";
+import { sendBookingReceived } from "../_shared/email.ts";
 
 const HOLD_MINUTES = Number(Deno.env.get("BOOKING_HOLD_MINUTES") ?? "10");
 
@@ -85,6 +86,9 @@ Deno.serve(async (req) => {
     } catch (_) {
       // Calendar is best-effort; booking already holds the slot in the DB.
     }
+
+    // Acknowledge the held reservation (best-effort; no-ops if email unset).
+    await sendBookingReceived(admin, booking.id);
 
     return json({ booking });
   } catch (e) {

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireAdmin } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { ServicesManager } from "./services-manager";
+import { PageShell } from "@/components/ui/page-shell";
 import type { Service } from "@/lib/types";
 
 export default async function ServiciosPage() {
@@ -13,15 +14,19 @@ export default async function ServiciosPage() {
     .order("sort_order", { ascending: true });
 
   return (
-    <div className="mx-auto max-w-2xl px-5 py-16">
-      <Link
-        href="/admin"
-        className="text-sm text-fg-faint transition-colors hover:text-fg"
-      >
-        ← Volver al panel
-      </Link>
-      <h1 className="mt-4 text-3xl font-bold tracking-tight">Planes y precios</h1>
+    <PageShell
+      nav={
+        <Link
+          href="/admin"
+          className="text-sm text-fg-faint transition-colors hover:text-fg"
+        >
+          ← Volver al panel
+        </Link>
+      }
+      eyebrow="Panel"
+      title="Planes y precios"
+    >
       <ServicesManager initial={(data ?? []) as Service[]} />
-    </div>
+    </PageShell>
   );
 }

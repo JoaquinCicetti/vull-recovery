@@ -97,11 +97,11 @@ from your own domain. Free tier: 3,000 emails/month, 100/day, one domain.
    ```bash
    pnpm exec supabase secrets set \
      RESEND_API_KEY="re_..." \
-     EMAIL_FROM="VULL <hola@your-domain.com>"
+     EMAIL_FROM="VULL <hola@vull.com.ar>"
    ```
 4. **OTP sign-in emails** — Dashboard → Authentication → Emails → SMTP:
    - Host `smtp.resend.com`, port `465`, user `resend`, pass = the API key
-   - Sender email `hola@your-domain.com`, sender name `VULL`
+   - Sender email `hola@vull.com.ar`, sender name `VULL`
 
    (Same values live commented in `supabase/config.toml` under
    `[auth.email.smtp]` — they stay commented so local dev keeps using Mailpit.)

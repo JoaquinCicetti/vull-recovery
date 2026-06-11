@@ -31,6 +31,9 @@ export type Booking = {
   status: BookingStatus;
   google_event_id: string | null;
   hold_expires_at: string | null;
+  cancelled_at: string | null;
+  cancelled_by: string | null;
+  cancellation_reason: string | null;
   created_at: string;
 };
 

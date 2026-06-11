@@ -46,7 +46,7 @@ export function ServicesManager({ initial }: { initial: Service[] }) {
   }
 
   return (
-    <div className="mt-8 flex flex-col gap-8">
+    <div className="flex flex-col gap-8">
       <Card className="[--card-spacing:--spacing(5)]">
         <CardContent>
           <form onSubmit={addService}>

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireAdmin } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { SettingsForm } from "./settings-form";
+import { PageShell } from "@/components/ui/page-shell";
 import type { Settings } from "@/lib/types";
 
 const DEFAULTS: Settings = {
@@ -21,21 +22,20 @@ export default async function ConfiguracionPage() {
     .single<Settings>();
 
   return (
-    <div className="mx-auto max-w-2xl px-5 py-16">
-      <Link
-        href="/admin"
-        className="text-sm text-fg-faint transition-colors hover:text-fg"
-      >
-        ← Volver al panel
-      </Link>
-      <h1 className="mt-4 text-3xl font-bold tracking-tight">
-        Disponibilidad
-      </h1>
-      <p className="mt-2 text-sm text-fg-muted">
-        Definí el horario y los días en que se pueden reservar turnos. Esto
-        controla la disponibilidad que ven los clientes.
-      </p>
+    <PageShell
+      nav={
+        <Link
+          href="/admin"
+          className="text-sm text-fg-faint transition-colors hover:text-fg"
+        >
+          ← Volver al panel
+        </Link>
+      }
+      eyebrow="Panel"
+      title="Disponibilidad"
+      description="Definí el horario y los días en que se pueden reservar turnos. Esto controla la disponibilidad que ven los clientes."
+    >
       <SettingsForm initial={data ?? DEFAULTS} />
-    </div>
+    </PageShell>
   );
 }

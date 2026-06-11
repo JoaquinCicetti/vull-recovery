@@ -5,6 +5,8 @@ import { formatARS, waLink } from "@/lib/site";
 import { fmtDateTime } from "@/lib/format";
 import { PaymentPanel } from "./payment-panel";
 import { StatusBadge } from "@/components/status-badge";
+import { CancelBooking } from "@/components/cancel-booking";
+import { PageShell } from "@/components/ui/page-shell";
 import { Button } from "@/components/ui/button";
 import type { Booking } from "@/lib/types";
 
@@ -40,13 +42,13 @@ export default async function TurnoPage({
   const isConfirmed = booking.status === "confirmed";
   const needsPayment =
     booking.status === "pending" || booking.status === "awaiting_payment";
+  const cancellable =
+    new Date(booking.starts_at).getTime() > Date.now() &&
+    ["pending", "awaiting_payment", "confirmed"].includes(booking.status);
 
   return (
-    <div className="mx-auto max-w-xl px-5 py-16">
-      <p className="eyebrow">Tu turno</p>
-      <h1 className="mt-4 text-3xl font-bold tracking-tight">{svcName}</h1>
-
-      <div className="surface-card mt-6 p-6">
+    <PageShell eyebrow="Tu turno" title={svcName}>
+      <div className="surface-card surface-lift p-6">
         <div className="flex items-start justify-between gap-4">
           <p className="capitalize text-fg-muted">{when}</p>
           <StatusBadge status={booking.status} />
@@ -94,6 +96,12 @@ export default async function TurnoPage({
           </p>
         </>
       )}
-    </div>
+
+      {cancellable && (
+        <div className="mt-8 flex justify-center border-t border-border pt-6">
+          <CancelBooking bookingId={booking.id} />
+        </div>
+      )}
+    </PageShell>
   );
 }

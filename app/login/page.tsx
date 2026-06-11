@@ -1,4 +1,5 @@
 import { LoginForm } from "./login-form";
+import { PageShell } from "@/components/ui/page-shell";
 
 export default async function LoginPage({
   searchParams,
@@ -7,15 +8,15 @@ export default async function LoginPage({
 }) {
   const { next } = await searchParams;
   return (
-    <div className="mx-auto flex max-w-md flex-col px-5 py-20">
-      <p className="eyebrow">Acceso</p>
-      <h1 className="mt-4 text-3xl font-bold tracking-tight">
-        Ingresá a tu cuenta
-      </h1>
-      <p className="mt-2 text-sm text-fg-muted">
-        Te enviamos un código de 6 dígitos por email. Sin contraseñas.
-      </p>
-      <LoginForm next={next ?? "/"} />
-    </div>
+    <PageShell
+      size="narrow"
+      eyebrow="Acceso"
+      title="Ingresá a tu cuenta"
+      description="Te enviamos un código de 6 dígitos por email. Sin contraseñas."
+    >
+      <div className="surface-card surface-lift animate-fade-up p-6">
+        <LoginForm next={next ?? "/"} />
+      </div>
+    </PageShell>
   );
 }

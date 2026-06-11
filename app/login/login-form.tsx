@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { REGEXP_ONLY_DIGITS } from "input-otp";
 import { createClient } from "@/lib/supabase/client";
-import { getURL } from "@/lib/site";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -42,7 +41,10 @@ export function LoginForm({ next }: { next: string }) {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: getURL(`/auth/callback?next=${encodeURIComponent(next)}`),
+        // Use the exact origin the user is on (e.g. https://www.vull.com.ar) so
+        // Supabase honors this redirect instead of falling back to the Site URL
+        // root. The host must be in the Supabase Redirect URLs allow-list.
+        redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
       },
     });
     // On success the browser redirects to Google; only reached on error.
@@ -71,7 +73,7 @@ export function LoginForm({ next }: { next: string }) {
   }
 
   return (
-    <div className="mt-8">
+    <div>
       {step === "email" ? (
         <div className="flex flex-col gap-4">
           <Button
