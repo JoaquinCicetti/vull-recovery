@@ -13,14 +13,21 @@ export default async function AdminPage() {
   await requireAdmin();
   const supabase = await createClient();
 
-  const { data: rawPayments } = await supabase
+  // Surfaced in the UI: a swallowed error here is exactly why the lists can look
+  // empty when they shouldn't (e.g. an RLS or schema problem).
+  const loadErrors: string[] = [];
+
+  const { data: rawPayments, error: paymentsError } = await supabase
     .from("payments")
     .select(
-      "id, amount_ars, receipt_path, created_at, bookings(id, starts_at, services(name), profiles(full_name, whatsapp_phone))",
+      // `profiles!user_id` disambiguates: bookings has two FKs to profiles
+      // (user_id and cancelled_by), so a bare `profiles(...)` embed is ambiguous.
+      "id, amount_ars, receipt_path, created_at, bookings(id, starts_at, services(name), profiles!user_id(full_name, whatsapp_phone))",
     )
     .eq("provider", "manual")
     .eq("status", "pending")
     .order("created_at", { ascending: true });
+  if (paymentsError) loadErrors.push(`Pagos: ${paymentsError.message}`);
 
   const payments = await Promise.all(
     ((rawPayments ?? []) as any[]).map(async (p) => {
@@ -47,7 +54,7 @@ export default async function AdminPage() {
   // by status here is what made the list look empty.
   const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
   const sel = (withEmail: boolean) =>
-    `id, starts_at, status, services(name), profiles(full_name, whatsapp_phone${withEmail ? ", email" : ""})`;
+    `id, starts_at, status, services(name), profiles!user_id(full_name, whatsapp_phone${withEmail ? ", email" : ""})`;
   const query = (withEmail: boolean) =>
     supabase
       .from("bookings")
@@ -58,8 +65,15 @@ export default async function AdminPage() {
 
   // Email lives on profiles only after the profile_email migration is pushed; fall
   // back to without it so the schedule always loads.
-  let { data: rawBookings, error: bookingsError } = await query(true);
-  if (bookingsError) ({ data: rawBookings } = await query(false));
+  const first = await query(true);
+  let rawBookings = first.data;
+  if (first.error) {
+    const retry = await query(false);
+    rawBookings = retry.data;
+    // Only the *fallback* failing is a real problem (the first may just be the
+    // missing email column); report that one.
+    if (retry.error) loadErrors.push(`Turnos: ${retry.error.message}`);
+  }
 
   const bookings: AdminBookingRow[] = ((rawBookings ?? []) as any[]).map((b) => ({
     id: b.id as string,
@@ -92,6 +106,19 @@ export default async function AdminPage() {
         </>
       }
     >
+      {loadErrors.length > 0 && (
+        <div className="mb-8 rounded-md border border-danger/30 bg-danger/5 p-4">
+          <p className="text-sm font-semibold text-danger">
+            No se pudieron cargar algunos datos
+          </p>
+          <ul className="mt-1 list-disc pl-5 font-mono text-xs text-fg-muted">
+            {loadErrors.map((e, i) => (
+              <li key={i}>{e}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <section>
         <h2 className="font-mono text-xs uppercase tracking-[0.18em] text-fg-faint">
           Pagos por transferencia a verificar

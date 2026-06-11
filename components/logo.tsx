@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { cn } from "@/lib/utils";
 import { SITE_NAME } from "@/lib/site";
 
@@ -15,10 +16,13 @@ export function Logo({
 }) {
   return (
     <span className={cn("inline-flex items-center gap-2.5", className)}>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
+      <Image
         src="/logo.jpg"
         alt={SITE_NAME}
+        width={576}
+        height={576}
+        priority
+        sizes="48px"
         className={cn("w-auto shrink-0 rounded-md", imgClassName)}
       />
       {withWordmark && (

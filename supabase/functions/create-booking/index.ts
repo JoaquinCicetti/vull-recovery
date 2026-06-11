@@ -6,7 +6,7 @@ import { adminClient, userClient } from "../_shared/supabase.ts";
 import { createEvent } from "../_shared/google.ts";
 import { sendBookingReceived } from "../_shared/email.ts";
 
-const HOLD_MINUTES = Number(Deno.env.get("BOOKING_HOLD_MINUTES") ?? "10");
+const HOLD_MINUTES = Number(Deno.env.get("BOOKING_HOLD_MINUTES") ?? "20");
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return handleOptions();

@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { formatARS, waLink } from "@/lib/site";
 import { fmtDateTime } from "@/lib/format";
 import { PaymentPanel } from "./payment-panel";
+import { HoldCountdown } from "./hold-countdown";
 import { StatusBadge } from "@/components/status-badge";
 import { CancelBooking } from "@/components/cancel-booking";
 import { PageShell } from "@/components/ui/page-shell";
@@ -42,6 +43,11 @@ export default async function TurnoPage({
   const isConfirmed = booking.status === "confirmed";
   const needsPayment =
     booking.status === "pending" || booking.status === "awaiting_payment";
+  // The slot is held server-side until hold_expires_at; show the live countdown
+  // only in the pre-payment `pending` window (once a receipt is uploaded the
+  // status flips to awaiting_payment and the hold is kept until verification).
+  const showHold =
+    booking.status === "pending" && Boolean(booking.hold_expires_at);
   const cancellable =
     new Date(booking.starts_at).getTime() > Date.now() &&
     ["pending", "awaiting_payment", "confirmed"].includes(booking.status);
@@ -61,6 +67,14 @@ export default async function TurnoPage({
           </span>
         </div>
       </div>
+
+      {showHold && (
+        <HoldCountdown
+          expiresAt={booking.hold_expires_at!}
+          startedAt={booking.created_at}
+          serviceId={booking.service_id}
+        />
+      )}
 
       {needsPayment && (
         <PaymentPanel
