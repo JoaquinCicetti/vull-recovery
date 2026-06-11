@@ -233,15 +233,20 @@ otp_expiry = 3600
 subject = "Tu código de acceso"
 content_path = "./supabase/templates/magic_link.html"
 
-# Use a production-ready SMTP server
+# Production SMTP: Resend (custom domain, free tier). The API key doubles as the
+# SMTP password. Kept commented so local dev keeps delivering to Mailpit (:54324)
+# and `supabase start` doesn't require RESEND_API_KEY. For the hosted project, set
+# these same values in the dashboard (Authentication → Emails → SMTP), or
+# temporarily uncomment with RESEND_API_KEY exported and run `supabase config push`.
+# See docs/deploy.md.
 # [auth.email.smtp]
 # enabled = true
-# host = "smtp.sendgrid.net"
-# port = 587
-# user = "apikey"
-# pass = "env(SENDGRID_API_KEY)"
-# admin_email = "admin@email.com"
-# sender_name = "Admin"
+# host = "smtp.resend.com"
+# port = 465
+# user = "resend"
+# pass = "env(RESEND_API_KEY)"
+# admin_email = "hola@your-domain.com"
+# sender_name = "VULL"
 
 # Uncomment to customize email template
 # [auth.email.template.invite]

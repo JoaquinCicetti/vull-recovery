@@ -67,5 +67,6 @@ docs/       setup.md · architecture.md · adr/
 
 - Built; passes typecheck, lint, and a production build.
 - **Pending:** end-to-end validation against the local Supabase stack (needs Docker).
-- **Deferred** (see ADRs): transactional confirmation email (Resend free tier),
-  in-chat WhatsApp Flows, proactive reminders.
+- Transactional email (OTP codes + booking confirmation) via **Resend** free
+  tier, sent from our own domain (ADR 0008).
+- **Deferred** (see ADRs): in-chat WhatsApp Flows, proactive reminders.

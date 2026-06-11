@@ -83,7 +83,34 @@ callback `https://wjdiojyelthaumuzkfxt.supabase.co/auth/v1/callback`.)
 pnpm exec supabase secrets set APP_URL="https://your-domain.com"
 ```
 
-### 3. Edge Functions must be deployed (separate from the frontend)
+### 3. Email from your own domain (Resend, free tier)
+
+Both email paths — the OTP sign-in codes (Supabase Auth) and the booking
+confirmation receipt (Edge Function) — send through [Resend](https://resend.com)
+from your own domain. Free tier: 3,000 emails/month, 100/day, one domain.
+
+1. **Verify the domain**: Resend dashboard → Domains → Add Domain → add the DNS
+   records it shows (SPF/DKIM TXT + DMARC + MX) at your registrar, wait for
+   **Verified**.
+2. **Create an API key** (Resend → API Keys).
+3. **Booking confirmation email** — set the Edge Function secrets:
+   ```bash
+   pnpm exec supabase secrets set \
+     RESEND_API_KEY="re_..." \
+     EMAIL_FROM="VULL <hola@your-domain.com>"
+   ```
+4. **OTP sign-in emails** — Dashboard → Authentication → Emails → SMTP:
+   - Host `smtp.resend.com`, port `465`, user `resend`, pass = the API key
+   - Sender email `hola@your-domain.com`, sender name `VULL`
+
+   (Same values live commented in `supabase/config.toml` under
+   `[auth.email.smtp]` — they stay commented so local dev keeps using Mailpit.)
+
+Without this, hosted Auth falls back to Supabase's built-in SMTP, which is
+rate-limited to a handful of emails per hour — fine for a quick test, not for real
+users. Locally nothing is needed: OTP codes land in Mailpit (`:54324`).
+
+### 4. Edge Functions must be deployed (separate from the frontend)
 ```bash
 pnpm exec supabase functions deploy
 ```

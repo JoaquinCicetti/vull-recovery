@@ -147,7 +147,8 @@ pnpm dlx supabase functions deploy
 pnpm dlx supabase secrets set \
   GOOGLE_SERVICE_ACCOUNT_JSON="$(cat key.json)" GOOGLE_CALENDAR_ID=... \
   MOBBEX_API_KEY=... MOBBEX_ACCESS_TOKEN=... MOBBEX_TEST=false \
-  MOBBEX_WEBHOOK_SECRET=... APP_URL=https://tu-dominio WHATSAPP_VERIFY_TOKEN=...
+  MOBBEX_WEBHOOK_SECRET=... APP_URL=https://tu-dominio WHATSAPP_VERIFY_TOKEN=... \
+  RESEND_API_KEY=re_... EMAIL_FROM="VULL <hola@tu-dominio>"
 ```
 
 **Frontend (Vercel):** import the repo and set `NEXT_PUBLIC_SUPABASE_URL`,
@@ -176,6 +177,8 @@ so the free project doesn't pause.
 | `MOBBEX_TEST` | Edge Function | `true` sandbox / `false` live |
 | `MOBBEX_WEBHOOK_SECRET` | Edge Function | random string you choose |
 | `APP_URL` | Edge Function | site URL used for Mobbex `return_url` |
+| `RESEND_API_KEY` | Edge Function + Auth SMTP | resend.com → API Keys (free tier, own domain) |
+| `EMAIL_FROM` | Edge Function | sender on the Resend-verified domain, e.g. `VULL <hola@tu-dominio>` |
 | `WHATSAPP_VERIFY_TOKEN` | Edge Function | Meta webhook verify token (optional) |
 | `WHATSAPP_TOKEN` / `WHATSAPP_PHONE_NUMBER_ID` | Edge Function | Meta Cloud API (optional, fase 2) |
 | `BOOKING_HOLD_MINUTES` | Edge Function | minutes a pending booking holds a slot (default 10) |

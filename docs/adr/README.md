@@ -13,3 +13,4 @@ consequences, and the alternatives we rejected. Format is lightweight
 | [0005](0005-email-otp-auth.md) | Passwordless email OTP for login | Accepted |
 | [0006](0006-google-calendar-availability.md) | Google Calendar (service account) for availability | Accepted |
 | [0007](0007-db-level-no-double-booking.md) | DB-level no-double-booking + lazy hold expiry | Accepted |
+| [0008](0008-resend-email-provider.md) | Resend as the email provider (own domain) | Accepted |

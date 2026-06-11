@@ -1,7 +1,7 @@
-// Transactional email via Gmail SMTP. No-ops if GMAIL_USER / GMAIL_APP_PASSWORD
-// are unset, so the booking flow keeps working without email configured.
-// GMAIL_APP_PASSWORD is a Google "App Password" (account needs 2FA enabled).
-import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
+// Transactional email via the Resend HTTP API. No-ops if RESEND_API_KEY is
+// unset, so the booking flow keeps working without email configured.
+// EMAIL_FROM must be a sender on the Resend-verified domain,
+// e.g. `VULL <hola@your-domain>`.
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 
 async function sendMail(
@@ -9,24 +9,19 @@ async function sendMail(
   subject: string,
   html: string,
 ): Promise<boolean> {
-  const user = Deno.env.get("GMAIL_USER");
-  const pass = Deno.env.get("GMAIL_APP_PASSWORD");
-  if (!user || !pass || !to) return false;
+  const apiKey = Deno.env.get("RESEND_API_KEY");
+  const from = Deno.env.get("EMAIL_FROM");
+  if (!apiKey || !from || !to) return false;
 
-  const client = new SMTPClient({
-    connection: {
-      hostname: "smtp.gmail.com",
-      port: 465,
-      tls: true,
-      auth: { username: user, password: pass },
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
     },
+    body: JSON.stringify({ from, to, subject, html }),
   });
-  try {
-    await client.send({ from: `VULL <${user}>`, to, subject, html });
-    return true;
-  } finally {
-    await client.close();
-  }
+  return res.ok;
 }
 
 const money = (ars: number) =>
