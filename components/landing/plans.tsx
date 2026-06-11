@@ -6,7 +6,6 @@ import { formatARS, waLink } from "@/lib/site";
 import type { Service } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { LocalAmbient } from "@/components/ui/local-ambient";
 import {
   Card,
   CardContent,
@@ -33,9 +32,8 @@ export function Plans({ services }: { services: Service[] }) {
   return (
     <section
       id="planes"
-      className="relative isolate scroll-mt-16 overflow-hidden border-t border-border bg-black px-5 py-24 sm:py-32"
+      className="relative scroll-mt-16 border-t border-border px-5 py-24 sm:py-32"
     >
-      <LocalAmbient className="[mask-image:linear-gradient(to_bottom,transparent,black_20%,black_80%,transparent)]" />
       <div className="relative mx-auto max-w-6xl">
         <motion.div
           initial={{ opacity: 0, y: 24 }}

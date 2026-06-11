@@ -47,7 +47,7 @@ export function RecoveryJourney() {
   return (
     <section
       id="recuperacion"
-      className="relative scroll-mt-16 border-t border-border bg-black py-24 sm:py-32"
+      className="relative scroll-mt-16 border-t border-border py-24 sm:py-32"
     >
       <div className="mx-auto max-w-6xl px-5">
         <motion.div

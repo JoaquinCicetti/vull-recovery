@@ -17,7 +17,7 @@ export function AmbientBackground() {
     >
       {/* Deep floor glow so long pages don't fade into a void at the bottom. */}
       <div className="absolute inset-x-0 bottom-0 h-[45vh] bg-[radial-gradient(60%_100%_at_50%_120%,oklch(0.7_0.16_140/0.12),transparent_70%)]" />
-      <HeroParticles className="opacity-60" />
+      <HeroParticles className="opacity-80" />
     </div>
   );
 }
