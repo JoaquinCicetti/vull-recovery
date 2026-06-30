@@ -14,3 +14,4 @@ consequences, and the alternatives we rejected. Format is lightweight
 | [0006](0006-google-calendar-availability.md) | Google Calendar (service account) for availability | Accepted |
 | [0007](0007-db-level-no-double-booking.md) | DB-level no-double-booking + lazy hold expiry | Accepted |
 | [0008](0008-resend-email-provider.md) | Resend as the email provider (own domain) | Accepted |
+| [0009](0009-booking-invariants-enforcement.md) | One-per-day at the DB; re-validate booking rules at the edge | Accepted |

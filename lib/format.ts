@@ -23,6 +23,17 @@ export function fmtTime(iso: string, tz: string = DEFAULT_TZ) {
   }).format(new Date(iso));
 }
 
+// "YYYY-MM-DD" calendar date of an instant in the given timezone. Matches the
+// salon-local day strings returned by `availability`.
+export function localDate(iso: string, tz: string = DEFAULT_TZ) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(iso));
+}
+
 // `dateStr` is a plain "YYYY-MM-DD" calendar date.
 export function fmtDayLabel(dateStr: string) {
   const [y, m, d] = dateStr.split("-").map(Number);

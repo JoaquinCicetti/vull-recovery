@@ -1,12 +1,19 @@
 // Authenticated Edge Function: holds a slot for the signed-in user.
-// Inserts a `pending` booking; the DB EXCLUDE constraint rejects overlaps
-// (race-safe). Creates a tentative Google Calendar event (best-effort).
+// Inserts a `pending` booking; the DB EXCLUDE constraint rejects overlaps and a
+// partial UNIQUE index rejects a second active booking on the same local day
+// (both race-safe). Re-validates the client-supplied time against the same rules
+// `availability` uses, so a crafted/stale request can't book outside the rules.
+// Creates a tentative Google Calendar event (best-effort).
 import { json, handleOptions, errMessage } from "../_shared/cors.ts";
 import { adminClient, userClient } from "../_shared/supabase.ts";
 import { createEvent } from "../_shared/google.ts";
+import { getBusy } from "../_shared/google.ts";
 import { sendBookingReceived } from "../_shared/email.ts";
+import { localYMD, zonedToUtc } from "../_shared/time.ts";
+import { type Busy, type Settings, validateSlot } from "../_shared/booking-rules.ts";
 
 const HOLD_MINUTES = Number(Deno.env.get("BOOKING_HOLD_MINUTES") ?? "20");
+const ACTIVE = ["pending", "awaiting_payment", "confirmed"];
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return handleOptions();
@@ -23,18 +30,18 @@ Deno.serve(async (req) => {
 
     const admin = adminClient();
 
-    // Free expired holds first so a stale pending booking doesn't block this slot.
+    // Free expired holds first so a stale pending booking doesn't block this slot
+    // (including the user's own lapsed hold, so the per-day check below is fair).
     await admin
       .from("bookings")
       .update({ status: "expired" })
       .eq("status", "pending")
       .lt("hold_expires_at", new Date().toISOString());
 
-    const { data: service } = await admin
-      .from("services")
-      .select("*")
-      .eq("id", service_id)
-      .single();
+    const [{ data: service }, { data: row }] = await Promise.all([
+      admin.from("services").select("*").eq("id", service_id).single(),
+      admin.from("settings").select("*").eq("id", true).single(),
+    ]);
     if (!service || !service.active) {
       return json({ error: "Servicio no disponible" }, 404);
     }
@@ -44,7 +51,57 @@ Deno.serve(async (req) => {
     if (start.getTime() < Date.now()) {
       return json({ error: "Ese horario ya pasó" }, 400);
     }
-    const end = new Date(start.getTime() + service.duration_minutes * 60000);
+    const durationMs = service.duration_minutes * 60000;
+    const end = new Date(start.getTime() + durationMs);
+
+    const settings: Settings = {
+      working_hours_start: row?.working_hours_start ?? "09:00",
+      working_hours_end: row?.working_hours_end ?? "18:00",
+      working_days: row?.working_days ?? [1, 2, 3, 4, 5],
+      timezone: row?.timezone ?? "America/Argentina/Buenos_Aires",
+    };
+    const tz = settings.timezone;
+
+    // ── Invariant: at most one active turno per user per local day ───────────
+    // Friendly pre-check (the partial UNIQUE index is the race-safe backstop).
+    const { y, m, d } = localYMD(tz, start);
+    const dayStart = zonedToUtc(y, m, d, 0, 0, tz).toISOString();
+    const dayEnd = zonedToUtc(y, m, d + 1, 0, 0, tz).toISOString();
+    const { data: sameDay } = await admin
+      .from("bookings")
+      .select("id")
+      .eq("user_id", user.id)
+      .in("status", ACTIVE)
+      .gte("starts_at", dayStart)
+      .lt("starts_at", dayEnd)
+      .limit(1);
+    if (sameDay && sameDay.length > 0) {
+      return json(
+        {
+          error:
+            "Ya tenés un turno reservado para ese día. Cancelalo si querés elegir otro horario.",
+        },
+        409,
+      );
+    }
+
+    // ── Re-validate the slot server-side (working hours/days, lead, grid,
+    //    Google freeBusy). availability uses the same validateSlot(). ─────────
+    const googleBusy = await getBusy(start.toISOString(), end.toISOString()).catch(
+      () => [],
+    );
+    const busy: Busy[] = googleBusy.map((b) => ({
+      start: new Date(b.start).getTime(),
+      end: new Date(b.end).getTime(),
+    }));
+    const check = validateSlot({
+      startMs: start.getTime(),
+      durationMs,
+      settings,
+      busy,
+    });
+    if (!check.ok) return json({ error: check.error }, 409);
+
     const holdExpires = new Date(Date.now() + HOLD_MINUTES * 60000).toISOString();
 
     const { data: booking, error } = await admin
@@ -64,6 +121,16 @@ Deno.serve(async (req) => {
       // 23P01 = exclusion_violation → the slot is already taken.
       if (error.code === "23P01") {
         return json({ error: "Ese horario ya fue reservado. Elegí otro." }, 409);
+      }
+      // 23505 = unique_violation → the per-day index (race with another request).
+      if (error.code === "23505") {
+        return json(
+          {
+            error:
+              "Ya tenés un turno reservado para ese día. Cancelalo si querés elegir otro horario.",
+          },
+          409,
+        );
       }
       return json({ error: error.message }, 400);
     }

@@ -66,7 +66,9 @@ The architecture is sound (3D is dynamically imported, SSR-off, with a real `pre
 
 ## 3. Booking invariants (no overlap · max 1/day · documented)
 
-Today **only no-overlap is truly enforced**. The rules you named need DB-level guarantees + documentation.
+**Status (2026-06-30):** ✅ **Done (Sprint 1).** DB per-day index + immutable `booking_local_date()` (`supabase/migrations/20260630130000_one_booking_per_day.sql`), shared `_shared/booking-rules.ts` validator used by both `availability` and `create-booking` (closes S3), client guard in the booking flow, and the docs below (`docs/booking-invariants.md`, ADR 0009). Verified on a local stack: the per-day index rejects a second active same-day booking incl. the 21:00/23:00 ART boundary; `create-booking` returns the right Spanish 409s for same-day / out-of-hours / off-grid; `availability` output unchanged.
+
+Today **only no-overlap was truly enforced** before this. The rules you named now have DB-level guarantees + documentation.
 
 | Invariant | Today | Plan |
 |-----------|-------|------|
