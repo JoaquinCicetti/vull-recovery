@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { fmtDateTime } from "@/lib/format";
 import { StatusBadge } from "@/components/status-badge";
-import { CancelBooking } from "@/components/cancel-booking";
+import { BookingActions } from "@/components/admin/booking-actions";
 import type { BookingStatus } from "@/lib/types";
 
 export type AdminBookingRow = {
@@ -17,9 +17,6 @@ export type AdminBookingRow = {
 };
 
 function Row({ b, past }: { b: AdminBookingRow; past?: boolean }) {
-  const cancellable = ["pending", "awaiting_payment", "confirmed"].includes(
-    b.status,
-  );
   return (
     <li
       className={`surface-card surface-lift flex flex-wrap items-start justify-between gap-4 p-5 ${
@@ -45,13 +42,7 @@ function Row({ b, past }: { b: AdminBookingRow; past?: boolean }) {
         >
           Ver turno
         </Link>
-        {cancellable && (
-          <CancelBooking
-            bookingId={b.id}
-            label="Cancelar"
-            confirmPrompt="¿Cancelar el turno de este cliente?"
-          />
-        )}
+        <BookingActions bookingId={b.id} status={b.status} started={Boolean(past)} />
       </div>
     </li>
   );
