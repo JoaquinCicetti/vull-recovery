@@ -1,12 +1,13 @@
 // Authenticated, admin-only Edge Function: approve or reject a manual payment.
 // Approving confirms the booking and finalizes the Google Calendar event.
-import { json, handleOptions, errMessage } from "../_shared/cors.ts";
+import { responder, errMessage } from "../_shared/cors.ts";
 import { adminClient, userClient } from "../_shared/supabase.ts";
 import { patchEventStatus } from "../_shared/google.ts";
 import { sendBookingConfirmation } from "../_shared/email.ts";
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return handleOptions();
+  const { json, options } = responder(req);
+  if (req.method === "OPTIONS") return options();
   try {
     const {
       data: { user },

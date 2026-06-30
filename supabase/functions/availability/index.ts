@@ -4,7 +4,7 @@
 // booking. Slot legality is decided by the shared validateSlot() so this function
 // and create-booking can never disagree.
 import { adminClient } from "../_shared/supabase.ts";
-import { json, handleOptions, errMessage } from "../_shared/cors.ts";
+import { responder, errMessage } from "../_shared/cors.ts";
 import { getBusy } from "../_shared/google.ts";
 import { localYMD, parseHM, zonedToUtc } from "../_shared/time.ts";
 import {
@@ -17,7 +17,8 @@ import {
 const ACTIVE = ["pending", "awaiting_payment", "confirmed"];
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return handleOptions();
+  const { json, options } = responder(req);
+  if (req.method === "OPTIONS") return options();
   try {
     const { service_id } = await req.json();
     if (!service_id) return json({ error: "service_id requerido" }, 400);

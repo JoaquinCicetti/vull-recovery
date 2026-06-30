@@ -187,6 +187,30 @@ so the free project doesn't pause.
 | `WHATSAPP_VERIFY_TOKEN` | Edge Function | Meta webhook verify token (optional) |
 | `WHATSAPP_TOKEN` / `WHATSAPP_PHONE_NUMBER_ID` | Edge Function | Meta Cloud API (optional, fase 2) |
 | `BOOKING_HOLD_MINUTES` | Edge Function | minutes a pending booking holds a slot (default 10) |
+| `MAX_ACTIVE_HOLDS` | Edge Function | max concurrent unconfirmed holds per user (default 3) |
+| `BOOKING_THROTTLE_SECONDS` | Edge Function | min seconds between a user's bookings (default 5) |
+| `CORS_EXTRA_ORIGINS` | Edge Function | extra browser origins allowed to call functions (comma-separated) |
+| `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | Frontend | Cloudflare Turnstile site key (optional, enables login captcha) |
+| `TURNSTILE_SECRET` | Auth | Cloudflare Turnstile secret (with `[auth.captcha]`) |
 
 > Working hours / days / timezone are **not** env vars — they're a row in the
 > `settings` table (edit in Studio or via the admin panel).
+
+## Security hardening
+
+- **CORS** — Edge Functions echo back only allow-listed browser origins (`APP_URL`
+  + `localhost` + any `CORS_EXTRA_ORIGINS`), not `*`. Add every host clients/admin
+  use (apex **and** `www`, plus preview domains) to `CORS_EXTRA_ORIGINS` or
+  browser calls from those hosts are blocked. Webhooks are server-to-server and
+  send no CORS.
+- **Booking anti-abuse** — a user can hold at most `MAX_ACTIVE_HOLDS` unconfirmed
+  turnos at once and must wait `BOOKING_THROTTLE_SECONDS` between bookings (on top
+  of the one-turno-per-day rule).
+- **Bot protection (captcha)** — recommended before launch to stop email
+  enumeration / OTP spam. Create a free **Cloudflare Turnstile** widget, then: (1)
+  set `NEXT_PUBLIC_TURNSTILE_SITE_KEY` (browser) and `TURNSTILE_SECRET`
+  (Edge/Auth); (2) uncomment `[auth.captcha]` in `supabase/config.toml` (provider
+  `turnstile`, `secret = "env(TURNSTILE_SECRET)"`) and push config to the hosted
+  project. The login form sends the token automatically once the site key is set;
+  with no key, captcha is off and login is unchanged. The OTP resend cooldown is
+  `60s` (`[auth.email] max_frequency`).
