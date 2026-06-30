@@ -51,6 +51,7 @@ export const STATUS_LABEL: Record<BookingStatus, string> = {
   confirmed: "Confirmado",
   cancelled: "Cancelado",
   expired: "Expirado",
+  no_show: "No asistió",
 };
 
 export const STATUS_STYLE: Record<BookingStatus, string> = {
@@ -59,4 +60,5 @@ export const STATUS_STYLE: Record<BookingStatus, string> = {
   confirmed: "bg-accent/15 text-accent",
   cancelled: "bg-surface-2 text-fg-faint",
   expired: "bg-surface-2 text-fg-faint",
+  no_show: "bg-danger/10 text-danger",
 };

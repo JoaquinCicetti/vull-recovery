@@ -21,7 +21,8 @@ export type BookingStatus =
   | "awaiting_payment"
   | "confirmed"
   | "cancelled"
-  | "expired";
+  | "expired"
+  | "no_show";
 
 export type Booking = {
   id: string;

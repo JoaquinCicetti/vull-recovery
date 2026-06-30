@@ -408,6 +408,12 @@ verify_jwt = true
 [functions.admin-payment]
 verify_jwt = true
 
+[functions.admin-booking]
+verify_jwt = true
+
+[functions.cancel-booking]
+verify_jwt = true
+
 # External webhooks / cron — no Supabase JWT; verified by their own secrets.
 [functions.mobbex-webhook]
 verify_jwt = false
