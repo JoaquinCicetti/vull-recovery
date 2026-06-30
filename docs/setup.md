@@ -122,8 +122,13 @@ pnpm dlx supabase functions serve --env-file supabase/functions/.env
 1. **mobbex.dev** → create an application → request access to the merchant entity
    (CUIT) → get the **API key** and **access token**.
 2. Set `MOBBEX_API_KEY`, `MOBBEX_ACCESS_TOKEN`; set `MOBBEX_TEST=true` for sandbox.
-3. Choose any random `MOBBEX_WEBHOOK_SECRET`. It's appended as `?token=…` to the
-   webhook URL and checked by `mobbex-webhook` (Mobbex doesn't sign webhooks).
+3. Choose any random `MOBBEX_WEBHOOK_SECRET`. **Required.** It's appended as
+   `?token=…` to the webhook URL and checked by `mobbex-webhook` (Mobbex doesn't
+   sign webhooks). The webhook now **fails closed**: if this secret is unset every
+   IPN is rejected and bookings never auto-confirm. The webhook also re-queries
+   Mobbex server-side (`/p/operations/ref\<reference>`, same API creds) and checks
+   the paid amount against the service price before confirming — so a forged IPN
+   can't confirm a booking without a real payment.
 4. `create-payment` builds the webhook URL automatically as
    `${SUPABASE_URL}/functions/v1/mobbex-webhook?token=…` — just make sure it's
    publicly reachable (tunnel locally; already public on cloud).
@@ -175,7 +180,7 @@ so the free project doesn't pause.
 | `GOOGLE_CALENDAR_ID` | Edge Function | Google Calendar → Integrate calendar |
 | `MOBBEX_API_KEY` / `MOBBEX_ACCESS_TOKEN` | Edge Function | mobbex.dev dev portal |
 | `MOBBEX_TEST` | Edge Function | `true` sandbox / `false` live |
-| `MOBBEX_WEBHOOK_SECRET` | Edge Function | random string you choose |
+| `MOBBEX_WEBHOOK_SECRET` | Edge Function | random string you choose — **required** (webhook fails closed without it) |
 | `APP_URL` | Edge Function | site URL used for Mobbex `return_url` |
 | `RESEND_API_KEY` | Edge Function + Auth SMTP | resend.com → API Keys (free tier, own domain) |
 | `EMAIL_FROM` | Edge Function | sender on the Resend-verified domain, e.g. `VULL <hola@tu-dominio>` |
