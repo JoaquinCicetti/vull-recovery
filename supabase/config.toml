@@ -205,11 +205,15 @@ token_verifications = 30
 # Number of Web3 logins that can be made in a 5 minute interval per IP address.
 web3 = 30
 
-# Configure one of the supported captcha providers: `hcaptcha`, `turnstile`.
+# Bot protection for OTP/signup. Recommended for production to stop email
+# enumeration + OTP spam (see docs/setup.md "Bot protection"). Cloudflare
+# Turnstile is free. Kept DISABLED here so local dev / `supabase start` works
+# without keys — uncomment and set the secret (via env) to turn it on, and set
+# NEXT_PUBLIC_TURNSTILE_SITE_KEY in the app so the login form sends a token.
 # [auth.captcha]
 # enabled = true
-# provider = "hcaptcha"
-# secret = ""
+# provider = "turnstile"
+# secret = "env(TURNSTILE_SECRET)"
 
 [auth.email]
 # Allow/disallow new user signups via email to your project.
@@ -222,7 +226,9 @@ enable_confirmations = false
 # If enabled, users will need to reauthenticate or have logged in recently to change their password.
 secure_password_change = false
 # Controls the minimum amount of time that must pass before sending another signup confirmation or password reset email.
-max_frequency = "1s"
+# Hardened from "1s": an OTP resend cooldown that throttles inbox spam / cost
+# (only affects re-sends; the first code is immediate).
+max_frequency = "60s"
 # Number of characters used in the email OTP.
 otp_length = 6
 # Number of seconds before the email OTP expires (defaults to 1 hour).

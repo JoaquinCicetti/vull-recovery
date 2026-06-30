@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { REGEXP_ONLY_DIGITS } from "input-otp";
 import { createClient } from "@/lib/supabase/client";
+import { Turnstile, isCaptchaEnabled } from "@/components/turnstile";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,14 +22,22 @@ export function LoginForm({ next }: { next: string }) {
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
 
   async function sendCode(e: React.FormEvent) {
     e.preventDefault();
+    if (isCaptchaEnabled() && !captchaToken) {
+      setError("Completá la verificación de seguridad.");
+      return;
+    }
     setLoading(true);
     setError(null);
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: { shouldCreateUser: true },
+      options: {
+        shouldCreateUser: true,
+        ...(captchaToken ? { captchaToken } : {}),
+      },
     });
     setLoading(false);
     if (error) setError(error.message);
@@ -121,6 +130,7 @@ export function LoginForm({ next }: { next: string }) {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
             />
+            <Turnstile onToken={setCaptchaToken} />
             <Button className="mt-1 w-full" disabled={loading}>
               {loading ? "Enviando…" : "Enviar código"}
             </Button>

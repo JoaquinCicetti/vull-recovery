@@ -3,7 +3,7 @@
 // Setting status='cancelled' frees the slot (the no-overlap EXCLUDE constraint
 // ignores cancelled rows). Best-effort: cancels the Google Calendar event,
 // clears any pending manual payment, and emails the client.
-import { json, handleOptions, errMessage } from "../_shared/cors.ts";
+import { responder, errMessage } from "../_shared/cors.ts";
 import { adminClient, userClient } from "../_shared/supabase.ts";
 import { patchEventStatus } from "../_shared/google.ts";
 import { sendBookingCancellation } from "../_shared/email.ts";
@@ -11,7 +11,8 @@ import { sendBookingCancellation } from "../_shared/email.ts";
 const CANCELLABLE = ["pending", "awaiting_payment", "confirmed"];
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return handleOptions();
+  const { json, options } = responder(req);
+  if (req.method === "OPTIONS") return options();
   try {
     const { booking_id, reason } = await req.json();
     if (!booking_id) return json({ error: "Falta el turno" }, 400);

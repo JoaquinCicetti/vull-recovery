@@ -4,7 +4,7 @@
 // (both race-safe). Re-validates the client-supplied time against the same rules
 // `availability` uses, so a crafted/stale request can't book outside the rules.
 // Creates a tentative Google Calendar event (best-effort).
-import { json, handleOptions, errMessage } from "../_shared/cors.ts";
+import { responder, errMessage } from "../_shared/cors.ts";
 import { adminClient, userClient } from "../_shared/supabase.ts";
 import { createEvent } from "../_shared/google.ts";
 import { getBusy } from "../_shared/google.ts";
@@ -13,10 +13,13 @@ import { localYMD, zonedToUtc } from "../_shared/time.ts";
 import { type Busy, type Settings, validateSlot } from "../_shared/booking-rules.ts";
 
 const HOLD_MINUTES = Number(Deno.env.get("BOOKING_HOLD_MINUTES") ?? "20");
+const MAX_ACTIVE_HOLDS = Number(Deno.env.get("MAX_ACTIVE_HOLDS") ?? "3");
+const THROTTLE_MS = Number(Deno.env.get("BOOKING_THROTTLE_SECONDS") ?? "5") * 1000;
 const ACTIVE = ["pending", "awaiting_payment", "confirmed"];
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return handleOptions();
+  const { json, options } = responder(req);
+  if (req.method === "OPTIONS") return options();
   try {
     const { service_id, starts_at } = await req.json();
     if (!service_id || !starts_at) {
@@ -37,6 +40,29 @@ Deno.serve(async (req) => {
       .update({ status: "expired" })
       .eq("status", "pending")
       .lt("hold_expires_at", new Date().toISOString());
+
+    // ── Anti-squat: cap concurrent unconfirmed holds + light throttle ────────
+    // (The per-day unique index already limits a user to one active booking per
+    // day; this bounds how many days a user can tie up at once.)
+    const { data: activeHolds } = await admin
+      .from("bookings")
+      .select("created_at")
+      .eq("user_id", user.id)
+      .in("status", ["pending", "awaiting_payment"])
+      .order("created_at", { ascending: false });
+    if ((activeHolds?.length ?? 0) >= MAX_ACTIVE_HOLDS) {
+      return json(
+        {
+          error:
+            "Tenés varias reservas sin confirmar. Completá o cancelá alguna antes de reservar otra.",
+        },
+        429,
+      );
+    }
+    const lastAt = activeHolds?.[0]?.created_at;
+    if (lastAt && Date.now() - new Date(lastAt).getTime() < THROTTLE_MS) {
+      return json({ error: "Esperá unos segundos antes de reservar de nuevo." }, 429);
+    }
 
     const [{ data: service }, { data: row }] = await Promise.all([
       admin.from("services").select("*").eq("id", service_id).single(),

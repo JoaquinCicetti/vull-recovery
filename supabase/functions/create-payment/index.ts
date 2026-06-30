@@ -2,11 +2,12 @@
 //   method "mobbex" → creates a Mobbex checkout, returns the hosted pay URL.
 //   method "manual" → records an uploaded transfer receipt for admin review.
 // In both cases the booking moves to `awaiting_payment`.
-import { json, handleOptions, errMessage } from "../_shared/cors.ts";
+import { responder, errMessage } from "../_shared/cors.ts";
 import { adminClient, userClient } from "../_shared/supabase.ts";
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return handleOptions();
+  const { json, options } = responder(req);
+  if (req.method === "OPTIONS") return options();
   try {
     const { booking_id, method = "mobbex", receipt_path } = await req.json();
     if (!booking_id) return json({ error: "booking_id requerido" }, 400);
