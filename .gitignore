@@ -42,6 +42,7 @@ envs/*
 next-env.d.ts
 
 .temp
+.branches
 
 .claude
 .vscode

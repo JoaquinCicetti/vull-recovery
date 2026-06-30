@@ -19,10 +19,15 @@ fallback that is truly $0.
 - Per-transaction fee, no Meta/MP monthly fee. However Mobbex's terms mention a
   **low-volume monthly minimum** → the manual fallback preserves the $0 path
   (ADR 0001).
-- Mobbex sends no webhook signature → we authenticate the IPN with our own
-  `?token=` secret on the webhook URL.
+- Mobbex sends no webhook signature → the IPN is hardened in depth: the `?token=`
+  secret is **required** (the webhook fails closed if unset), and on each IPN we
+  re-query Mobbex server-side (`GET /p/operations/ref\<reference>`) for the
+  authoritative status instead of trusting the body, then confirm only if the paid
+  amount matches the service price. The webhook only ever updates a payment row we
+  created in `create-payment` — it never inserts one from webhook input.
 - Status mapping (`status.code` 200 = paid; 0/≥400 = rejected; else pending) must
-  be confirmed against the live dashboard.
+  be confirmed against the live dashboard, as must the `/p/operations` response
+  shape used by the server-side re-fetch.
 
 ## Alternatives considered
 - **Plain transfer + "concepto" reference matching** — no webhook from a bank
