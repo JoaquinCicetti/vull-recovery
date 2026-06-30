@@ -46,6 +46,15 @@ Booking lifecycle: `pending → awaiting_payment → confirmed` (or `cancelled` 
   `EXCLUDE USING gist (during WITH &&) WHERE <active status>` constraint. Two
   clients booking the same slot at once: Postgres rejects the second insert
   (code `23P01`). Not dependent on application logic. See [ADR 0007](adr/0007-db-level-no-double-booking.md).
+- **One turno per day (DB-level).** A partial UNIQUE index
+  `bookings_one_per_day` on `(user_id, booking_local_date(starts_at))` over the
+  active statuses guarantees a user holds at most one active booking per local
+  day (race-safe; code `23505`). See [ADR 0009](adr/0009-booking-invariants-enforcement.md).
+- **Server-side slot re-validation.** `create-booking` re-checks the submitted
+  time (working hours/days, lead, grid, Google freeBusy) via the shared
+  `_shared/booking-rules.ts`, the same logic `availability` uses, so a crafted or
+  stale request can't book outside the rules. Full contract:
+  [docs/booking-invariants.md](booking-invariants.md).
 - **Hold with expiry.** Booking creates a `pending` row with `hold_expires_at`
   (~10 min). Expired holds are freed **lazily** (at the start of `availability`
   and `create-booking`) — no cron.

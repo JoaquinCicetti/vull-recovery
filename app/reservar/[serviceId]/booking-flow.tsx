@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { addDays, format, isAfter, isBefore, parse } from "date-fns";
 import { Check } from "lucide-react";
@@ -65,10 +66,12 @@ export function BookingFlow({
   service,
   isAuthed,
   profile,
+  bookedDays = [],
 }: {
   service: Service;
   isAuthed: boolean;
   profile: Profile | null;
+  bookedDays?: string[];
 }) {
   const router = useRouter();
   const supabase = createClient();
@@ -135,6 +138,11 @@ export function BookingFlow({
       router.push(`/login?next=${encodeURIComponent(`/reservar/${service.id}`)}`);
       return;
     }
+    // One turno per day (enforced server-side too). Guide instead of round-tripping.
+    if (activeDay && blocked.has(activeDay)) {
+      setError("Ya tenés un turno reservado para ese día. Cancelalo si querés elegir otro horario.");
+      return;
+    }
 
     // Capture name (required) + phone (optional) before booking when missing.
     if (detailsMissing && !showDetails) {
@@ -179,6 +187,8 @@ export function BookingFlow({
 
   const day = days?.find((d) => d.date === activeDay);
   const available = new Set(days?.map((d) => d.date));
+  const blocked = new Set(bookedDays);
+  const dayBlocked = activeDay ? blocked.has(activeDay) : false;
   const firstDate = days?.length ? toDate(days[0].date) : null;
   const lastDate = days?.length ? toDate(days[days.length - 1].date) : null;
 
@@ -242,7 +252,9 @@ export function BookingFlow({
                 <MiniCalendarDay
                   key={toStr(date)}
                   date={date}
-                  disabled={!available.has(toStr(date))}
+                  disabled={
+                    !available.has(toStr(date)) || blocked.has(toStr(date))
+                  }
                 />
               )}
             </MiniCalendarDays>
@@ -256,7 +268,19 @@ export function BookingFlow({
           )}
 
           {/* Slots, grouped by part of day */}
-          {day && day.slots.length > 0 ? (
+          {dayBlocked ? (
+            <div className="surface-card surface-lift mt-4 animate-fade-in p-5">
+              <p className="text-sm text-fg-muted">
+                Ya tenés un turno reservado para este día.{" "}
+                <Link
+                  href="/mis-turnos"
+                  className="text-accent underline-offset-4 hover:underline"
+                >
+                  Ver mis turnos
+                </Link>
+              </p>
+            </div>
+          ) : day && day.slots.length > 0 ? (
             <div className="mt-4 flex flex-col gap-5">
               {groupByPeriod(day.slots, tz).map((period) => (
                 <div key={period.key} className="animate-fade-in">

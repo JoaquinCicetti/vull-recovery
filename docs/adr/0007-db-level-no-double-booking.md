@@ -21,6 +21,9 @@ lazily** at the start of `availability` and `create-booking`.
 - No cron dependency: stale holds are expired on the next relevant request.
 - Single-resource today; multi-room later = add `resource_id` to the constraint
   (`resource_id WITH =`), which is why `btree_gist` is already enabled.
+- The same race-safe reasoning is reused for the one-turno-per-day rule (a partial
+  unique index) and the server-side re-validation in
+  [ADR 0009](0009-booking-invariants-enforcement.md).
 
 ## Alternatives considered
 - Application-level check-then-insert — race-prone. Rejected.
