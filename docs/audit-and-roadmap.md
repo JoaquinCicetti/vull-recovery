@@ -111,7 +111,9 @@ Today **only no-overlap was truly enforced** before this. The rules you named no
 
 ## 5. Packs / appointment balance (multi-session packs → per-user credits)
 
-Nothing exists today: `services` has no session count, there is no credit/balance entity, payment is hard-wired 1:1 to a booking. This is a **new subsystem**, built ledger-first for auditability and concurrency safety.
+**Status (2026-07-01):** ✅ **Done & verified.** Data model + race-safe RPCs (`user_credits` atomic counter + `credit_ledger` audit), edge wiring (`create-booking` use_credit, `create-payment` pack mode, webhook/admin grant, cancel refund), and client UI (admin pack creation, plans pack cards, `/comprar` purchase, credit-aware booking, "Mis créditos"). Every border case SQL/edge-tested: grant idempotency, no-negative guard, slot-race rollback (no leak), **concurrent double-spend** (parallel bookings → exactly one), refund once-only, expiry, admin clamp. ⬜ Deferred: admin balance-adjust UI (offline cash comps — `adjust_credit` RPC exists); needs a browser pass on the UI.
+
+Nothing existed before today: `services` has no session count, there is no credit/balance entity, payment is hard-wired 1:1 to a booking. This is a **new subsystem**, built ledger-first for auditability and concurrency safety.
 
 **Design (P0 core):**
 - **Data model:** `services += sessions_included, grants_service_id, validity_days`; `payments += kind('booking'|'pack'), service_id, user_id` (booking_id nullable); new **`credit_ledger`** (append-only: `delta`, `reason`, `booking_id`/`payment_id`, `expires_at`). Balance = `sum(delta) WHERE expires_at IS NULL OR > now()` (expiry needs no cron).
