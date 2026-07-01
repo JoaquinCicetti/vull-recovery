@@ -129,7 +129,9 @@ Nothing existed before today: `services` has no session count, there is no credi
 
 ## 6. Notifications (admin push + Google Calendar triggers)
 
-Today: client emails only (Resend); the owner learns of bookings/payments **only by refreshing `/admin`**; Google sync is **one-way** (no `events.watch`, external edits never flow back).
+**Status (2026-07-01):** ✅ **P0 done** — admin email alerts (`notifyAdmins` in `_shared/email.ts`) fire on payment-to-verify, booking-confirmed, and client-cancellation (booking + pack), reusing Resend. Verified: functions return 200 and no-op without Resend; recipient resolved. Delivery needs `RESEND_API_KEY`/`EMAIL_FROM`. ⬜ **Remaining (need keys/devices to verify):** native web-push (PWA manifest + service worker + VAPID + `push_subscriptions` table), Google Calendar reconciliation (`calendar_sync` table + cron-driven `events.list(syncToken)` → reconcile external edits), Realtime live `/admin`, preferences.
+
+Before this: client emails only (Resend); the owner learned of bookings/payments **only by refreshing `/admin`**; Google sync is **one-way** (no `events.watch`, external edits never flow back).
 
 **Layered, cheapest-first plan:**
 1. **P0 — Admin email alerts** (reuse `_shared/email.ts` + `loadBookingCtx`): fire on `awaiting_payment` (verify queue), `confirmed/paid`, client cancellation. `getAdminEmails()` from `profiles where is_admin`. Works on every device, zero infra. *Do not* alert on 10-min pending holds.
