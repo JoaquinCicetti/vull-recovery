@@ -17,6 +17,7 @@ function mapBooking(b: any): AdminBookingRow {
     id: b.id as string,
     startsAt: b.starts_at as string,
     status: b.status as BookingStatus,
+    serviceId: b.service_id as string,
     service: b.services?.name ?? "Servicio",
     price: (b.services?.price_ars as number) ?? null,
     client: b.profiles?.full_name ?? "—",
