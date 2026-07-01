@@ -3,7 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { fmtDateTime } from "@/lib/format";
+import { fmtTime, fmtDayLabel, localDate } from "@/lib/format";
+import { formatARS } from "@/lib/site";
 import { StatusBadge } from "@/components/status-badge";
 import { BookingActions } from "@/components/admin/booking-actions";
 import { Button } from "@/components/ui/button";
@@ -12,7 +13,7 @@ import type { BookingStatus } from "@/lib/types";
 // Shared select (with the profiles!user_id disambiguation) so the server's first
 // page and the client's "load more" fetch the exact same shape.
 export const BOOKINGS_SELECT =
-  "id, starts_at, status, services(name), profiles!user_id(full_name, whatsapp_phone, email)";
+  "id, starts_at, status, services(name, price_ars), profiles!user_id(full_name, whatsapp_phone, email)";
 
 const ACTIVE = ["pending", "awaiting_payment", "confirmed"];
 const PAGE = 20;
@@ -22,6 +23,7 @@ export type AdminBookingRow = {
   startsAt: string;
   status: BookingStatus;
   service: string;
+  price: number | null;
   client: string;
   phone: string | null;
   email: string | null;
@@ -34,32 +36,81 @@ function mapRow(b: any): AdminBookingRow {
     startsAt: b.starts_at,
     status: b.status,
     service: b.services?.name ?? "Servicio",
+    price: b.services?.price_ars ?? null,
     client: b.profiles?.full_name ?? "—",
     phone: b.profiles?.whatsapp_phone ?? null,
     email: b.profiles?.email ?? null,
   };
 }
 
+// A confirmed turno reads as paid; the pre-confirm states show their payment step.
+function paymentHint(status: BookingStatus): string | null {
+  if (status === "confirmed") return "Pagado";
+  if (status === "awaiting_payment") return "Pago a verificar";
+  if (status === "pending") return "Sin pagar";
+  return null;
+}
+
+function waHref(phone: string | null): string | null {
+  if (!phone) return null;
+  const digits = phone.replace(/\D/g, "");
+  return digits.length >= 8 ? `https://wa.me/${digits}` : null;
+}
+
+function groupByDay(rows: AdminBookingRow[]): { date: string; rows: AdminBookingRow[] }[] {
+  const groups: { date: string; rows: AdminBookingRow[] }[] = [];
+  for (const r of rows) {
+    const date = localDate(r.startsAt);
+    const last = groups[groups.length - 1];
+    if (last && last.date === date) last.rows.push(r);
+    else groups.push({ date, rows: [r] });
+  }
+  return groups;
+}
+
 function Row({ b, past }: { b: AdminBookingRow; past?: boolean }) {
+  const wa = waHref(b.phone);
+  const hint = paymentHint(b.status);
   return (
     <li
       className={`surface-card surface-lift flex flex-wrap items-start justify-between gap-4 p-5 ${
         past ? "opacity-60" : ""
       }`}
     >
-      <div className="min-w-0">
-        <p className="font-semibold text-fg">{b.service}</p>
-        <p className="mt-0.5 text-sm capitalize text-fg-muted">
-          {fmtDateTime(b.startsAt)}
-        </p>
-        <p className="mt-1 text-sm text-fg">{b.client}</p>
-        <p className="mt-0.5 flex flex-wrap gap-x-2 font-mono text-xs text-fg-faint">
-          {b.email && <span className="truncate">{b.email}</span>}
-          {b.phone && <span>· {b.phone}</span>}
-        </p>
+      <div className="flex min-w-0 gap-4">
+        <span className="font-mono text-sm tabular-nums text-fg-muted">
+          {fmtTime(b.startsAt)}
+        </span>
+        <div className="min-w-0">
+          <p className="font-semibold text-fg">
+            {b.service}
+            {b.price != null && (
+              <span className="ml-2 font-mono text-sm font-normal text-fg-faint">
+                {formatARS(b.price)}
+              </span>
+            )}
+          </p>
+          <p className="mt-1 text-sm text-fg">{b.client}</p>
+          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 font-mono text-xs text-fg-faint">
+            {b.email && <span className="truncate">{b.email}</span>}
+            {wa ? (
+              <a
+                href={wa}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-accent underline-offset-4 hover:underline"
+              >
+                {b.phone}
+              </a>
+            ) : (
+              b.phone && <span>· {b.phone}</span>
+            )}
+          </p>
+        </div>
       </div>
       <div className="flex shrink-0 flex-col items-end gap-2">
         <StatusBadge status={b.status} />
+        {hint && <span className="text-xs text-fg-faint">{hint}</span>}
         <Link
           href={`/turno/${b.id}`}
           className="text-sm text-accent underline-offset-4 hover:underline"
@@ -69,6 +120,25 @@ function Row({ b, past }: { b: AdminBookingRow; past?: boolean }) {
         <BookingActions bookingId={b.id} status={b.status} started={Boolean(past)} />
       </div>
     </li>
+  );
+}
+
+function DayGroups({ rows, past }: { rows: AdminBookingRow[]; past?: boolean }) {
+  return (
+    <div className="mt-3 flex flex-col gap-6">
+      {groupByDay(rows).map((g) => (
+        <div key={g.date}>
+          <p className="sticky top-0 z-[1] bg-bg/90 py-1 text-sm font-medium capitalize text-fg-muted backdrop-blur">
+            {fmtDayLabel(g.date)}
+          </p>
+          <ul className="mt-2 flex flex-col gap-3">
+            {g.rows.map((b) => (
+              <Row key={b.id} b={b} past={past} />
+            ))}
+          </ul>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -117,11 +187,7 @@ export function AdminBookings({
         {upcoming.length === 0 ? (
           <p className="mt-3 text-sm text-fg-faint">Sin turnos próximos.</p>
         ) : (
-          <ul className="stagger-children mt-3 flex flex-col gap-3">
-            {upcoming.map((b) => (
-              <Row key={b.id} b={b} />
-            ))}
-          </ul>
+          <DayGroups rows={upcoming} />
         )}
         {remaining > 0 && (
           <Button
@@ -141,11 +207,7 @@ export function AdminBookings({
           <p className="flex items-baseline gap-2 text-xs font-medium uppercase tracking-wider text-fg-faint">
             Recientes <span className="font-mono normal-case">{recentTotal}</span>
           </p>
-          <ul className="mt-3 flex flex-col gap-3">
-            {recent.map((b) => (
-              <Row key={b.id} b={b} past />
-            ))}
-          </ul>
+          <DayGroups rows={recent} past />
         </div>
       )}
     </div>
