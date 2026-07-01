@@ -14,7 +14,7 @@ import {
 export function Effects({ dof = true }: { dof?: boolean }) {
   if (!dof) {
     return (
-      <EffectComposer multisampling={4}>
+      <EffectComposer multisampling={2}>
         <Bloom
           intensity={0.5}
           luminanceThreshold={0.75}
@@ -27,7 +27,7 @@ export function Effects({ dof = true }: { dof?: boolean }) {
     );
   }
   return (
-    <EffectComposer multisampling={4}>
+    <EffectComposer multisampling={2}>
       <DepthOfField focusDistance={0.012} focalLength={0.05} bokehScale={2.4} />
       <Bloom
         intensity={0.5}

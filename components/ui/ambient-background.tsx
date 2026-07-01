@@ -1,3 +1,6 @@
+"use client";
+
+import { usePathname } from "next/navigation";
 import { HeroParticles } from "@/components/landing/hero-particles";
 
 /**
@@ -5,11 +8,13 @@ import { HeroParticles } from "@/components/landing/hero-particles";
  * rendered once behind every page so no route reads as flat solid black. Sits
  * under the body's top radial glow; pointer-transparent and decorative only.
  *
- * Strength is deliberately low here (the hero keeps its own brighter instance
- * over the facility photo). Under `prefers-reduced-motion`, HeroParticles renders
- * nothing and only the static body glow remains.
+ * On the homepage ("/") the WebGL hero owns the atmosphere and covers this layer,
+ * so the particle rAF loop is suppressed there — it would only compete with the
+ * scene for the main thread while being invisible. Under `prefers-reduced-motion`,
+ * HeroParticles renders nothing and only the static body glow remains.
  */
 export function AmbientBackground() {
+  const isHome = usePathname() === "/";
   return (
     <div
       aria-hidden="true"
@@ -17,7 +22,7 @@ export function AmbientBackground() {
     >
       {/* Deep floor glow so long pages don't fade into a void at the bottom. */}
       <div className="absolute inset-x-0 bottom-0 h-[45vh] bg-[radial-gradient(60%_100%_at_50%_120%,oklch(0.7_0.16_140/0.12),transparent_70%)]" />
-      <HeroParticles className="opacity-80" />
+      {!isHome && <HeroParticles className="opacity-80" />}
     </div>
   );
 }
