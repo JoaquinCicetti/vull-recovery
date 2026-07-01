@@ -82,6 +82,10 @@ Deno.serve(async (req) => {
       .eq("booking_id", booking.id)
       .eq("status", "pending");
 
+    // Return the credit if this booking was funded by a pack credit. No-op (and
+    // idempotent) for normal paid/pending bookings that never consumed one.
+    await admin.rpc("refund_booking_credit", { p_booking_id: booking.id });
+
     // Notify the client (best-effort; no-ops if email unset).
     await sendBookingCancellation(admin, booking.id, { byAdmin: isAdmin });
 
