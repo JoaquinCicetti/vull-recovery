@@ -28,7 +28,7 @@ Fixes are S2-track P0 items below. These should land first.
 
 ## 1. Security
 
-**Status (2026-06-30):** ✅ S1, S2 (Sprint 0), S3 (Sprint 1), and **S4, S5, S6 done** — CORS locked to an allow-list (`responder()` in `_shared/cors.ts`, unit-verified), concurrent-hold cap + throttle in `create-booking` (live-verified: cap → 429), OTP resend cooldown 1s→60s + ready-to-enable Turnstile captcha (inert until keys set). Remaining: **S7** (WhatsApp HMAC), **S8** (root middleware), **S9** (input/data hygiene).
+**Status:** ✅ **All done.** S1, S2 (Sprint 0); S3 (Sprint 1); S4 CORS allow-list, S5 hold-cap+throttle, S6 OTP cooldown + captcha (2026-06-30); **S7** WhatsApp `X-Hub-Signature-256` HMAC (fail-closed, live-verified), **S8** already covered by `proxy.ts` (Next 16 middleware wires `updateSession`), **S9** receipt-extension whitelist + trimmed webhook payload + lazy short-TTL signed URLs (2026-07-01).
 
 | ID | Finding | Sev | Fix (approach) |
 |----|---------|-----|----------------|

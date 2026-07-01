@@ -110,9 +110,17 @@ Deno.serve(async (req) => {
       status = "pending"; // do not auto-confirm/grant on a mismatched amount
     }
 
+    // Store only a trimmed, whitelisted subset for audit (not the full,
+    // attacker-controllable body).
+    const rawAudit = {
+      id: payload?.data?.payment?.id ?? null,
+      status: payload?.data?.payment?.status ?? null,
+      total: payload?.data?.payment?.total ?? null,
+      reference,
+    };
     await admin
       .from("payments")
-      .update({ status, raw: payload })
+      .update({ status, raw: rawAudit })
       .eq("id", pay.id);
 
     if (amountMismatch) return json({ ok: true, mismatch: true });

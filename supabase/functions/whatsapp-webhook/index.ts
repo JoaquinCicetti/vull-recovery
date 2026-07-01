@@ -1,11 +1,39 @@
 // Public Edge Function: WhatsApp Cloud API webhook.
-//   GET  → Meta verification handshake (hub.challenge).
+//   GET  → Meta verification handshake (hub.challenge), gated by WHATSAPP_VERIFY_TOKEN.
 //   POST → log inbound messages. A client messaging us first opens the free
 //          24h reply window; we record window_expires_at to track it.
+// POSTs are authenticated by the X-Hub-Signature-256 HMAC over the raw body
+// (WHATSAPP_APP_SECRET). Fails CLOSED — without the secret, or on a bad/absent
+// signature, the request is rejected, so nobody can forge inbound messages.
 // This is the optional Cloud API layer; the wa.me click-to-chat flow works
 // without it. No proactive (paid) templates are ever sent here.
 import { json, errMessage } from "../_shared/cors.ts";
 import { adminClient } from "../_shared/supabase.ts";
+
+async function validSignature(
+  raw: string,
+  header: string | null,
+  secret: string,
+): Promise<boolean> {
+  if (!header) return false;
+  const expected = header.replace(/^sha256=/, "").trim();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const mac = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(raw));
+  const hex = [...new Uint8Array(mac)]
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  // Constant-time compare.
+  if (hex.length !== expected.length) return false;
+  let diff = 0;
+  for (let i = 0; i < hex.length; i++) diff |= hex.charCodeAt(i) ^ expected.charCodeAt(i);
+  return diff === 0;
+}
 
 Deno.serve(async (req) => {
   const url = new URL(req.url);
@@ -21,9 +49,19 @@ Deno.serve(async (req) => {
     return new Response("forbidden", { status: 403 });
   }
 
+  // ── Authenticate the POST (fail closed) ───────────────────────────────────
+  const raw = await req.text();
+  const secret = Deno.env.get("WHATSAPP_APP_SECRET");
+  if (
+    !secret ||
+    !(await validSignature(raw, req.headers.get("x-hub-signature-256"), secret))
+  ) {
+    return new Response("forbidden", { status: 403 });
+  }
+
   // ── Inbound messages ──────────────────────────────────────────────────────
   try {
-    const payload = await req.json().catch(() => null);
+    const payload = JSON.parse(raw);
     const value = payload?.entry?.[0]?.changes?.[0]?.value;
     const messages = value?.messages ?? [];
 
@@ -31,7 +69,8 @@ Deno.serve(async (req) => {
       const admin = adminClient();
       for (const m of messages) {
         const phone = String(m.from ?? "");
-        const body = m.text?.body ?? m.button?.text ?? m.interactive?.button_reply?.title ?? "(mensaje)";
+        const body =
+          m.text?.body ?? m.button?.text ?? m.interactive?.button_reply?.title ?? "(mensaje)";
         // WhatsApp's `from` is the full number in digits (e.g. 5491122334455).
         // Profiles store the number normalized to digits, so match exactly.
         const digits = phone.replace(/\D/g, "");

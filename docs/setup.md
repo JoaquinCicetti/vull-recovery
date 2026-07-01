@@ -184,7 +184,8 @@ so the free project doesn't pause.
 | `APP_URL` | Edge Function | site URL used for Mobbex `return_url` |
 | `RESEND_API_KEY` | Edge Function + Auth SMTP | resend.com → API Keys (free tier, own domain) |
 | `EMAIL_FROM` | Edge Function | sender on the Resend-verified domain, e.g. `VULL <hola@tu-dominio>` |
-| `WHATSAPP_VERIFY_TOKEN` | Edge Function | Meta webhook verify token (optional) |
+| `WHATSAPP_VERIFY_TOKEN` | Edge Function | Meta webhook verify token (GET handshake) |
+| `WHATSAPP_APP_SECRET` | Edge Function | Meta App Secret — **required for the POST webhook** (verifies the `X-Hub-Signature-256` HMAC; fails closed without it) |
 | `WHATSAPP_TOKEN` / `WHATSAPP_PHONE_NUMBER_ID` | Edge Function | Meta Cloud API (optional, fase 2) |
 | `BOOKING_HOLD_MINUTES` | Edge Function | minutes a pending booking holds a slot (default 10) |
 | `MAX_ACTIVE_HOLDS` | Edge Function | max concurrent unconfirmed holds per user (default 3) |

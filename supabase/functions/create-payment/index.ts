@@ -9,6 +9,16 @@ import { responder, errMessage } from "../_shared/cors.ts";
 import { adminClient, userClient } from "../_shared/supabase.ts";
 import { notifyAdmins, notifyAdminsPackToVerify } from "../_shared/email.ts";
 
+// A receipt must live in the caller's own folder and be an image/PDF.
+const RECEIPT_EXT = /\.(png|jpe?g|webp|pdf)$/i;
+function validReceipt(path: unknown, userId: string): boolean {
+  return (
+    typeof path === "string" &&
+    path.startsWith(`${userId}/`) &&
+    RECEIPT_EXT.test(path)
+  );
+}
+
 async function mobbexCheckout(opts: {
   amount: number;
   reference: string;
@@ -79,7 +89,7 @@ Deno.serve(async (req) => {
       const amount: number = pack.price_ars ?? 0;
 
       if (method === "manual") {
-        if (!receipt_path || !String(receipt_path).startsWith(`${user.id}/`)) {
+        if (!validReceipt(receipt_path, user.id)) {
           return json({ error: "Comprobante inválido" }, 400);
         }
         const { data: packPay } = await admin
@@ -156,7 +166,7 @@ Deno.serve(async (req) => {
     const amount: number = booking.services?.price_ars ?? 0;
 
     if (method === "manual") {
-      if (!receipt_path || !String(receipt_path).startsWith(`${user.id}/`)) {
+      if (!validReceipt(receipt_path, user.id)) {
         return json({ error: "Comprobante inválido" }, 400);
       }
       await admin.from("payments").insert({
