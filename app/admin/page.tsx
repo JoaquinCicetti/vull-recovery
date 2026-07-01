@@ -2,12 +2,27 @@ import Link from "next/link";
 import { requireAdmin } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { AdminPayments } from "./admin-payments";
-import { AdminBookings, type AdminBookingRow } from "./admin-bookings";
+import { AdminBookings, type AdminBookingRow, BOOKINGS_SELECT } from "./admin-bookings";
 import { PageShell } from "@/components/ui/page-shell";
 import { Button } from "@/components/ui/button";
 import type { BookingStatus } from "@/lib/types";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+
+const PAGE = 20;
+const ACTIVE = ["pending", "awaiting_payment", "confirmed"];
+
+function mapBooking(b: any): AdminBookingRow {
+  return {
+    id: b.id as string,
+    startsAt: b.starts_at as string,
+    status: b.status as BookingStatus,
+    service: b.services?.name ?? "Servicio",
+    client: b.profiles?.full_name ?? "—",
+    phone: (b.profiles?.whatsapp_phone as string) ?? null,
+    email: (b.profiles?.email as string) ?? null,
+  };
+}
 
 export default async function AdminPage() {
   await requireAdmin();
@@ -17,78 +32,65 @@ export default async function AdminPage() {
   // empty when they shouldn't (e.g. an RLS or schema problem).
   const loadErrors: string[] = [];
 
-  const { data: rawPayments, error: paymentsError } = await supabase
+  // ── Pending manual payments (bounded; receipts fetched lazily on click) ─────
+  const {
+    data: rawPayments,
+    count: paymentsCount,
+    error: paymentsError,
+  } = await supabase
     .from("payments")
     .select(
-      // `profiles!user_id` disambiguates: bookings has two FKs to profiles
-      // (user_id and cancelled_by), so a bare `profiles(...)` embed is ambiguous.
-      "id, amount_ars, receipt_path, created_at, bookings(id, starts_at, services(name), profiles!user_id(full_name, whatsapp_phone))",
+      // `profiles!user_id` disambiguates bookings' two FKs to profiles.
+      "id, amount_ars, receipt_path, bookings(starts_at, services(name), profiles!user_id(full_name, whatsapp_phone))",
+      { count: "exact" },
     )
     .eq("provider", "manual")
     .eq("status", "pending")
-    .order("created_at", { ascending: true });
+    .order("created_at", { ascending: true })
+    .limit(50);
   if (paymentsError) loadErrors.push(`Pagos: ${paymentsError.message}`);
 
-  const payments = await Promise.all(
-    ((rawPayments ?? []) as any[]).map(async (p) => {
-      let receiptUrl: string | null = null;
-      if (p.receipt_path) {
-        const { data } = await supabase.storage
-          .from("receipts")
-          .createSignedUrl(p.receipt_path, 3600);
-        receiptUrl = data?.signedUrl ?? null;
-      }
-      return {
-        id: p.id as string,
-        amount: p.amount_ars as number,
-        receiptUrl,
-        service: p.bookings?.services?.name ?? "Servicio",
-        when: (p.bookings?.starts_at as string) ?? null,
-        client: p.bookings?.profiles?.full_name ?? "—",
-        phone: (p.bookings?.profiles?.whatsapp_phone as string) ?? null,
-      };
-    }),
-  );
-
-  // Upcoming + the last 7 days, every status (cancelled shown muted). Filtering
-  // by status here is what made the list look empty.
-  const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-  const sel = (withEmail: boolean) =>
-    `id, starts_at, status, services(name), profiles!user_id(full_name, whatsapp_phone${withEmail ? ", email" : ""})`;
-  const query = (withEmail: boolean) =>
-    supabase
-      .from("bookings")
-      .select(sel(withEmail))
-      .gte("starts_at", since)
-      .order("starts_at", { ascending: true })
-      .limit(100);
-
-  // Email lives on profiles only after the profile_email migration is pushed; fall
-  // back to without it so the schedule always loads.
-  const first = await query(true);
-  let rawBookings = first.data;
-  if (first.error) {
-    const retry = await query(false);
-    rawBookings = retry.data;
-    // Only the *fallback* failing is a real problem (the first may just be the
-    // missing email column); report that one.
-    if (retry.error) loadErrors.push(`Turnos: ${retry.error.message}`);
-  }
-
-  const bookings: AdminBookingRow[] = ((rawBookings ?? []) as any[]).map((b) => ({
-    id: b.id as string,
-    startsAt: b.starts_at as string,
-    status: b.status as BookingStatus,
-    service: b.services?.name ?? "Servicio",
-    client: b.profiles?.full_name ?? "—",
-    phone: (b.profiles?.whatsapp_phone as string) ?? null,
-    email: (b.profiles?.email as string) ?? null,
+  const payments = ((rawPayments ?? []) as any[]).map((p) => ({
+    id: p.id as string,
+    amount: p.amount_ars as number,
+    receiptPath: (p.receipt_path as string) ?? null,
+    service: p.bookings?.services?.name ?? "Servicio",
+    when: (p.bookings?.starts_at as string) ?? null,
+    client: p.bookings?.profiles?.full_name ?? "—",
+    phone: (p.bookings?.profiles?.whatsapp_phone as string) ?? null,
   }));
 
-  const nowISO = new Date().toISOString();
-  const upcoming = bookings.filter((b) => b.startsAt >= nowISO);
-  // Most-recent past first.
-  const past = bookings.filter((b) => b.startsAt < nowISO).reverse();
+  // ── Bookings: actionable upcoming (active only, paginated) + recent past ────
+  // Splitting by status keeps cancelled/expired/no-show turns out of the live
+  // "Próximos" list; the browser paginates upcoming via `range` from the client.
+  // eslint-disable-next-line react-hooks/purity -- server component: renders once
+  const now = Date.now();
+  const nowISO = new Date(now).toISOString();
+  const recentSince = new Date(now - 21 * 86400000).toISOString();
+
+  const [upRes, recentRes] = await Promise.all([
+    supabase
+      .from("bookings")
+      .select(BOOKINGS_SELECT, { count: "exact" })
+      .in("status", ACTIVE)
+      .gte("starts_at", nowISO)
+      .order("starts_at", { ascending: true })
+      .order("id", { ascending: true })
+      .range(0, PAGE - 1),
+    supabase
+      .from("bookings")
+      .select(BOOKINGS_SELECT, { count: "exact" })
+      .lt("starts_at", nowISO)
+      .gte("starts_at", recentSince)
+      .order("starts_at", { ascending: false })
+      .order("id", { ascending: true })
+      .range(0, PAGE - 1),
+  ]);
+  if (upRes.error) loadErrors.push(`Turnos: ${upRes.error.message}`);
+  if (recentRes.error) loadErrors.push(`Recientes: ${recentRes.error.message}`);
+
+  const upcoming = ((upRes.data ?? []) as any[]).map(mapBooking);
+  const recent = ((recentRes.data ?? []) as any[]).map(mapBooking);
 
   return (
     <PageShell
@@ -123,14 +125,23 @@ export default async function AdminPage() {
         <h2 className="font-mono text-xs uppercase tracking-[0.18em] text-fg-faint">
           Pagos por transferencia a verificar
         </h2>
-        <AdminPayments payments={payments} />
+        <AdminPayments
+          payments={payments}
+          total={paymentsCount ?? payments.length}
+        />
       </section>
 
       <section className="mt-12">
         <h2 className="font-mono text-xs uppercase tracking-[0.18em] text-fg-faint">
           Turnos
         </h2>
-        <AdminBookings upcoming={upcoming} past={past} />
+        <AdminBookings
+          initialUpcoming={upcoming}
+          upcomingTotal={upRes.count ?? upcoming.length}
+          recent={recent}
+          recentTotal={recentRes.count ?? recent.length}
+          nowISO={nowISO}
+        />
       </section>
     </PageShell>
   );
