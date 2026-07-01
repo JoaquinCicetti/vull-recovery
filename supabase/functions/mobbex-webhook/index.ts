@@ -14,7 +14,7 @@ import { json, errMessage } from "../_shared/cors.ts";
 import { adminClient } from "../_shared/supabase.ts";
 import { getOperationByReference } from "../_shared/mobbex.ts";
 import { patchEventStatus } from "../_shared/google.ts";
-import { sendBookingConfirmation } from "../_shared/email.ts";
+import { sendBookingConfirmation, notifyAdmins } from "../_shared/email.ts";
 
 // Mobbex status code → our payment status.
 // 200 = approved; 0/cancelled or >=400 = rejected; everything else = pending.
@@ -133,8 +133,9 @@ Deno.serve(async (req) => {
             /* calendar best-effort */
           }
         }
-        // Email the confirmation receipt (best-effort; no-ops if email unset).
+        // Email the confirmation receipt + alert the owner (best-effort).
         await sendBookingConfirmation(admin, booking.id);
+        await notifyAdmins(admin, "booking_confirmed", booking.id);
       }
     }
 

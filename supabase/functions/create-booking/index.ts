@@ -8,7 +8,7 @@ import { responder, errMessage } from "../_shared/cors.ts";
 import { adminClient, userClient } from "../_shared/supabase.ts";
 import { createEvent } from "../_shared/google.ts";
 import { getBusy } from "../_shared/google.ts";
-import { sendBookingReceived, sendBookingConfirmation } from "../_shared/email.ts";
+import { sendBookingReceived, sendBookingConfirmation, notifyAdmins } from "../_shared/email.ts";
 import { localYMD, zonedToUtc } from "../_shared/time.ts";
 import { type Busy, type Settings, validateSlot } from "../_shared/booking-rules.ts";
 
@@ -174,6 +174,7 @@ Deno.serve(async (req) => {
         /* calendar best-effort */
       }
       await sendBookingConfirmation(admin, booking.id);
+      await notifyAdmins(admin, "booking_confirmed", booking.id);
       return json({ booking });
     }
 

@@ -257,3 +257,116 @@ export async function sendBookingCancellation(
     /* best-effort */
   }
 }
+
+// ─── Admin (owner) notifications ─────────────────────────────────────────────
+// So the owner learns of a new paid booking / a transfer to verify / a client
+// cancellation without refreshing /admin. Best-effort like the client emails.
+
+async function getAdminEmails(admin: SupabaseClient): Promise<string[]> {
+  const { data } = await admin
+    .from("profiles")
+    .select("email")
+    .eq("is_admin", true)
+    .not("email", "is", null);
+  return ((data ?? []) as { email: string | null }[])
+    .map((r) => r.email)
+    .filter((e): e is string => Boolean(e));
+}
+
+async function sendToAdmins(
+  admin: SupabaseClient,
+  subject: string,
+  html: string,
+): Promise<void> {
+  const emails = await getAdminEmails(admin);
+  await Promise.allSettled(emails.map((to) => sendMail(to, subject, html)));
+}
+
+type AdminEvent =
+  | "payment_to_verify"
+  | "booking_confirmed"
+  | "booking_cancelled_by_client";
+
+/** Notify the owner(s) about a booking-lifecycle event. */
+export async function notifyAdmins(
+  admin: SupabaseClient,
+  event: AdminEvent,
+  bookingId: string,
+): Promise<void> {
+  try {
+    const c = await loadBookingCtx(admin, bookingId);
+    if (!c) return;
+    const cta = c.appUrl ? { label: "Abrir panel", url: `${c.appUrl}/admin` } : undefined;
+    const map: Record<AdminEvent, { heading: string; lead: string; subject: string; accent?: string }> = {
+      payment_to_verify: {
+        heading: "Pago por verificar",
+        lead: `${c.firstName} subió un comprobante de transferencia para ${c.svc}.`,
+        subject: `Pago por verificar · VULL (${c.ref})`,
+      },
+      booking_confirmed: {
+        heading: "Nuevo turno confirmado ✓",
+        lead: `${c.firstName} reservó y confirmó ${c.svc}.`,
+        subject: `Nuevo turno · VULL (${c.ref})`,
+        accent: "#61b33b",
+      },
+      booking_cancelled_by_client: {
+        heading: "Turno cancelado por el cliente",
+        lead: `${c.firstName} canceló su turno de ${c.svc}.`,
+        subject: `Cancelación · VULL (${c.ref})`,
+        accent: "#e5484d",
+      },
+    };
+    const m = map[event];
+    const html = shell({
+      heading: m.heading,
+      accent: m.accent,
+      lead: m.lead,
+      rows: [
+        { label: "Servicio", value: c.svc },
+        { label: "Fecha y hora", value: c.when },
+        { label: "Importe", value: money(c.price), mono: true },
+        { label: "Reserva", value: c.ref, mono: true },
+      ],
+      cta,
+    });
+    await sendToAdmins(admin, m.subject, html);
+  } catch (_) {
+    /* best-effort */
+  }
+}
+
+/** Notify the owner(s) that a pack transfer receipt needs verification. */
+export async function notifyAdminsPackToVerify(
+  admin: SupabaseClient,
+  paymentId: string,
+): Promise<void> {
+  try {
+    const { data: pay } = await admin
+      .from("payments")
+      .select("amount_ars, user_id, services(name)")
+      .eq("id", paymentId)
+      .single();
+    if (!pay) return;
+    // deno-lint-ignore no-explicit-any
+    const packName = (pay as any).services?.name ?? "Pack";
+    const { data: profile } = await admin
+      .from("profiles")
+      .select("full_name")
+      .eq("id", (pay as { user_id: string }).user_id)
+      .single();
+    const who = (profile?.full_name ?? "Un cliente").split(" ")[0];
+    const appUrl = Deno.env.get("APP_URL") ?? "";
+    const html = shell({
+      heading: "Pack por verificar",
+      lead: `${who} subió un comprobante para "${packName}".`,
+      rows: [
+        { label: "Pack", value: packName },
+        { label: "Importe", value: money((pay as { amount_ars: number }).amount_ars), mono: true },
+      ],
+      cta: appUrl ? { label: "Abrir panel", url: `${appUrl}/admin` } : undefined,
+    });
+    await sendToAdmins(admin, `Pack por verificar · VULL`, html);
+  } catch (_) {
+    /* best-effort */
+  }
+}
