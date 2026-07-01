@@ -46,7 +46,7 @@ Deno.serve(async (req) => {
     // reference is ignored — we never INSERT a payment from webhook input.
     const { data: pay } = await admin
       .from("payments")
-      .select("id, status, booking_id")
+      .select("id, status, booking_id, kind, service_id")
       .eq("external_reference", reference)
       .eq("provider", "mobbex")
       .order("created_at", { ascending: false })
@@ -70,27 +70,44 @@ Deno.serve(async (req) => {
 
     if (Number.isNaN(code)) return json({ ok: true });
     let status = mapStatus(code);
+    const isPack = pay.kind === "pack";
 
-    // For an approved payment, the amount must match the real service price
-    // before we confirm — otherwise hold it for admin review.
-    let amountMismatch = false;
+    // Expected amount comes from the services row (booking's service, or the pack),
+    // never from the webhook body.
+    let expected: number | null = null;
     let booking:
       | { id: string; google_event_id: string | null; status: string; services: { price_ars: number } | null }
       | null = null;
 
     if (status === "approved") {
-      const { data: b } = await admin
-        .from("bookings")
-        .select("id, google_event_id, status, services(price_ars)")
-        .eq("id", pay.booking_id)
-        .single();
-      // deno-lint-ignore no-explicit-any
-      booking = b as any;
-      const expected = booking?.services?.price_ars ?? null;
-      if (expected != null && verifiedTotal != null && Math.round(verifiedTotal) !== expected) {
-        amountMismatch = true;
-        status = "pending"; // do not auto-confirm a mismatched amount
+      if (isPack) {
+        const { data: svc } = await admin
+          .from("services")
+          .select("price_ars")
+          .eq("id", pay.service_id)
+          .single();
+        expected = svc?.price_ars ?? null;
+      } else {
+        const { data: b } = await admin
+          .from("bookings")
+          .select("id, google_event_id, status, services(price_ars)")
+          .eq("id", pay.booking_id)
+          .single();
+        // deno-lint-ignore no-explicit-any
+        booking = b as any;
+        expected = booking?.services?.price_ars ?? null;
       }
+    }
+
+    let amountMismatch = false;
+    if (
+      status === "approved" &&
+      expected != null &&
+      verifiedTotal != null &&
+      Math.round(verifiedTotal) !== expected
+    ) {
+      amountMismatch = true;
+      status = "pending"; // do not auto-confirm/grant on a mismatched amount
     }
 
     await admin
@@ -100,20 +117,25 @@ Deno.serve(async (req) => {
 
     if (amountMismatch) return json({ ok: true, mismatch: true });
 
-    if (status === "approved" && booking && booking.status !== "confirmed") {
-      await admin
-        .from("bookings")
-        .update({ status: "confirmed", hold_expires_at: null })
-        .eq("id", booking.id);
-      if (booking.google_event_id) {
-        try {
-          await patchEventStatus(booking.google_event_id, "confirmed");
-        } catch (_) {
-          /* calendar best-effort */
+    if (status === "approved") {
+      if (isPack) {
+        // Grant the pack's credits (idempotent per payment).
+        await admin.rpc("grant_pack_credits", { p_payment_id: pay.id });
+      } else if (booking && booking.status !== "confirmed") {
+        await admin
+          .from("bookings")
+          .update({ status: "confirmed", hold_expires_at: null })
+          .eq("id", booking.id);
+        if (booking.google_event_id) {
+          try {
+            await patchEventStatus(booking.google_event_id, "confirmed");
+          } catch (_) {
+            /* calendar best-effort */
+          }
         }
+        // Email the confirmation receipt (best-effort; no-ops if email unset).
+        await sendBookingConfirmation(admin, booking.id);
       }
-      // Email the confirmation receipt (best-effort; no-ops if email unset).
-      await sendBookingConfirmation(admin, booking.id);
     }
 
     return json({ ok: true });

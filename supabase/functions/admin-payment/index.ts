@@ -29,7 +29,7 @@ Deno.serve(async (req) => {
 
     const { data: pay } = await admin
       .from("payments")
-      .select("id, booking_id")
+      .select("id, booking_id, kind, service_id")
       .eq("id", payment_id)
       .single();
     if (!pay) return json({ error: "Pago no encontrado" }, 404);
@@ -47,6 +47,12 @@ Deno.serve(async (req) => {
       .from("payments")
       .update({ status: "approved" })
       .eq("id", payment_id);
+
+    // Pack purchase: grant the credits (idempotent) — no booking to confirm.
+    if (pay.kind === "pack") {
+      await admin.rpc("grant_pack_credits", { p_payment_id: payment_id });
+      return json({ ok: true });
+    }
 
     const { data: booking } = await admin
       .from("bookings")

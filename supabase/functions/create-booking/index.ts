@@ -8,7 +8,7 @@ import { responder, errMessage } from "../_shared/cors.ts";
 import { adminClient, userClient } from "../_shared/supabase.ts";
 import { createEvent } from "../_shared/google.ts";
 import { getBusy } from "../_shared/google.ts";
-import { sendBookingReceived } from "../_shared/email.ts";
+import { sendBookingReceived, sendBookingConfirmation } from "../_shared/email.ts";
 import { localYMD, zonedToUtc } from "../_shared/time.ts";
 import { type Busy, type Settings, validateSlot } from "../_shared/booking-rules.ts";
 
@@ -21,7 +21,7 @@ Deno.serve(async (req) => {
   const { json, options } = responder(req);
   if (req.method === "OPTIONS") return options();
   try {
-    const { service_id, starts_at } = await req.json();
+    const { service_id, starts_at, use_credit } = await req.json();
     if (!service_id || !starts_at) {
       return json({ error: "Datos incompletos" }, 400);
     }
@@ -127,6 +127,55 @@ Deno.serve(async (req) => {
       busy,
     });
     if (!check.ok) return json({ error: check.error }, 409);
+
+    // ── Credit-funded booking: spend one credit, confirm instantly (no hold,
+    //    no payment). book_with_credit decrements + inserts in one tx. ─────────
+    if (use_credit) {
+      const { data: booking, error } = await admin.rpc("book_with_credit", {
+        p_user: user.id,
+        p_service: service_id,
+        p_starts_at: start.toISOString(),
+        p_ends_at: end.toISOString(),
+      });
+      if (error) {
+        if (error.message?.includes("no_credit")) {
+          return json({ error: "No te quedan créditos para este servicio." }, 409);
+        }
+        if (error.code === "23P01") {
+          return json({ error: "Ese horario ya fue reservado. Elegí otro." }, 409);
+        }
+        if (error.code === "23505") {
+          return json(
+            {
+              error:
+                "Ya tenés un turno reservado para ese día. Cancelalo si querés elegir otro horario.",
+            },
+            409,
+          );
+        }
+        return json({ error: error.message }, 400);
+      }
+      // Confirmed calendar event + confirmation email (best-effort).
+      try {
+        const eventId = await createEvent({
+          summary: `${service.name} — turno confirmado`,
+          description: `Turno ${booking.id} (crédito)`,
+          start: start.toISOString(),
+          end: end.toISOString(),
+          status: "confirmed",
+        });
+        if (eventId) {
+          await admin
+            .from("bookings")
+            .update({ google_event_id: eventId })
+            .eq("id", booking.id);
+        }
+      } catch (_) {
+        /* calendar best-effort */
+      }
+      await sendBookingConfirmation(admin, booking.id);
+      return json({ booking });
+    }
 
     const holdExpires = new Date(Date.now() + HOLD_MINUTES * 60000).toISOString();
 

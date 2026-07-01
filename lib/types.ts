@@ -14,6 +14,18 @@ export type Service = {
   duration_minutes: number;
   active: boolean;
   sort_order: number;
+  // Packs: a service with `grants_service_id` set is a pack — buying it grants
+  // `sessions_included` credits for that bookable service, valid `validity_days`
+  // (null = forever). Ordinary services keep sessions_included=1, grants null.
+  sessions_included: number;
+  grants_service_id: string | null;
+  validity_days: number | null;
+};
+
+// A per-user, per-service appointment-credit balance (from my_credit_balances()).
+export type CreditBalance = {
+  service_id: string;
+  balance: number;
 };
 
 export type BookingStatus =
