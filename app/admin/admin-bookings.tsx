@@ -13,7 +13,7 @@ import type { BookingStatus } from "@/lib/types";
 // Shared select (with the profiles!user_id disambiguation) so the server's first
 // page and the client's "load more" fetch the exact same shape.
 export const BOOKINGS_SELECT =
-  "id, starts_at, status, services(name, price_ars), profiles!user_id(full_name, whatsapp_phone, email)";
+  "id, starts_at, status, service_id, services(name, price_ars), profiles!user_id(full_name, whatsapp_phone, email)";
 
 const ACTIVE = ["pending", "awaiting_payment", "confirmed"];
 const PAGE = 20;
@@ -22,6 +22,7 @@ export type AdminBookingRow = {
   id: string;
   startsAt: string;
   status: BookingStatus;
+  serviceId: string;
   service: string;
   price: number | null;
   client: string;
@@ -35,6 +36,7 @@ function mapRow(b: any): AdminBookingRow {
     id: b.id,
     startsAt: b.starts_at,
     status: b.status,
+    serviceId: b.service_id,
     service: b.services?.name ?? "Servicio",
     price: b.services?.price_ars ?? null,
     client: b.profiles?.full_name ?? "—",
@@ -117,7 +119,12 @@ function Row({ b, past }: { b: AdminBookingRow; past?: boolean }) {
         >
           Ver turno
         </Link>
-        <BookingActions bookingId={b.id} status={b.status} started={Boolean(past)} />
+        <BookingActions
+          bookingId={b.id}
+          serviceId={b.serviceId}
+          status={b.status}
+          started={Boolean(past)}
+        />
       </div>
     </li>
   );

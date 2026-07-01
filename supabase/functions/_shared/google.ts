@@ -149,3 +149,24 @@ export async function patchEventStatus(
     },
   );
 }
+
+// Move an event's time (used when a booking is rescheduled). Best-effort no-op
+// when Google isn't configured.
+export async function patchEventTime(
+  eventId: string,
+  start: string,
+  end: string,
+): Promise<void> {
+  const sa = loadSA();
+  const cal = calendarId();
+  if (!sa || !cal) return;
+  const token = await getAccessToken(sa);
+  await fetch(
+    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(cal)}/events/${eventId}`,
+    {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ start: { dateTime: start }, end: { dateTime: end } }),
+    },
+  );
+}

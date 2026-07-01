@@ -90,7 +90,7 @@ Today **only no-overlap was truly enforced** before this. The rules you named no
 
 ## 4. Admin & turns management ("clearly delete and handle turns", paginate, show info)
 
-**Status (2026-07-01):** ✅ A1 (handle turns: `admin-booking` confirm + no-show + `no_show` status), A2 (real pagination + counts), A3 (payments bounded + lazy receipts, N+1 gone), A4 (active-vs-past split), A8 (real payment errors) **done & verified**. ⬜ Remaining: A5 payment/amount column, A6 search/filter/day-group headers, A7 per-client WhatsApp links, A9 chip color tokens (no_show chip added; amber/sky tokenization pending), reschedule (calendar picker + Google event move), A10 client-page polish (mis-turnos/turno/reservar).
+**Status (2026-07-01):** ✅ A1 (handle turns: confirm + no-show + **reschedule** via `admin-booking`; `no_show` status), A2 (pagination + counts), A3 (payments bounded + lazy receipts), A4 (active-vs-past split), A5 (amount + payment column), A6 (day-group headers; search/filter still open), A7 (WhatsApp links), A8 (real payment errors) **done & verified** (reschedule edge-tested: move/overlap/past/out-of-hours/403). ⬜ Remaining: A6 search/filter, A9 amber/sky chip tokens (no_show chip done), A10 client-page polish, admin balance-adjust UI.
 
 | ID | Finding | Sev | Fix |
 |----|---------|-----|-----|

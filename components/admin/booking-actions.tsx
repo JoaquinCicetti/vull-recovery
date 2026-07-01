@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
+import { ReschedulePanel } from "@/components/admin/reschedule-panel";
 import type { BookingStatus } from "@/lib/types";
 
 async function readError(error: unknown, fallback: string): Promise<string> {
@@ -49,34 +50,36 @@ const META: Record<
 };
 
 /**
- * Admin per-turno actions, each with an inline two-step confirm (no modal).
- * confirm/no_show go through the is_admin-gated `admin-booking` function; cancel
- * uses `cancel-booking` (owner-or-admin). Available actions depend on status.
+ * Admin per-turno actions with inline two-step confirms (no modal). confirm /
+ * no_show / reschedule go through the is_admin-gated `admin-booking` function;
+ * cancel uses `cancel-booking`. Available actions depend on status/timing.
  */
 export function BookingActions({
   bookingId,
+  serviceId,
   status,
   started,
 }: {
   bookingId: string;
+  serviceId: string;
   status: BookingStatus;
-  // Whether the turno's start time has already passed (computed by the parent,
-  // which already splits the schedule into upcoming/past). The admin-booking
-  // function re-checks this server-side, so this only gates the UI affordance.
   started: boolean;
 }) {
   const router = useRouter();
   const supabase = createClient();
   const [pending, setPending] = useState<Action | null>(null);
+  const [rescheduling, setRescheduling] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const isActive = ["pending", "awaiting_payment", "confirmed"].includes(status);
   const available: Action[] = [];
   if (status === "pending" || status === "awaiting_payment") available.push("confirm");
   if (status === "confirmed" && started) available.push("no_show");
-  if (["pending", "awaiting_payment", "confirmed"].includes(status)) available.push("cancel");
+  if (isActive) available.push("cancel");
+  const canReschedule = isActive && !started;
 
-  if (available.length === 0) return null;
+  if (available.length === 0 && !canReschedule) return null;
 
   async function run(action: Action) {
     setLoading(true);
@@ -94,6 +97,30 @@ export function BookingActions({
     }
     setPending(null);
     router.refresh();
+  }
+
+  if (rescheduling) {
+    return (
+      <div className="flex flex-col items-end gap-2">
+        <ReschedulePanel
+          bookingId={bookingId}
+          serviceId={serviceId}
+          onDone={() => {
+            setRescheduling(false);
+            router.refresh();
+          }}
+        />
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="font-normal text-fg-faint"
+          onClick={() => setRescheduling(false)}
+        >
+          Volver
+        </Button>
+      </div>
+    );
   }
 
   if (pending) {
@@ -149,6 +176,20 @@ export function BookingActions({
             {META[a].label}
           </Button>
         ))}
+        {canReschedule && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="font-normal text-fg-muted hover:text-fg"
+            onClick={() => {
+              setError(null);
+              setRescheduling(true);
+            }}
+          >
+            Reprogramar
+          </Button>
+        )}
       </div>
       {error && <p className="text-sm text-danger">{error}</p>}
     </div>
