@@ -6,7 +6,7 @@
 import { responder, errMessage } from "../_shared/cors.ts";
 import { adminClient, userClient } from "../_shared/supabase.ts";
 import { patchEventStatus } from "../_shared/google.ts";
-import { sendBookingCancellation } from "../_shared/email.ts";
+import { sendBookingCancellation, notifyAdmins } from "../_shared/email.ts";
 
 const CANCELLABLE = ["pending", "awaiting_payment", "confirmed"];
 
@@ -88,6 +88,8 @@ Deno.serve(async (req) => {
 
     // Notify the client (best-effort; no-ops if email unset).
     await sendBookingCancellation(admin, booking.id, { byAdmin: isAdmin });
+    // Alert the owner when a client cancels (not when the admin does it).
+    if (!isAdmin) await notifyAdmins(admin, "booking_cancelled_by_client", booking.id);
 
     return json({ ok: true });
   } catch (e) {

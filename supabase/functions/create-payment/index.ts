@@ -7,6 +7,7 @@
 // admin review. Amount is always taken server-side from the services row.
 import { responder, errMessage } from "../_shared/cors.ts";
 import { adminClient, userClient } from "../_shared/supabase.ts";
+import { notifyAdmins, notifyAdminsPackToVerify } from "../_shared/email.ts";
 
 async function mobbexCheckout(opts: {
   amount: number;
@@ -81,15 +82,20 @@ Deno.serve(async (req) => {
         if (!receipt_path || !String(receipt_path).startsWith(`${user.id}/`)) {
           return json({ error: "Comprobante inválido" }, 400);
         }
-        await admin.from("payments").insert({
-          kind: "pack",
-          service_id: pack.id,
-          user_id: user.id,
-          provider: "manual",
-          amount_ars: amount,
-          status: "pending",
-          receipt_path,
-        });
+        const { data: packPay } = await admin
+          .from("payments")
+          .insert({
+            kind: "pack",
+            service_id: pack.id,
+            user_id: user.id,
+            provider: "manual",
+            amount_ars: amount,
+            status: "pending",
+            receipt_path,
+          })
+          .select("id")
+          .single();
+        if (packPay) await notifyAdminsPackToVerify(admin, packPay.id);
         return json({ ok: true });
       }
 
@@ -165,6 +171,7 @@ Deno.serve(async (req) => {
         .from("bookings")
         .update({ status: "awaiting_payment" })
         .eq("id", booking_id);
+      await notifyAdmins(admin, "payment_to_verify", booking_id);
       return json({ ok: true });
     }
 
