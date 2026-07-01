@@ -10,7 +10,11 @@ import { Effects } from "./scene/effects";
 
 // WebGL layer: spheres rise from the bottom, then morph into the logo silhouette.
 // Transparent background so it composites over the static hero. ssr:false.
-export default function Scene() {
+// `active` pauses the render loop (frameloop "never") when the hero scrolls
+// offscreen or the tab is hidden, so the scene stops burning the GPU while the
+// user reads the plans below. antialias is off because the EffectComposer owns
+// anti-aliasing (multisampling) — a canvas MSAA backbuffer would be redundant.
+export default function Scene({ active = true }: { active?: boolean }) {
   const isMobile =
     typeof window !== "undefined" &&
     window.matchMedia("(max-width: 768px)").matches;
@@ -18,9 +22,10 @@ export default function Scene() {
 
   return (
     <Canvas
+      frameloop={active ? "always" : "never"}
       dpr={[1, isMobile ? 1.5 : 2]}
       gl={{
-        antialias: true,
+        antialias: false,
         alpha: true,
         powerPreference: "high-performance",
         toneMapping: THREE.ACESFilmicToneMapping,

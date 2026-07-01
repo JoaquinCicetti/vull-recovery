@@ -78,7 +78,9 @@ export function Spheres({ count = 1600 }: { count?: number }) {
   }, []);
 
   const { geo, bases, scales } = useMemo(() => {
-    const g = new THREE.IcosahedronGeometry(1, 3);
+    // Detail 2 (~320 tris) instead of 3 (~1280): a 4x triangle cut that is
+    // imperceptible at the sub-0.14-unit on-screen sphere size.
+    const g = new THREE.IcosahedronGeometry(1, 2);
     const bases = new Float32Array(count * 3);
     const scales = new Float32Array(count);
     const aRandom = new Float32Array(count * 4);
@@ -127,25 +129,40 @@ export function Spheres({ count = 1600 }: { count?: number }) {
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
   };
 
-  // Sample logo targets (async) and upload into the attributes.
+  // Sample logo targets (async) and upload into the attributes. Deferred to idle:
+  // the SVG parse + surface-sampler build + `count` samples is heavy synchronous
+  // main-thread work, and the targets are only needed at the assembly phase — the
+  // rise uses the no-op default targets, so this must not block the first scroll.
   useEffect(() => {
     let alive = true;
-    sampleLogoTargets(count)
-      .then(({ positions, tints }) => {
-        if (!alive) return;
-        const t = geo.getAttribute("aTarget") as THREE.InstancedBufferAttribute;
-        const c = geo.getAttribute("aTint") as THREE.InstancedBufferAttribute;
-        (t.array as Float32Array).set(positions);
-        (c.array as Float32Array).set(tints);
-        t.needsUpdate = true;
-        c.needsUpdate = true;
-        targetsReady.current = true;
-      })
-      .catch(() => {
-        /* keep no-op targets — spheres just won't assemble */
-      });
+    const run = () => {
+      sampleLogoTargets(count)
+        .then(({ positions, tints }) => {
+          if (!alive) return;
+          const t = geo.getAttribute("aTarget") as THREE.InstancedBufferAttribute;
+          const c = geo.getAttribute("aTint") as THREE.InstancedBufferAttribute;
+          (t.array as Float32Array).set(positions);
+          (c.array as Float32Array).set(tints);
+          t.needsUpdate = true;
+          c.needsUpdate = true;
+          targetsReady.current = true;
+        })
+        .catch(() => {
+          /* keep no-op targets — spheres just won't assemble */
+        });
+    };
+    const ric = (
+      window as unknown as {
+        requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+      }
+    ).requestIdleCallback;
+    const id = ric ? ric(run, { timeout: 1200 }) : window.setTimeout(run, 200);
     return () => {
       alive = false;
+      const cic = (window as unknown as { cancelIdleCallback?: (id: number) => void })
+        .cancelIdleCallback;
+      if (ric && cic) cic(id);
+      else clearTimeout(id);
     };
   }, [geo, count]);
 

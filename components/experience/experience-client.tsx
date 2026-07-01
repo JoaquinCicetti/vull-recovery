@@ -9,15 +9,46 @@ import { HeroIntro } from "./hero-intro";
 import { Captions } from "./captions";
 import { useProgressStore } from "./progress-store";
 import { setScroller } from "./scroll-control";
-import { PHASES, phaseLocal } from "@/lib/experience/config";
+import { phaseLocal } from "@/lib/experience/config";
 
 // WebGL scene is code-split and never SSR'd (three needs the DOM).
 const Scene = dynamic(() => import("./scene"), { ssr: false });
 
+// Renders the WebGL scene and pauses its render loop when it leaves the viewport
+// (scrolled down to the plans) or the tab is hidden — the single biggest perf win,
+// since the scene otherwise renders full-cost forever behind the rest of the page.
 function SceneLayer() {
+  const ref = useRef<HTMLDivElement>(null);
+  const [active, setActive] = useState(true);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    let onScreen = true;
+    const sync = () => setActive(onScreen && !document.hidden);
+    // Feature-detect: without IntersectionObserver, default to always-on so the
+    // scene never silently freezes while visible.
+    const io =
+      typeof IntersectionObserver !== "undefined"
+        ? new IntersectionObserver(
+            ([e]) => {
+              onScreen = e.isIntersecting;
+              sync();
+            },
+            { threshold: 0 },
+          )
+        : null;
+    io?.observe(el);
+    document.addEventListener("visibilitychange", sync);
+    return () => {
+      io?.disconnect();
+      document.removeEventListener("visibilitychange", sync);
+    };
+  }, []);
+
   return (
-    <div className="absolute inset-0 z-10">
-      <Scene />
+    <div ref={ref} className="absolute inset-0 z-10">
+      <Scene active={active} />
     </div>
   );
 }

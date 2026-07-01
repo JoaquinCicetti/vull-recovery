@@ -88,6 +88,8 @@ Today **only no-overlap was truly enforced** before this. The rules you named no
 
 ## 4. Admin & turns management ("clearly delete and handle turns", paginate, show info)
 
+**Status (2026-07-01):** ✅ A1 (handle turns: `admin-booking` confirm + no-show + `no_show` status), A2 (real pagination + counts), A3 (payments bounded + lazy receipts, N+1 gone), A4 (active-vs-past split), A8 (real payment errors) **done & verified**. ⬜ Remaining: A5 payment/amount column, A6 search/filter/day-group headers, A7 per-client WhatsApp links, A9 chip color tokens (no_show chip added; amber/sky tokenization pending), reschedule (calendar picker + Google event move), A10 client-page polish (mis-turnos/turno/reservar).
+
 | ID | Finding | Sev | Fix |
 |----|---------|-----|-----|
 | A1 | Only action is **Cancel**; no reschedule / no-show / manual-confirm / delete | **P0** | New `is_admin`-gated `supabase/functions/admin-booking` (switch: cancel-with-reason / reschedule-same-row / no_show / confirm). `delete` = cancel-with-reason (already frees the slot). Inline two-step `BookingActions` UI (extends `cancel-booking.tsx` idiom; no modals). |
