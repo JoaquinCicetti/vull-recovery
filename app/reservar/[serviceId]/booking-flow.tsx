@@ -67,11 +67,13 @@ export function BookingFlow({
   isAuthed,
   profile,
   bookedDays = [],
+  credits = 0,
 }: {
   service: Service;
   isAuthed: boolean;
   profile: Profile | null;
   bookedDays?: string[];
+  credits?: number;
 }) {
   const router = useRouter();
   const supabase = createClient();
@@ -173,7 +175,11 @@ export function BookingFlow({
     }
 
     const { data, error } = await supabase.functions.invoke("create-booking", {
-      body: { service_id: service.id, starts_at: selected.starts_at },
+      body: {
+        service_id: service.id,
+        starts_at: selected.starts_at,
+        use_credit: credits > 0,
+      },
     });
     setSubmitting(false);
     if (error) {
@@ -213,6 +219,15 @@ export function BookingFlow({
   return (
     <div className="mt-10">
       <p className="eyebrow">Elegí un horario</p>
+
+      {credits > 0 && (
+        <div className="mt-4 rounded-md border border-accent/30 bg-accent/5 px-3 py-2.5 text-sm text-fg-muted">
+          Tenés{" "}
+          <span className="font-mono font-semibold text-accent">{credits}</span>{" "}
+          {credits === 1 ? "crédito" : "créditos"} para este servicio. Se descuenta
+          uno al reservar y el turno queda confirmado.
+        </div>
+      )}
 
       {loading && (
         <div className="mt-4 flex flex-col gap-4" aria-hidden="true">
@@ -369,7 +384,9 @@ export function BookingFlow({
                     ? "Elegí un horario"
                     : showDetails
                       ? "Confirmar reserva"
-                      : `Reservar ${fmtTime(selected.starts_at, tz)}`}
+                      : credits > 0
+                        ? `Usar 1 crédito · ${fmtTime(selected.starts_at, tz)}`
+                        : `Reservar ${fmtTime(selected.starts_at, tz)}`}
             </Button>
           </div>
         </>
