@@ -90,7 +90,7 @@ export function makeSphereMaterial(): {
           float mass = 0.7 + aRandom.z * 0.6;  // lighter balls fly further
           float hold = 1.0 - ap * 0.85;        // assembled logo barely reacts
           vec2 dir = dist > 0.0001 ? toPtr / dist : vec2(0.0);
-          worldPos.xy += dir * falloff * uPointerStrength * mass * hold * 1.6;
+          worldPos.xy += dir * falloff * uPointerStrength * mass * hold * 0.7;
 
           // Shrink each sphere as it lands so the assembled logo reads crisp.
           float shrink = mix(1.0, 0.46, ap);
