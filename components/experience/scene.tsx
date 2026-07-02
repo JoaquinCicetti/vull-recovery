@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import { Canvas } from "@react-three/fiber";
 import { AdaptiveEvents } from "@react-three/drei";
 import * as THREE from "three";
@@ -7,6 +8,7 @@ import { Spheres } from "./scene/spheres";
 import { Lighting } from "./scene/lighting";
 import { Rig } from "./scene/rig";
 import { Effects } from "./scene/effects";
+import { Bath } from "./scene/bath";
 
 // WebGL layer: spheres rise from the bottom, then morph into the logo silhouette.
 // Transparent background so it composites over the static hero. ssr:false.
@@ -34,6 +36,9 @@ export default function Scene({ active = true }: { active?: boolean }) {
     >
       <fog attach="fog" args={["#070908", 14, 40]} />
       <Lighting />
+      <Suspense fallback={null}>
+        <Bath />
+      </Suspense>
       <Spheres count={count} />
       <Rig />
       <Effects dof={!isMobile} />
