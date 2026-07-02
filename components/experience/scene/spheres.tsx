@@ -16,8 +16,7 @@ export function Spheres({ count = 1600 }: { count?: number }) {
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const targetsReady = useRef(false);
   const { mat, uniforms } = useMemo(() => makeSphereMaterial(), []);
-  // Pointer in NDC; `active` gates the repulsion strength, `fresh` snaps uPointer to
-  // the first hit so the push doesn't sweep in from the origin.
+  // Pointer in NDC; `active` gates the touch glow (only while over the hero).
   const pointer = useRef({ x: 0, y: 0, active: false, fresh: true });
   const pick = useMemo(
     () => ({
@@ -86,11 +85,12 @@ export function Spheres({ count = 1600 }: { count?: number }) {
     const aRandom = new Float32Array(count * 4);
     const aDelay = new Float32Array(count);
     for (let i = 0; i < count; i++) {
-      // Spread across the full width. Only ~5% float in the hero; the rest are
+      // Spread across the full width. ~12% float across the FULL visible height
+      // (so the frame reads full top-to-bottom, not top-heavy); the rest are
       // stacked below the viewport and enter from the bottom as you scroll.
       bases[i * 3] = (Math.random() * 2 - 1) * 9.5;
       bases[i * 3 + 1] =
-        i < count * 0.05 ? -2 + Math.random() * 6 : -9 - Math.random() * 17;
+        i < count * 0.12 ? -6 + Math.random() * 11 : -9 - Math.random() * 17;
       bases[i * 3 + 2] = (Math.random() * 2 - 1) * 3.2;
       scales[i] = 0.04 + Math.random() * 0.095;
       aRandom[i * 4] = Math.random();
@@ -106,6 +106,11 @@ export function Spheres({ count = 1600 }: { count?: number }) {
     g.setAttribute(
       "aTint",
       new THREE.InstancedBufferAttribute(new Float32Array(count * 3).fill(1), 3),
+    );
+    // Per-instance "last touched" timestamp for the cursor glow (-1000 = never).
+    g.setAttribute(
+      "aTouchTime",
+      new THREE.InstancedBufferAttribute(new Float32Array(count).fill(-1000), 1),
     );
     return { geo: g, bases, scales };
   }, [count]);
@@ -166,7 +171,7 @@ export function Spheres({ count = 1600 }: { count?: number }) {
     };
   }, [geo, count]);
 
-  useFrame((state, dt) => {
+  useFrame((state) => {
     const p = useProgressStore.getState().progress;
     uniforms.uTime.value = state.clock.elapsedTime;
     uniforms.uRise.value = E.expoOut(phaseLocal(p, PHASES.rise));
@@ -174,22 +179,31 @@ export function Spheres({ count = 1600 }: { count?: number }) {
       ? phaseLocal(p, PHASES.assembly)
       : 0;
 
-    // Project the pointer onto the z=0 plane every frame (the camera moves via the
-    // rig) and damp the uniforms so the push eases in/out.
+    // Cursor touch: while the pointer is over the hero, stamp aTouchTime on nearby
+    // spheres — the shader glows them green, then fades them back over ~3s.
     const ptr = pointer.current;
-    pick.ndc.set(ptr.x, ptr.y);
-    pick.raycaster.setFromCamera(pick.ndc, state.camera);
-    if (pick.raycaster.ray.intersectPlane(pick.plane, pick.hit)) {
-      if (ptr.fresh) {
-        uniforms.uPointer.value.copy(pick.hit);
-        ptr.fresh = false;
-      } else {
-        uniforms.uPointer.value.lerp(pick.hit, 1 - Math.exp(-dt * 7));
+    if (ptr.active) {
+      pick.ndc.set(ptr.x, ptr.y);
+      pick.raycaster.setFromCamera(pick.ndc, state.camera);
+      if (pick.raycaster.ray.intersectPlane(pick.plane, pick.hit)) {
+        const hx = pick.hit.x;
+        const hy = pick.hit.y;
+        const now = state.clock.elapsedTime;
+        const touch = geo.getAttribute("aTouchTime") as THREE.InstancedBufferAttribute;
+        const arr = touch.array as Float32Array;
+        const r2 = 1.1 * 1.1;
+        let changed = false;
+        for (let i = 0; i < count; i++) {
+          const dx = bases[i * 3] - hx;
+          const dy = bases[i * 3 + 1] - hy;
+          if (dx * dx + dy * dy < r2) {
+            arr[i] = now;
+            changed = true;
+          }
+        }
+        if (changed) touch.needsUpdate = true;
       }
     }
-    const target = ptr.active ? 1 : 0;
-    uniforms.uPointerStrength.value +=
-      (target - uniforms.uPointerStrength.value) * (1 - Math.exp(-dt * 5));
   });
 
   return (
