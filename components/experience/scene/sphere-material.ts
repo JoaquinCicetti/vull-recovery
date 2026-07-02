@@ -1,12 +1,12 @@
 import * as THREE from "three";
 
-// Sphere material: matte-white MeshStandardMaterial (clearcoat dropped — its extra
-// BRDF lobe + env sampling is imperceptible on sub-0.14u spheres and one of the
-// costliest fragment paths) extended via onBeforeCompile. The vertex shader does
-// everything on the GPU:
+// Sphere material: matte-white MeshStandardMaterial extended via onBeforeCompile.
+// The vertex shader does everything on the GPU:
 //   • idle organic drift (time)            — alive even when not scrolling
 //   • global rise (uRise, scroll)          — Phase C
 //   • staggered morph to the logo (uAssembly, scroll) — Phase E
+//   • cursor "touch" tint: a ball glows green when the cursor is near, then eases
+//     back to white over ~3s (aTouchTime is stamped on the CPU per instance).
 // Base position + scale come from instanceMatrix; the offset is counter-scaled so
 // drift amplitude is uniform and the sphere lands centered on its target.
 export type SphereUniforms = {
@@ -14,8 +14,6 @@ export type SphereUniforms = {
   uRise: { value: number };
   uAssembly: { value: number };
   uAccent: { value: THREE.Color };
-  uPointer: { value: THREE.Vector3 };
-  uPointerStrength: { value: number };
 };
 
 export function makeSphereMaterial(): {
@@ -36,8 +34,6 @@ export function makeSphereMaterial(): {
     uRise: { value: 0 },
     uAssembly: { value: 0 },
     uAccent: { value: new THREE.Color("#61b33b") },
-    uPointer: { value: new THREE.Vector3() },
-    uPointerStrength: { value: 0 },
   };
 
   mat.onBeforeCompile = (shader) => {
@@ -51,12 +47,12 @@ export function makeSphereMaterial(): {
         attribute vec3 aTarget;
         attribute vec3 aTint;
         attribute float aDelay;
+        attribute float aTouchTime;
         uniform float uTime;
         uniform float uRise;
         uniform float uAssembly;
-        uniform vec3 uPointer;
-        uniform float uPointerStrength;
-        varying vec3 vTint;`,
+        varying vec3 vTint;
+        varying float vGreen;`,
       )
       .replace(
         "#include <begin_vertex>",
@@ -82,20 +78,14 @@ export function makeSphereMaterial(): {
           ap = 1.0 - pow(1.0 - ap, 5.0);
           vec3 worldPos = mix(driftPos, aTarget, ap);
 
-          // pointer repulsion — radial push in the screen plane, eased falloff
-          vec2 toPtr = worldPos.xy - uPointer.xy;
-          float dist = length(toPtr);
-          float falloff = 1.0 - smoothstep(0.0, 2.4, dist);
-          falloff *= falloff; // sharper near the cursor
-          float mass = 0.7 + aRandom.z * 0.6;  // lighter balls fly further
-          float hold = 1.0 - ap * 0.85;        // assembled logo barely reacts
-          vec2 dir = dist > 0.0001 ? toPtr / dist : vec2(0.0);
-          worldPos.xy += dir * falloff * uPointerStrength * mass * hold * 0.7;
-
           // Shrink each sphere as it lands so the assembled logo reads crisp.
           float shrink = mix(1.0, 0.46, ap);
           transformed = transformed * shrink + (worldPos - base) / s;
           vTint = mix(vec3(1.0), aTint, ap);
+
+          // Touch glow: 1 right after the cursor passes, fading to 0 over ~3s.
+          // Suppressed once the sphere assembles into the logo (uses aTint there).
+          vGreen = clamp(1.0 - (uTime - aTouchTime) / 3.0, 0.0, 1.0) * (1.0 - ap);
         }`,
       );
 
@@ -104,18 +94,20 @@ export function makeSphereMaterial(): {
         "#include <common>",
         `#include <common>
         uniform vec3 uAccent;
-        varying vec3 vTint;`,
+        varying vec3 vTint;
+        varying float vGreen;`,
       )
       .replace(
         "#include <color_fragment>",
         `#include <color_fragment>
-        diffuseColor.rgb *= vTint;`,
+        diffuseColor.rgb *= vTint;
+        diffuseColor.rgb = mix(diffuseColor.rgb, uAccent, vGreen * 0.85);`,
       )
       .replace(
         "#include <opaque_fragment>",
         `#include <opaque_fragment>
         float fres = pow(1.0 - clamp(dot(normalize(vNormal), normalize(vViewPosition)), 0.0, 1.0), 3.5);
-        gl_FragColor.rgb += uAccent * fres * 0.12;`,
+        gl_FragColor.rgb += uAccent * fres * 0.10;`,
       );
   };
 
