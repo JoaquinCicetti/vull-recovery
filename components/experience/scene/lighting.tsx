@@ -1,39 +1,86 @@
 "use client";
 
+import { useMemo, useRef } from "react";
+import * as THREE from "three";
+import { useFrame } from "@react-three/fiber";
 import { Environment, Lightformer } from "@react-three/drei";
+import { RectAreaLightUniformsLib } from "three/examples/jsm/lights/RectAreaLightUniformsLib.js";
+import { useProgressStore } from "../progress-store";
+import { PHASES, phaseLocal } from "@/lib/experience/config";
+import { E } from "@/lib/experience/easing";
 
-// Dark, moody "recovery room": low ambient, one soft key, and green accent lights
-// (the app theme) that Bloom turns into a glow. A wide dark floor grounds it. Fog
-// (in scene.tsx) fades everything to near-black for the smog-in-a-wide-room read.
+// One-time three.js global LUT upload required before the first RectAreaLight
+// material compiles. Module scope is safe: this file only loads in the browser
+// (scene.tsx is dynamically imported with ssr:false).
+RectAreaLightUniformsLib.init();
+
+// Silhouette rig: two LARGE soft rectangular area lights sitting on the floor
+// behind the product, one per side, tilted ~23° up toward the model's back. They
+// never hit front faces — their only job is a crisp bright rim. Cool white with a
+// subtle green tint; softness comes from size, not intensity.
+function RimLights() {
+  const lights = useMemo(() => {
+    const make = (x: number, intensity: number, color: string) => {
+      const l = new THREE.RectAreaLight(color, intensity, 12, 5);
+      l.position.set(x, -4.9, -13); // on the floor, behind the product
+      l.lookAt(-Math.sign(x) * 1.2, -0.4, -5); // ~23° up toward the model's back
+      return l;
+    };
+    return [make(-8, 9, "#dff0e6"), make(8, 7, "#cfe6dd")];
+  }, []);
+  return (
+    <>
+      <primitive object={lights[0]} />
+      <primitive object={lights[1]} />
+    </>
+  );
+}
+
+// The ONLY front light. Nearly off through the whole act (the scene lives on its
+// rims), then ramps up during assembly so the VULL mark resolves white out of the
+// dark — luxury reveal, not product catalog.
+function RevealKey() {
+  const ref = useRef<THREE.DirectionalLight>(null);
+  useFrame(() => {
+    const p = useProgressStore.getState().progress;
+    const asm = E.quintOut(phaseLocal(p, PHASES.assembly));
+    if (ref.current) ref.current.intensity = 0.1 + asm * 1.15;
+  });
+  return (
+    <directionalLight
+      ref={ref}
+      position={[0, 2, 24]}
+      intensity={0.1}
+      color="#f2fff5"
+    />
+  );
+}
+
+// Cinematic dark-room rig: no strong front light, silhouettes only. The scene
+// should stay almost entirely black — separation comes from the rim lights and
+// the atmosphere, never from brightness.
 export function Lighting() {
   return (
     <>
-      <ambientLight intensity={0.14} />
-      <directionalLight position={[4, 9, 5]} intensity={0.45} color="#c7d4cc" />
-      {/* WHITE key from BEHIND the camera (which sits at z ~+10). Front-lights the
-          spheres white so they read as white balls (with a green rim), instead of
-          the green side lights turning the whole logo green. */}
-      <directionalLight position={[0, 3, 20]} intensity={1.5} color="#ffffff" />
-      {/* SIDE lights: graze the bath at near-90° so its silhouette reads from the
-          edges while the front face (typo'd texture) stays in shadow. They also give
-          the passing spheres a cool secondary rim. */}
-      <directionalLight position={[-16, 2, -6]} intensity={0.8} color="#dfe9e2" />
-      <directionalLight position={[16, 1, -6]} intensity={0.6} color="#c3d6c8" />
-      {/* Green accent lights — from the sides, for atmosphere + Bloom glow, NOT the
-          key. Kept lower so they rim the spheres rather than flooding them green. */}
-      <pointLight position={[-7, 1, 2]} intensity={7} distance={34} decay={2} color="#61b33b" />
-      <pointLight position={[8, -2, -4]} intensity={4} distance={34} decay={2} color="#3e7d25" />
+      {/* Fill: extremely weak, from above. Barely reveals the shapes; no hotspots. */}
+      <ambientLight intensity={0.05} />
+      <directionalLight position={[0, 12, 2]} intensity={0.09} color="#e8f2ec" />
 
+      <RimLights />
+      <RevealKey />
+
+      {/* Very dim environment: two faint side strips so sphere edges still catch a
+          sliver of green-white between the area lights. No bright panels. */}
       <Environment resolution={64}>
-        <Lightformer intensity={0.35} position={[0, 6, -10]} scale={[16, 9, 1]} color="#141c18" />
-        <Lightformer intensity={0.9} position={[-6, 0, 4]} scale={[5, 8, 1]} color="#61b33b" />
-        <Lightformer intensity={0.35} position={[7, -2, 4]} scale={[5, 5, 1]} color="#26332b" />
+        <Lightformer intensity={0.12} position={[0, 6, -10]} scale={[16, 9, 1]} color="#0c110e" />
+        <Lightformer intensity={0.3} position={[-7, 0, 2]} scale={[3, 10, 1]} color="#3f6b47" />
+        <Lightformer intensity={0.25} position={[7, 0, 2]} scale={[3, 10, 1]} color="#33523f" />
       </Environment>
 
-      {/* Room floor — dark, faintly reflective so the green light pools on it. */}
+      {/* Near-black floor, faintly reflective so the rim light pools on it. */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -5, 0]}>
         <planeGeometry args={[140, 140]} />
-        <meshStandardMaterial color="#04060a" roughness={0.5} metalness={0.15} />
+        <meshStandardMaterial color="#020304" roughness={0.4} metalness={0.2} />
       </mesh>
     </>
   );

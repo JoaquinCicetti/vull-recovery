@@ -26,9 +26,13 @@ export function makeSphereMaterial(): {
   // Per-instance color comes from instanceColor (some are green).
   const mat = new THREE.MeshStandardMaterial({
     color: new THREE.Color("#eef0ec"),
-    roughness: 0.5,
+    roughness: 0.45,
     metalness: 0.0,
-    envMapIntensity: 0.6,
+    envMapIntensity: 0.5,
+    // Slightly translucent for the cinematic read (depthWrite stays on — one
+    // instanced draw call, so real sorting isn't possible anyway).
+    transparent: true,
+    opacity: 0.92,
   });
 
   const uniforms: SphereUniforms = {
@@ -69,8 +73,9 @@ export function makeSphereMaterial(): {
           float s = max(0.0001, length(instanceMatrix[0].xyz));
 
           // idle drift + scroll rise
+          // Slow, weightless drift — cinematic calm, not particle jitter.
           float phase = aRandom.x * 6.2831853;
-          float speed = 0.22 + aRandom.y * 0.38;
+          float speed = 0.12 + aRandom.y * 0.2;
           float sway  = 0.16 + aRandom.z * 0.34;
           vec3 drift = vec3(
             sin(uTime * speed + phase) * sway,
