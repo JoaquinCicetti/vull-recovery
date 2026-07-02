@@ -94,15 +94,15 @@ export function Plans({ services }: { services: Service[] }) {
                       variant="secondary"
                       className="h-auto rounded-md px-2.5 py-1 font-mono font-medium text-fg-muted"
                     >
-                      {s.grants_service_id
+                      {s.sessions_included > 1
                         ? `${s.sessions_included} sesiones`
                         : `${s.duration_minutes} min`}
                     </Badge>
                   </CardContent>
                   <CardFooter className="relative border-t-0 bg-transparent p-0 px-(--card-spacing)">
                     <Button asChild size="lg" className="w-full">
-                      <Link href={s.grants_service_id ? `/comprar/${s.id}` : `/reservar/${s.id}`}>
-                        {s.grants_service_id ? "Comprar pack" : "Reservar"}
+                      <Link href={s.sessions_included > 1 ? `/comprar/${s.id}` : `/reservar/${s.id}`}>
+                        {s.sessions_included > 1 ? "Comprar pack" : "Reservar"}
                       </Link>
                     </Button>
                   </CardFooter>
