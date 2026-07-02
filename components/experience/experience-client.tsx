@@ -71,9 +71,6 @@ function Scrim() {
   );
 }
 
-const STEPS = [0, 0.5, 1]; // hero → text 1 → text 2 + logo
-const LAST = STEPS.length - 1;
-
 export function ExperienceClient() {
   const setProgress = useProgressStore((s) => s.setProgress);
   const [reduced, setReduced] = useState<boolean | null>(null);
@@ -86,86 +83,68 @@ export function ExperienceClient() {
     if (reduced !== false) return;
     gsap.registerPlugin(ScrollToPlugin);
 
-    const proxy = { v: useProgressStore.getState().progress };
-    const stepRef = { i: 0 };
-    const busy = { v: false };
-    // Animate progress to a step. Forward beats are slower (rise 2×, logo assembly
-    // 1.5×); going back is quick.
-    const go = (n: number) => {
-      n = Math.max(0, Math.min(LAST, n));
-      const forward = n - stepRef.i > 0;
-      // ease-OUT (not inOut): motion starts immediately on the scroll (responsive,
-      // not laggy) and settles smoothly (not abrupt). Longer, gentler forward beats
-      // (power2, not power3) so the balls flow up rather than snap.
-      const duration = !forward ? 0.7 : n === 1 ? 1.9 : 1.6;
-      stepRef.i = n;
-      busy.v = true;
-      gsap.to(proxy, {
-        v: STEPS[n],
-        duration,
-        ease: "power2.out",
-        overwrite: true,
-        onUpdate: () => setProgress(proxy.v),
-        onComplete: () => {
-          busy.v = false;
-        },
-      });
+    // Continuous progress (no discrete steps). Scroll input accumulates a TARGET in
+    // [0,1]; a damped rAF loop eases the actual progress toward it, so the scene
+    // flows smoothly and can be held at any point rather than snapping between beats.
+    const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
+    const target = { v: useProgressStore.getState().progress };
+    const current = { v: target.v };
+    let cta = false;
+    let raf = 0;
+    const tick = () => {
+      raf = 0;
+      if (cta) return; // the CTA tween owns progress while it runs
+      const diff = target.v - current.v;
+      current.v += diff * 0.14;
+      if (Math.abs(diff) < 0.0006) current.v = target.v;
+      setProgress(current.v);
+      if (current.v !== target.v) raf = requestAnimationFrame(tick);
+    };
+    const kick = () => {
+      if (!raf && !cta) raf = requestAnimationFrame(tick);
+    };
+    const nudge = (d: number) => {
+      target.v = clamp01(target.v + d);
+      kick();
     };
 
-    // Wheel: fire only on the first event of a gesture, then disarm until the
-    // wheel/trackpad momentum goes quiet (~170ms). One user scroll = one step.
-    let armed = true;
-    let silence: ReturnType<typeof setTimeout> | undefined;
+    const WHEEL_SENS = 0.0011; // progress per wheel pixel
+    const TOUCH_SENS = 0.0016; // progress per touch pixel
+    const atEnd = () => target.v >= 1 - 1e-4;
+    const atStart = () => target.v <= 1e-4;
+
     const onWheel = (e: WheelEvent) => {
       if (window.scrollY > 2) return; // below the experience → native scroll
-      const dir = e.deltaY > 0 ? 1 : -1;
-      const atLastDown = stepRef.i === LAST && dir > 0;
-      // Release to the plans only on a fresh, deliberate scroll — never on the
-      // momentum tail of the gesture that just landed the logo (which would skip it).
-      if (atLastDown && armed) return;
+      // At the logo, a fresh downward scroll releases to the native page (plans).
+      if (atEnd() && e.deltaY > 0) return;
       e.preventDefault();
-      if (silence) clearTimeout(silence);
-      silence = setTimeout(() => {
-        armed = true;
-      }, 170);
-      if (atLastDown) return; // momentum tail at the logo: block, don't release
-      // Fire once per gesture: only disarm when we actually step.
-      if (armed && !busy.v && Math.abs(e.deltaY) >= 4) {
-        armed = false;
-        go(stepRef.i + dir);
-      }
+      nudge(e.deltaY * WHEEL_SENS);
     };
 
-    // Touch: one step per swipe (armed once per touchstart).
     let touchY = 0;
-    let touchArmed = true;
     const onTouchStart = (e: TouchEvent) => {
       touchY = e.touches[0]?.clientY ?? 0;
-      touchArmed = true;
     };
     const onTouchMove = (e: TouchEvent) => {
       if (window.scrollY > 2) return;
-      const dy = touchY - (e.touches[0]?.clientY ?? 0);
-      const dir = dy > 0 ? 1 : -1;
-      const atLastDown = stepRef.i === LAST && dir > 0;
-      // Release to the plans only on a fresh swipe, not the continuation of the one
-      // that landed the logo.
-      if (atLastDown && touchArmed) return;
+      const y = e.touches[0]?.clientY ?? 0;
+      const dy = touchY - y; // swipe up = progress forward
+      touchY = y;
+      if (atEnd() && dy > 0) return;
       e.preventDefault();
-      if (atLastDown) return;
-      if (!touchArmed || busy.v || Math.abs(dy) < 40) return;
-      touchArmed = false;
-      go(stepRef.i + dir);
+      nudge(dy * TOUCH_SENS);
     };
 
     const onKey = (e: KeyboardEvent) => {
-      if (window.scrollY > 2 || busy.v) return;
-      if (["ArrowDown", "PageDown", " "].includes(e.key) && stepRef.i < LAST) {
+      if (window.scrollY > 2) return;
+      if (["ArrowDown", "PageDown", " "].includes(e.key)) {
+        if (atEnd()) return;
         e.preventDefault();
-        go(stepRef.i + 1);
-      } else if (["ArrowUp", "PageUp"].includes(e.key) && stepRef.i > 0) {
+        nudge(e.key === "ArrowDown" ? 0.08 : 0.16);
+      } else if (["ArrowUp", "PageUp"].includes(e.key)) {
+        if (atStart()) return;
         e.preventDefault();
-        go(stepRef.i - 1);
+        nudge(e.key === "ArrowUp" ? -0.08 : -0.16);
       }
     };
 
@@ -174,24 +153,29 @@ export function ExperienceClient() {
     window.addEventListener("touchmove", onTouchMove, { passive: false });
     window.addEventListener("keydown", onKey);
 
-    // CTA: run the whole animation, then scroll to the plans.
+    // CTA: run the whole animation to the logo, then scroll to the plans.
     setScroller(() => {
-      busy.v = true;
-      stepRef.i = LAST;
-      gsap.to(proxy, {
+      cta = true;
+      if (raf) {
+        cancelAnimationFrame(raf);
+        raf = 0;
+      }
+      gsap.to(current, {
         v: 1,
         duration: 2.4,
         ease: "power2.inOut",
         overwrite: true,
-        onUpdate: () => setProgress(proxy.v),
+        onUpdate: () => setProgress(current.v),
         onComplete: () => {
-          busy.v = false;
+          target.v = 1;
+          cta = false;
           gsap.to(window, { duration: 1.5, ease: "power2.inOut", scrollTo: "#planes" });
         },
       });
     });
 
     return () => {
+      if (raf) cancelAnimationFrame(raf);
       window.removeEventListener("wheel", onWheel);
       window.removeEventListener("touchstart", onTouchStart);
       window.removeEventListener("touchmove", onTouchMove);

@@ -107,8 +107,10 @@ export function Spheres({ count = 1600 }: { count?: number }) {
         bases[i * 3 + 1] = fy;
         bases[i * 3 + 2] = fz;
       } else {
+        // Cluster centered ~0.25 × the bath's height (≈1.35 units) above where it
+        // would sit at the basin floor, so the group reads a touch higher in the bath.
         bases[i * 3] = (Math.random() * 2 - 1) * 1.3;
-        bases[i * 3 + 1] = -2.6 + Math.random() * 1.5;
+        bases[i * 3 + 1] = -1.25 + Math.random() * 1.5;
         bases[i * 3 + 2] = -16 + (Math.random() * 2 - 1) * 1.5;
       }
       scales[i] = 0.04 + Math.random() * 0.095;
