@@ -85,13 +85,13 @@ export function Spheres({ count = 1600 }: { count?: number }) {
     const aRandom = new Float32Array(count * 4);
     const aDelay = new Float32Array(count);
     for (let i = 0; i < count; i++) {
-      // Spread across the full width. ~12% float across the FULL visible height
-      // (so the frame reads full top-to-bottom, not top-heavy); the rest are
-      // stacked below the viewport and enter from the bottom as you scroll.
-      bases[i * 3] = (Math.random() * 2 - 1) * 9.5;
+      // Pool the spheres at the bath's bottom-center so they rise UP OUT of it.
+      // Tight x/z footprint (within the basin); ~20% sit visible in the basin,
+      // the rest fill a reservoir at/below the bottom and rise through as you scroll.
+      bases[i * 3] = (Math.random() * 2 - 1) * 2.4;
       bases[i * 3 + 1] =
-        i < count * 0.12 ? -6 + Math.random() * 11 : -9 - Math.random() * 17;
-      bases[i * 3 + 2] = (Math.random() * 2 - 1) * 3.2;
+        i < count * 0.2 ? -3.8 + Math.random() * 3.4 : -4.5 - Math.random() * 8;
+      bases[i * 3 + 2] = (Math.random() * 2 - 1) * 2.4;
       scales[i] = 0.04 + Math.random() * 0.095;
       aRandom[i * 4] = Math.random();
       aRandom[i * 4 + 1] = Math.random();

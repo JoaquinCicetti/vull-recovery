@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { gsap } from "gsap";
 import { ScrollToPlugin } from "gsap/ScrollToPlugin";
-import { StaticHero } from "./static-hero";
 import { HeroIntro } from "./hero-intro";
 import { Captions } from "./captions";
 import { useProgressStore } from "./progress-store";
@@ -203,7 +202,6 @@ export function ExperienceClient() {
   if (reduced === true) {
     return (
       <section className="relative h-[82svh] w-full overflow-hidden bg-black">
-        <StaticHero />
         <div className="absolute inset-0 z-10 flex flex-col items-center justify-center text-center">
           <p className="eyebrow">Recuperación deportiva</p>
           <p className="mt-3 text-6xl font-extrabold tracking-tight sm:text-8xl">
@@ -219,7 +217,6 @@ export function ExperienceClient() {
       aria-label="Experiencia VULL"
       className="relative h-screen w-full overflow-hidden bg-black"
     >
-      <StaticHero />
       <Scrim />
       <SceneLayer />
       <HeroIntro />
