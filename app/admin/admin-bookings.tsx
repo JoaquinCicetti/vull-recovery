@@ -8,12 +8,8 @@ import { formatARS } from "@/lib/site";
 import { StatusBadge } from "@/components/status-badge";
 import { BookingActions } from "@/components/admin/booking-actions";
 import { Button } from "@/components/ui/button";
+import { BOOKINGS_SELECT } from "./bookings-select";
 import type { BookingStatus } from "@/lib/types";
-
-// Shared select (with the profiles!user_id disambiguation) so the server's first
-// page and the client's "load more" fetch the exact same shape.
-export const BOOKINGS_SELECT =
-  "id, starts_at, status, service_id, services(name, price_ars), profiles!user_id(full_name, whatsapp_phone, email)";
 
 const ACTIVE = ["pending", "awaiting_payment", "confirmed"];
 const PAGE = 20;
