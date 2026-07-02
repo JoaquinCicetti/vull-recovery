@@ -17,7 +17,7 @@ export function Effects({ dof = true }: { dof?: boolean }) {
   if (!dof) {
     return (
       <EffectComposer multisampling={4}>
-        <Bloom intensity={0.5} luminanceThreshold={0.75} luminanceSmoothing={0.2} mipmapBlur />
+        <Bloom intensity={0.7} luminanceThreshold={0.6} luminanceSmoothing={0.2} mipmapBlur />
         <Vignette offset={0.28} darkness={0.72} />
         <Noise opacity={0.04} />
       </EffectComposer>
@@ -26,7 +26,7 @@ export function Effects({ dof = true }: { dof?: boolean }) {
   return (
     <EffectComposer multisampling={4}>
       <DepthOfField focusDistance={0.012} focalLength={0.05} bokehScale={2.4} />
-      <Bloom intensity={0.5} luminanceThreshold={0.75} luminanceSmoothing={0.2} mipmapBlur />
+      <Bloom intensity={0.7} luminanceThreshold={0.6} luminanceSmoothing={0.2} mipmapBlur />
       <Vignette offset={0.28} darkness={0.72} />
       <Noise opacity={0.04} />
     </EffectComposer>
