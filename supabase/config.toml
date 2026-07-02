@@ -424,6 +424,10 @@ verify_jwt = false
 [functions.keep-alive]
 verify_jwt = false
 
+# Cron-driven Google Calendar reconciliation; auth via its own ?token= secret.
+[functions.calendar-poll]
+verify_jwt = false
+
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 

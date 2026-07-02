@@ -187,6 +187,8 @@ so the free project doesn't pause.
 | `WHATSAPP_VERIFY_TOKEN` | Edge Function | Meta webhook verify token (GET handshake) |
 | `WHATSAPP_APP_SECRET` | Edge Function | Meta App Secret — **required for the POST webhook** (verifies the `X-Hub-Signature-256` HMAC; fails closed without it) |
 | `WHATSAPP_TOKEN` / `WHATSAPP_PHONE_NUMBER_ID` | Edge Function | Meta Cloud API (optional, fase 2) |
+| `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | Frontend | Web Push public key (`npx web-push generate-vapid-keys`) |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` | Edge Function | Web Push VAPID keys + `mailto:` subject (admin push) |
 | `BOOKING_HOLD_MINUTES` | Edge Function | minutes a pending booking holds a slot (default 10) |
 | `MAX_ACTIVE_HOLDS` | Edge Function | max concurrent unconfirmed holds per user (default 3) |
 | `BOOKING_THROTTLE_SECONDS` | Edge Function | min seconds between a user's bookings (default 5) |
@@ -215,3 +217,29 @@ so the free project doesn't pause.
   project. The login form sends the token automatically once the site key is set;
   with no key, captcha is off and login is unchanged. The OTP resend cooldown is
   `60s` (`[auth.email] max_frequency`).
+
+## Notifications (owner alerts)
+
+The owner is alerted on actionable events (a transfer/pack receipt to verify, a
+paid/credit booking confirmed, a client cancellation) via two channels, both
+best-effort:
+
+- **Email** — reuses Resend (`RESEND_API_KEY` + `EMAIL_FROM`). Works on any device,
+  no setup beyond email. This is the always-available floor.
+- **Web Push** — instant notification to the owner's device(s). `npx web-push
+  generate-vapid-keys`, then set `NEXT_PUBLIC_VAPID_PUBLIC_KEY` (browser) +
+  `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`/`VAPID_SUBJECT` (Edge secrets). The owner
+  enables it from **/admin** ("Activar notificaciones"). iOS requires the PWA be
+  added to the home screen first (iOS 16.4+); email covers that gap. Validate
+  against one real device before relying on it (the encryption can't be tested
+  without a live subscription).
+
+## Google Calendar sync-back (optional)
+
+`calendar-poll` (cron-driven, own `?token=` secret, fail-closed) reconciles
+external Google Calendar edits back to bookings: an event deleted/cancelled in
+Calendar cancels the matching booking; a paid booking whose event was moved is
+flagged to the owner (not silently moved); events with no matching booking are
+ignored (they already show as busy via freeBusy). Drive it from the same external
+cron as `keep-alive` (e.g. every 5 min). Needs `GOOGLE_*` configured +
+`CALENDAR_POLL_TOKEN`.
