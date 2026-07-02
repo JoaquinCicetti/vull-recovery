@@ -95,14 +95,15 @@ export function ExperienceClient() {
       n = Math.max(0, Math.min(LAST, n));
       const forward = n - stepRef.i > 0;
       // ease-OUT (not inOut): motion starts immediately on the scroll (responsive,
-      // not laggy) and settles smoothly (not abrupt). Slightly shorter forward.
-      const duration = !forward ? 0.55 : n === 1 ? 1.2 : 1.0;
+      // not laggy) and settles smoothly (not abrupt). Longer, gentler forward beats
+      // (power2, not power3) so the balls flow up rather than snap.
+      const duration = !forward ? 0.7 : n === 1 ? 1.9 : 1.6;
       stepRef.i = n;
       busy.v = true;
       gsap.to(proxy, {
         v: STEPS[n],
         duration,
-        ease: "power3.out",
+        ease: "power2.out",
         overwrite: true,
         onUpdate: () => setProgress(proxy.v),
         onComplete: () => {

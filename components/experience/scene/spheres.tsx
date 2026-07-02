@@ -91,15 +91,26 @@ export function Spheres({ count = 1600 }: { count?: number }) {
     const aDelay = new Float32Array(count);
     const floats = new Float32Array(count * 3);
     for (let i = 0; i < count; i++) {
-      // START: pooled inside the FAR bath — tight x/z (within the basin) and pushed
-      // deep in z, so they read as sitting in the distant bath.
-      bases[i * 3] = (Math.random() * 2 - 1) * 2.4;
-      bases[i * 3 + 1] = -2.0 + Math.random() * 2.6;
-      bases[i * 3 + 2] = -16 + (Math.random() * 2 - 1) * 2.2;
       // END OF RISE: floating across the whole screen (the wide "floating" scene).
-      floats[i * 3] = (Math.random() * 2 - 1) * 9.5;
-      floats[i * 3 + 1] = -5 + Math.random() * 10;
-      floats[i * 3 + 2] = (Math.random() * 2 - 1) * 3.2;
+      const fx = (Math.random() * 2 - 1) * 9.5;
+      const fy = -5 + Math.random() * 10;
+      const fz = (Math.random() * 2 - 1) * 3.2;
+      floats[i * 3] = fx;
+      floats[i * 3 + 1] = fy;
+      floats[i * 3 + 2] = fz;
+      // ~16% are "ambient" spheres: they already live out in the open (base ≈ float),
+      // so the rise barely moves them — the shader drift just keeps them wandering
+      // forever. The rest START pooled tight in the FAR bath's middle-bottom (a small,
+      // dense cluster, not a scattered field) and rise/expand out of it.
+      if (Math.random() < 0.16) {
+        bases[i * 3] = fx;
+        bases[i * 3 + 1] = fy;
+        bases[i * 3 + 2] = fz;
+      } else {
+        bases[i * 3] = (Math.random() * 2 - 1) * 1.3;
+        bases[i * 3 + 1] = -2.6 + Math.random() * 1.5;
+        bases[i * 3 + 2] = -16 + (Math.random() * 2 - 1) * 1.5;
+      }
       scales[i] = 0.04 + Math.random() * 0.095;
       aRandom[i * 4] = Math.random();
       aRandom[i * 4 + 1] = Math.random();
