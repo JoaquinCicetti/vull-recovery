@@ -45,6 +45,7 @@ export function makeSphereMaterial(): {
         `#include <common>
         attribute vec4 aRandom;
         attribute vec3 aTarget;
+        attribute vec3 aFloat;
         attribute vec3 aTint;
         attribute float aDelay;
         attribute float aTouchTime;
@@ -70,8 +71,9 @@ export function makeSphereMaterial(): {
             cos(uTime * speed * 0.8 + phase * 1.3) * sway * 0.6,
             sin(uTime * speed * 0.6 + phase * 0.7) * sway
           );
-          float rise = uRise * (15.0 + aRandom.w * 10.0);
-          vec3 driftPos = base + drift + vec3(0.0, rise, 0.0);
+          // Rise OUT of the bath and expand to full-width floating (uRise 0->1):
+          // base = pooled in the (far) bath, aFloat = spread across the screen.
+          vec3 driftPos = mix(base, aFloat, uRise) + drift;
 
           // staggered ease-out-quint morph to the logo target
           float ap = clamp((uAssembly - aDelay * 0.55) / 0.6, 0.0, 1.0);

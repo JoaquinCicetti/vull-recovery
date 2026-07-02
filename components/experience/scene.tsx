@@ -34,7 +34,7 @@ export default function Scene({ active = true }: { active?: boolean }) {
       }}
       camera={{ fov: 32, near: 0.1, far: 100, position: [0, 0, 14] }}
     >
-      <fog attach="fog" args={["#070908", 14, 40]} />
+      <fog attach="fog" args={["#05070a", 10, 48]} />
       <Lighting />
       <Suspense fallback={null}>
         <Bath />

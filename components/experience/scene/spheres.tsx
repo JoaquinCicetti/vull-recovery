@@ -1,5 +1,10 @@
 "use client";
 
+/* eslint-disable react-hooks/purity, react-hooks/immutability --
+   Procedural WebGL: Math.random() seeds the instance buffers once in useMemo, and
+   useFrame mutates uniforms/attributes every frame by design. The React Compiler
+   purity/immutability rules don't model this pattern. */
+
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
@@ -76,7 +81,7 @@ export function Spheres({ count = 1600 }: { count?: number }) {
     };
   }, []);
 
-  const { geo, bases, scales } = useMemo(() => {
+  const { geo, bases, floats, scales } = useMemo(() => {
     // Detail 2 (~320 tris) instead of 3 (~1280): a 4x triangle cut that is
     // imperceptible at the sub-0.14-unit on-screen sphere size.
     const g = new THREE.IcosahedronGeometry(1, 2);
@@ -84,14 +89,17 @@ export function Spheres({ count = 1600 }: { count?: number }) {
     const scales = new Float32Array(count);
     const aRandom = new Float32Array(count * 4);
     const aDelay = new Float32Array(count);
+    const floats = new Float32Array(count * 3);
     for (let i = 0; i < count; i++) {
-      // Pool the spheres at the bath's bottom-center so they rise UP OUT of it.
-      // Tight x/z footprint (within the basin); ~20% sit visible in the basin,
-      // the rest fill a reservoir at/below the bottom and rise through as you scroll.
+      // START: pooled inside the FAR bath — tight x/z (within the basin) and pushed
+      // deep in z, so they read as sitting in the distant bath.
       bases[i * 3] = (Math.random() * 2 - 1) * 2.4;
-      bases[i * 3 + 1] =
-        i < count * 0.2 ? -3.8 + Math.random() * 3.4 : -4.5 - Math.random() * 8;
-      bases[i * 3 + 2] = (Math.random() * 2 - 1) * 2.4;
+      bases[i * 3 + 1] = -2.0 + Math.random() * 2.6;
+      bases[i * 3 + 2] = -16 + (Math.random() * 2 - 1) * 2.2;
+      // END OF RISE: floating across the whole screen (the wide "floating" scene).
+      floats[i * 3] = (Math.random() * 2 - 1) * 9.5;
+      floats[i * 3 + 1] = -5 + Math.random() * 10;
+      floats[i * 3 + 2] = (Math.random() * 2 - 1) * 3.2;
       scales[i] = 0.04 + Math.random() * 0.095;
       aRandom[i * 4] = Math.random();
       aRandom[i * 4 + 1] = Math.random();
@@ -112,7 +120,9 @@ export function Spheres({ count = 1600 }: { count?: number }) {
       "aTouchTime",
       new THREE.InstancedBufferAttribute(new Float32Array(count).fill(-1000), 1),
     );
-    return { geo: g, bases, scales };
+    // Wide "floating across the screen" anchor the spheres rise/expand toward.
+    g.setAttribute("aFloat", new THREE.InstancedBufferAttribute(floats, 3));
+    return { geo: g, bases, floats, scales };
   }, [count]);
 
   // Bake instance matrices once.
@@ -173,14 +183,17 @@ export function Spheres({ count = 1600 }: { count?: number }) {
 
   useFrame((state) => {
     const p = useProgressStore.getState().progress;
+    const riseVal = E.expoOut(phaseLocal(p, PHASES.rise));
     uniforms.uTime.value = state.clock.elapsedTime;
-    uniforms.uRise.value = E.expoOut(phaseLocal(p, PHASES.rise));
+    uniforms.uRise.value = riseVal;
     uniforms.uAssembly.value = targetsReady.current
       ? phaseLocal(p, PHASES.assembly)
       : 0;
 
-    // Cursor touch: while the pointer is over the hero, stamp aTouchTime on nearby
-    // spheres — the shader glows them green, then fades them back over ~3s.
+    // Cursor touch: stamp aTouchTime on spheres near the pointer (the shader glows
+    // them green, then fades back over ~3s). Check each sphere's CURRENT x/y —
+    // interpolated base→float by rise — so it tracks them whether pooled in the
+    // bath or spread across the screen.
     const ptr = pointer.current;
     if (ptr.active) {
       pick.ndc.set(ptr.x, ptr.y);
@@ -194,8 +207,10 @@ export function Spheres({ count = 1600 }: { count?: number }) {
         const r2 = 1.1 * 1.1;
         let changed = false;
         for (let i = 0; i < count; i++) {
-          const dx = bases[i * 3] - hx;
-          const dy = bases[i * 3 + 1] - hy;
+          const cx = bases[i * 3] + (floats[i * 3] - bases[i * 3]) * riseVal;
+          const cy = bases[i * 3 + 1] + (floats[i * 3 + 1] - bases[i * 3 + 1]) * riseVal;
+          const dx = cx - hx;
+          const dy = cy - hy;
           if (dx * dx + dy * dy < r2) {
             arr[i] = now;
             changed = true;
