@@ -2,13 +2,15 @@
 // `progress` 0→1; each phase reads its own local 0→1 from a sub-range. Ranges
 // overlap on purpose so transitions cross-dissolve. See docs/experience-architecture.md.
 
-// Three discrete steps drive this (progress 0 → 0.5 → 1):
-//   step 0 (p=0)   — hero
-//   step 1 (p=0.5) — spheres risen across the width + "Tu cuerpo, suspendido"
-//   step 2 (p=1)   — spheres assembled into the logo + "Todo encuentra su lugar"
+// The act, driven by continuous scroll progress:
+//   rise     — spheres leave the bath through a column and spread across the screen
+//   flow     — an endless stream of spheres travels toward and past the camera
+//              ("La fatiga se disuelve")
+//   assembly — the stream resolves into the VULL mark ("Todo encuentra su lugar")
 export const PHASES = {
-  rise: [0.08, 0.5],
-  assembly: [0.5, 1.0],
+  rise: [0.05, 0.42],
+  flow: [0.35, 0.78],
+  assembly: [0.78, 1.0],
 } as const;
 
 export type PhaseRange = readonly [number, number];
