@@ -102,6 +102,49 @@ export async function getBusy(
   return data.calendars?.[cal]?.busy ?? [];
 }
 
+// deno-lint-ignore no-explicit-any
+type CalEvent = any;
+
+// Incremental events list. Pass a syncToken for a delta since the last run
+// (bootstrap without one over a forward window). Returns expired=true on a 410
+// (the syncToken is stale → caller should clear it and re-bootstrap).
+export async function listEvents(opts: {
+  syncToken?: string;
+  timeMin?: string;
+}): Promise<{ items: CalEvent[]; nextSyncToken: string | null; expired: boolean }> {
+  const sa = loadSA();
+  const cal = calendarId();
+  if (!sa || !cal) return { items: [], nextSyncToken: null, expired: false };
+  const token = await getAccessToken(sa);
+  const base = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(cal)}/events`;
+
+  let items: CalEvent[] = [];
+  let pageToken: string | undefined;
+  let nextSyncToken: string | null = null;
+  do {
+    const params = new URLSearchParams({
+      singleEvents: "true",
+      showDeleted: "true",
+      maxResults: "250",
+    });
+    if (opts.syncToken) params.set("syncToken", opts.syncToken);
+    else if (opts.timeMin) params.set("timeMin", opts.timeMin);
+    if (pageToken) params.set("pageToken", pageToken);
+
+    const res = await fetch(`${base}?${params}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.status === 410) return { items: [], nextSyncToken: null, expired: true };
+    if (!res.ok) throw new Error(`listEvents ${res.status}: ${await res.text()}`);
+    const data = await res.json();
+    items = items.concat(data.items ?? []);
+    pageToken = data.nextPageToken;
+    nextSyncToken = data.nextSyncToken ?? nextSyncToken;
+  } while (pageToken);
+
+  return { items, nextSyncToken, expired: false };
+}
+
 export async function createEvent(opts: {
   summary: string;
   description?: string;

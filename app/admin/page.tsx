@@ -3,6 +3,7 @@ import { requireAdmin } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { AdminPayments } from "./admin-payments";
 import { AdminBookings, type AdminBookingRow, BOOKINGS_SELECT } from "./admin-bookings";
+import { PushManager } from "@/components/admin/push-manager";
 import { PageShell } from "@/components/ui/page-shell";
 import { Button } from "@/components/ui/button";
 import type { BookingStatus } from "@/lib/types";
@@ -122,6 +123,10 @@ export default async function AdminPage() {
           </ul>
         </div>
       )}
+
+      <div className="mb-8">
+        <PushManager />
+      </div>
 
       <section>
         <h2 className="font-mono text-xs uppercase tracking-[0.18em] text-fg-faint">

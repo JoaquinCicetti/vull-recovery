@@ -3,6 +3,7 @@
 // configured. EMAIL_FROM must be a sender on the Resend-verified domain,
 // e.g. `VULL <hola@vull.com.ar>`.
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
+import { sendPush, type PushSub } from "./webpush.ts";
 
 async function sendMail(
   to: string,
@@ -262,24 +263,45 @@ export async function sendBookingCancellation(
 // So the owner learns of a new paid booking / a transfer to verify / a client
 // cancellation without refreshing /admin. Best-effort like the client emails.
 
-async function getAdminEmails(admin: SupabaseClient): Promise<string[]> {
-  const { data } = await admin
-    .from("profiles")
-    .select("email")
-    .eq("is_admin", true)
-    .not("email", "is", null);
-  return ((data ?? []) as { email: string | null }[])
-    .map((r) => r.email)
-    .filter((e): e is string => Boolean(e));
-}
-
-async function sendToAdmins(
+// Fan out an admin alert to every owner: email (Resend) + Web Push, in parallel.
+// Dead push subscriptions (404/410) are pruned. All best-effort.
+async function fanOutToAdmins(
   admin: SupabaseClient,
   subject: string,
   html: string,
+  push: { title: string; body: string },
 ): Promise<void> {
-  const emails = await getAdminEmails(admin);
-  await Promise.allSettled(emails.map((to) => sendMail(to, subject, html)));
+  const { data: admins } = await admin
+    .from("profiles")
+    .select("id, email")
+    .eq("is_admin", true);
+  const rows = (admins ?? []) as { id: string; email: string | null }[];
+  if (rows.length === 0) return;
+
+  const emailJobs = rows
+    .map((a) => a.email)
+    .filter((e): e is string => Boolean(e))
+    .map((to) => sendMail(to, subject, html));
+
+  const { data: subs } = await admin
+    .from("push_subscriptions")
+    .select("id, endpoint, p256dh, auth")
+    .in(
+      "user_id",
+      rows.map((a) => a.id),
+    );
+  const payload = JSON.stringify({ ...push, url: "/admin" });
+  const pushJobs = ((subs ?? []) as (PushSub & { id: string })[]).map(async (s) => {
+    const status = await sendPush(
+      { endpoint: s.endpoint, p256dh: s.p256dh, auth: s.auth },
+      payload,
+    );
+    if (status === 404 || status === 410) {
+      await admin.from("push_subscriptions").delete().eq("id", s.id);
+    }
+  });
+
+  await Promise.allSettled([...emailJobs, ...pushJobs]);
 }
 
 type AdminEvent =
@@ -329,7 +351,26 @@ export async function notifyAdmins(
       ],
       cta,
     });
-    await sendToAdmins(admin, m.subject, html);
+    await fanOutToAdmins(admin, m.subject, html, { title: m.heading, body: m.lead });
+  } catch (_) {
+    /* best-effort */
+  }
+}
+
+/** Generic owner alert (heading + body), email + push. */
+export async function notifyAdminsSimple(
+  admin: SupabaseClient,
+  heading: string,
+  body: string,
+): Promise<void> {
+  try {
+    const appUrl = Deno.env.get("APP_URL") ?? "";
+    const html = shell({
+      heading,
+      lead: body,
+      cta: appUrl ? { label: "Abrir panel", url: `${appUrl}/admin` } : undefined,
+    });
+    await fanOutToAdmins(admin, `${heading} · VULL`, html, { title: heading, body });
   } catch (_) {
     /* best-effort */
   }
@@ -356,16 +397,20 @@ export async function notifyAdminsPackToVerify(
       .single();
     const who = (profile?.full_name ?? "Un cliente").split(" ")[0];
     const appUrl = Deno.env.get("APP_URL") ?? "";
+    const lead = `${who} subió un comprobante para "${packName}".`;
     const html = shell({
       heading: "Pack por verificar",
-      lead: `${who} subió un comprobante para "${packName}".`,
+      lead,
       rows: [
         { label: "Pack", value: packName },
         { label: "Importe", value: money((pay as { amount_ars: number }).amount_ars), mono: true },
       ],
       cta: appUrl ? { label: "Abrir panel", url: `${appUrl}/admin` } : undefined,
     });
-    await sendToAdmins(admin, `Pack por verificar · VULL`, html);
+    await fanOutToAdmins(admin, `Pack por verificar · VULL`, html, {
+      title: "Pack por verificar",
+      body: lead,
+    });
   } catch (_) {
     /* best-effort */
   }
