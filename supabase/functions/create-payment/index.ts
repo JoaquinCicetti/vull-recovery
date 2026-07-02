@@ -80,10 +80,10 @@ Deno.serve(async (req) => {
     if (pack_service_id) {
       const { data: pack } = await admin
         .from("services")
-        .select("id, name, price_ars, active, grants_service_id")
+        .select("id, name, price_ars, active, sessions_included")
         .eq("id", pack_service_id)
         .single();
-      if (!pack || !pack.active || !pack.grants_service_id) {
+      if (!pack || !pack.active || pack.sessions_included <= 1) {
         return json({ error: "Pack no disponible" }, 404);
       }
       const amount: number = pack.price_ars ?? 0;

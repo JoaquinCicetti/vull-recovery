@@ -21,26 +21,20 @@ export function ServicesManager({ initial }: { initial: Service[] }) {
   const [price, setPrice] = useState("");
   const [dur, setDur] = useState("60");
   const [desc, setDesc] = useState("");
-  const [grantsFor, setGrantsFor] = useState(""); // "" = individual plan; else a pack
-  const [sessions, setSessions] = useState("");
-  const [validity, setValidity] = useState("");
-
-  const bookable = initial.filter((s) => !s.grants_service_id);
+  const [sessions, setSessions] = useState("1"); // >1 = pack
 
   async function addService(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
-    const isPackForm = Boolean(grantsFor);
+    const n = Math.max(1, Number(sessions) || 1);
     const { error } = await supabase.from("services").insert({
       name,
       price_ars: Number(price) || 0,
       duration_minutes: Number(dur) || 60,
       description: desc || null,
       sort_order: initial.length,
-      sessions_included: isPackForm ? Number(sessions) || 1 : 1,
-      grants_service_id: grantsFor || null,
-      validity_days: isPackForm && validity ? Number(validity) : null,
+      sessions_included: n,
     });
     setBusy(false);
     if (error) {
@@ -51,11 +45,11 @@ export function ServicesManager({ initial }: { initial: Service[] }) {
     setPrice("");
     setDur("60");
     setDesc("");
-    setGrantsFor("");
-    setSessions("");
-    setValidity("");
+    setSessions("1");
     router.refresh();
   }
+
+  const packForm = Number(sessions) > 1;
 
   return (
     <div className="flex flex-col gap-8">
@@ -79,60 +73,43 @@ export function ServicesManager({ initial }: { initial: Service[] }) {
                 rows={2}
               />
               <div className="flex gap-3">
-                <Input
-                  className="font-mono"
-                  placeholder="Precio ARS"
-                  inputMode="numeric"
-                  value={price}
-                  onChange={(e) => setPrice(e.target.value.replace(/\D/g, ""))}
-                  required
-                />
-                <Input
-                  className="font-mono"
-                  placeholder="Duración (min)"
-                  inputMode="numeric"
-                  value={dur}
-                  onChange={(e) => setDur(e.target.value.replace(/\D/g, ""))}
-                  required
-                />
+                <div className="flex-1">
+                  <Label className="text-xs text-fg-muted">
+                    {packForm ? "Precio del pack (ARS)" : "Precio (ARS)"}
+                  </Label>
+                  <Input
+                    className="mt-1.5 font-mono"
+                    inputMode="numeric"
+                    value={price}
+                    onChange={(e) => setPrice(e.target.value.replace(/\D/g, ""))}
+                    required
+                  />
+                </div>
+                <div className="flex-1">
+                  <Label className="text-xs text-fg-muted">Duración por sesión (min)</Label>
+                  <Input
+                    className="mt-1.5 font-mono"
+                    inputMode="numeric"
+                    value={dur}
+                    onChange={(e) => setDur(e.target.value.replace(/\D/g, ""))}
+                    required
+                  />
+                </div>
+                <div className="w-24">
+                  <Label className="text-xs text-fg-muted">Sesiones</Label>
+                  <Input
+                    className="mt-1.5 font-mono"
+                    inputMode="numeric"
+                    value={sessions}
+                    onChange={(e) => setSessions(e.target.value.replace(/\D/g, ""))}
+                  />
+                </div>
               </div>
-
-              <div className="rounded-md border border-border p-3">
-                <Label className="text-xs text-fg-muted">
-                  ¿Es un pack? Crédito válido para
-                </Label>
-                <select
-                  value={grantsFor}
-                  onChange={(e) => setGrantsFor(e.target.value)}
-                  className="mt-1.5 h-9 w-full rounded-md border border-border bg-surface-2 px-3 text-sm text-fg"
-                >
-                  <option value="">No — plan individual</option>
-                  {bookable.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
-                {grantsFor && (
-                  <div className="mt-3 flex gap-3">
-                    <Input
-                      className="font-mono"
-                      placeholder="Sesiones (ej. 5)"
-                      inputMode="numeric"
-                      value={sessions}
-                      onChange={(e) => setSessions(e.target.value.replace(/\D/g, ""))}
-                    />
-                    <Input
-                      className="font-mono"
-                      placeholder="Vence en (días, opcional)"
-                      inputMode="numeric"
-                      value={validity}
-                      onChange={(e) => setValidity(e.target.value.replace(/\D/g, ""))}
-                    />
-                  </div>
-                )}
-              </div>
-
+              <p className="text-xs text-fg-faint">
+                {packForm
+                  ? "Pack: se compra una vez y el cliente agenda cada sesión con un crédito."
+                  : "1 sesión = plan individual. Poné más de 1 para crear un pack."}
+              </p>
               <Button className="self-start" disabled={busy}>
                 Agregar
               </Button>
@@ -158,9 +135,12 @@ function ServiceRow({ service }: { service: Service }) {
   const [name, setName] = useState(service.name);
   const [price, setPrice] = useState(String(service.price_ars));
   const [dur, setDur] = useState(String(service.duration_minutes));
+  const [sessions, setSessions] = useState(String(service.sessions_included));
   const [active, setActive] = useState(service.active);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const isPack = Number(sessions) > 1;
 
   async function save() {
     setBusy(true);
@@ -171,6 +151,7 @@ function ServiceRow({ service }: { service: Service }) {
         name,
         price_ars: Number(price) || 0,
         duration_minutes: Number(dur) || 60,
+        sessions_included: Math.max(1, Number(sessions) || 1),
         active,
       })
       .eq("id", service.id);
@@ -185,10 +166,7 @@ function ServiceRow({ service }: { service: Service }) {
   async function remove() {
     setBusy(true);
     setError(null);
-    const { error } = await supabase
-      .from("services")
-      .delete()
-      .eq("id", service.id);
+    const { error } = await supabase.from("services").delete().eq("id", service.id);
     setBusy(false);
     if (error) {
       setError("No se puede eliminar (tiene turnos). Desactivalo en su lugar.");
@@ -201,10 +179,9 @@ function ServiceRow({ service }: { service: Service }) {
     <Card className="[--card-spacing:--spacing(5)]">
       <CardContent>
         <div className="flex flex-col gap-3">
-          {service.grants_service_id && (
+          {isPack && (
             <p className="font-mono text-xs uppercase tracking-wider text-accent">
-              Pack · {service.sessions_included} sesiones
-              {service.validity_days ? ` · vence en ${service.validity_days} días` : ""}
+              Pack · {sessions} sesiones
             </p>
           )}
           <Input value={name} onChange={(e) => setName(e.target.value)} />
@@ -220,6 +197,13 @@ function ServiceRow({ service }: { service: Service }) {
               inputMode="numeric"
               value={dur}
               onChange={(e) => setDur(e.target.value.replace(/\D/g, ""))}
+            />
+            <Input
+              className="w-24 font-mono"
+              inputMode="numeric"
+              value={sessions}
+              onChange={(e) => setSessions(e.target.value.replace(/\D/g, ""))}
+              aria-label="Sesiones"
             />
           </div>
           <Label className="gap-2.5 text-fg-muted">

@@ -1,9 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
 import type { Service } from "@/lib/types";
 
-// A pack is a service that grants credits for another (bookable) service.
-export function isPack(s: Pick<Service, "grants_service_id">): boolean {
-  return s.grants_service_id != null;
+// A pack is a plan that includes more than one session.
+export function isPack(s: Pick<Service, "sessions_included">): boolean {
+  return s.sessions_included > 1;
 }
 
 // The signed-in user's live credit balances, keyed by the bookable service id.

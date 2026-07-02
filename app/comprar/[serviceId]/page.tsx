@@ -12,8 +12,8 @@ export default async function ComprarPage({
 }) {
   const { serviceId } = await params;
   const pack = await getService(serviceId);
-  // Only packs are purchasable here (bookable services are booked, not bought).
-  if (!pack || !pack.active || !pack.grants_service_id) notFound();
+  // Only packs (multi-session plans) are purchasable here.
+  if (!pack || !pack.active || pack.sessions_included <= 1) notFound();
 
   const { user } = await getUserAndProfile();
 

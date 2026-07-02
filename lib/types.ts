@@ -14,11 +14,10 @@ export type Service = {
   duration_minutes: number;
   active: boolean;
   sort_order: number;
-  // Packs: a service with `grants_service_id` set is a pack — buying it grants
-  // `sessions_included` credits for that bookable service, valid `validity_days`
-  // (null = forever). Ordinary services keep sessions_included=1, grants null.
+  // A plan with sessions_included > 1 is a pack: buying it grants that many
+  // credits for THIS service, valid `validity_days` (null = forever), and each
+  // booking spends one. Ordinary plans keep sessions_included = 1.
   sessions_included: number;
-  grants_service_id: string | null;
   validity_days: number | null;
 };
 
