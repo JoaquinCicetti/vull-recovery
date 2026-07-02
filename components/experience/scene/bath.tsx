@@ -37,7 +37,7 @@ export function Bath() {
              // Green rim light: silhouette read — the shape pops at grazing angles
              // while faces pointing at the camera stay black.
              float rim = pow(1.0 - clamp(dot(normalize(vNormal), normalize(vViewPosition)), 0.0, 1.0), 2.5);
-             gl_FragColor.rgb += vec3(0.30, 0.62, 0.34) * rim * 0.4;`,
+             gl_FragColor.rgb += vec3(0.42, 0.60, 0.47) * rim * 0.38;`,
           );
       };
       mat.needsUpdate = true;

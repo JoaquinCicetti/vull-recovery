@@ -92,9 +92,11 @@ export function Spheres({ count = 1600 }: { count?: number }) {
     const floats = new Float32Array(count * 3);
     for (let i = 0; i < count; i++) {
       // END OF RISE: floating across the whole screen (the wide "floating" scene).
+      // Deep z spread for the cinematic read: some spheres drift right up to the
+      // lens (DoF melts them into bokeh), some hang behind the bath in the fog.
       const fx = (Math.random() * 2 - 1) * 9.5;
       const fy = -5 + Math.random() * 10;
-      const fz = (Math.random() * 2 - 1) * 3.2;
+      const fz = -9 + Math.random() * 17;
       floats[i * 3] = fx;
       floats[i * 3 + 1] = fy;
       floats[i * 3 + 2] = fz;
@@ -113,7 +115,8 @@ export function Spheres({ count = 1600 }: { count?: number }) {
         bases[i * 3 + 1] = -1.25 + Math.random() * 1.5;
         bases[i * 3 + 2] = -16 + (Math.random() * 2 - 1) * 1.5;
       }
-      scales[i] = 0.04 + Math.random() * 0.095;
+      // Power-law sizes: mostly fine particles, a few large hero spheres.
+      scales[i] = 0.035 + Math.pow(Math.random(), 1.7) * 0.19;
       aRandom[i * 4] = Math.random();
       aRandom[i * 4 + 1] = Math.random();
       aRandom[i * 4 + 2] = Math.random();
@@ -202,7 +205,7 @@ export function Spheres({ count = 1600 }: { count?: number }) {
     // Stream blend + conveyor parameter: scroll scrubs the flow, and a slow time
     // term keeps it running forever while the user holds mid-scene.
     uniforms.uFlowIn.value = E.inOutSine(phaseLocal(p, PHASES.flow));
-    uniforms.uFlow.value = p * 2.2 + state.clock.elapsedTime * 0.03;
+    uniforms.uFlow.value = p * 2.2 + state.clock.elapsedTime * 0.02;
     uniforms.uAssembly.value = targetsReady.current
       ? phaseLocal(p, PHASES.assembly)
       : 0;

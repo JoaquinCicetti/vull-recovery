@@ -9,6 +9,7 @@ import { Lighting } from "./scene/lighting";
 import { Rig } from "./scene/rig";
 import { Effects } from "./scene/effects";
 import { Bath } from "./scene/bath";
+import { Atmosphere } from "./scene/atmosphere";
 
 // WebGL layer: spheres rise from the bottom, then morph into the logo silhouette.
 // Transparent background so it composites over the static hero. ssr:false.
@@ -31,14 +32,19 @@ export default function Scene({ active = true }: { active?: boolean }) {
         alpha: true,
         powerPreference: "high-performance",
         toneMapping: THREE.ACESFilmicToneMapping,
+        // Slight underexposure: the cinematic grade lives in the darks.
+        toneMappingExposure: 0.9,
       }}
-      camera={{ fov: 32, near: 0.1, far: 100, position: [0, 0, 14] }}
+      // Long lens (~85mm equiv): compressed perspective, shallow-focus read.
+      camera={{ fov: 24, near: 0.1, far: 100, position: [0, 0, 18] }}
     >
-      <fog attach="fog" args={["#05070a", 10, 48]} />
+      {/* Pure-black falloff: objects separate via rim light, never a gradient. */}
+      <fog attach="fog" args={["#010102", 14, 52]} />
       <Lighting />
       <Suspense fallback={null}>
         <Bath />
       </Suspense>
+      <Atmosphere />
       <Spheres count={count} />
       <Rig />
       <Effects dof={!isMobile} />

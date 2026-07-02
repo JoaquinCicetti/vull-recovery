@@ -17,12 +17,13 @@ export function Rig() {
     const asm = E.quintOut(phaseLocal(p, PHASES.assembly));
     const cam = state.camera;
 
-    // Dolly: slow approach, then push into the oncoming stream during the flow.
-    let z = lerp(13.5, 11.8, rise) - flow * 1.4;
-    z = lerp(z, 9.5, asm);
+    // Mostly-fixed long-lens camera (fov 24 ≈ 85mm; distances pulled back to
+    // compensate). Slow approach, gentle push into the stream during the flow.
+    let z = lerp(18.0, 16.2, rise) - flow * 1.2;
+    z = lerp(z, 13.5, asm);
 
-    // Lateral drift across the stream: out to one side mid-flow, back by its end.
-    const x = Math.sin(flow * Math.PI) * 1.5;
+    // Restrained lateral drift across the stream: out and back, half the old sweep.
+    const x = Math.sin(flow * Math.PI) * 0.8;
 
     // Aim: well ABOVE the bath at the start (bath in the lower third, below the
     // hero text) → down to the stream during the flow → center for the mark.
