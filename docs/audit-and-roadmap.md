@@ -48,7 +48,7 @@ Fixes are S2-track P0 items below. These should land first.
 
 ## 2. Performance (landing 3D scene — the reported "very poor performance")
 
-**Status (2026-07-01):** ✅ P1 (frameloop pause offscreen/hidden — the biggest win), P2 (geometry detail 3→2, 4× fewer tris), P4 partial (removed doubled MSAA: canvas AA off + composer 4→2), P6 (particle canvas suppressed on `/` + paused when hidden), P7 (logo sampling deferred to idle) **done**; tsc/lint/build clean. ⬜ **Needs a browser check** for felt FPS + visual parity. ⬜ Deferred (visual-risk, want your eyeball first): DoF reveal-only gating (P4 rest), `MeshStandardMaterial` (P5), detail-1, adaptive `PerformanceMonitor` tier (P3), Environment res (P8), lazy GSAP + drop dead lenis/maath (P9).
+**Status (2026-07-02):** ✅ **Done** (browser parity check pending). Round 1: frameloop pause offscreen/hidden (biggest win), geometry detail 3→2, doubled-MSAA removed, particle canvas suppressed on `/` + paused when hidden, logo sampling deferred. Round 2 (deferred visuals): **`MeshStandardMaterial`** (clearcoat dropped), **DoF reveal-only gating** (mounts only during assembly, off on low tier), **adaptive `PerformanceMonitor` tier** (one-way step-down: DoF off + MSAA 0), Environment res 160→96, dead `lenis`/`maath` removed. tsc/lint/build clean, no new lint. ⚠️ **Needs a browser pass** for felt FPS + visual parity (material/DoF are visible changes). ⬜ Optional remainder: detail-1 (kept detail-2 for safety), lazy-GSAP (skipped — interaction-path risk).
 
 The architecture is sound (3D is dynamically imported, SSR-off, with a real `prefers-reduced-motion` static fallback; no per-frame React re-renders or allocations). The problem is **raw GPU/main-thread load that never adapts**.
 
