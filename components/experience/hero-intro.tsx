@@ -28,7 +28,7 @@ export function HeroIntro() {
       ref={ref}
       className="pointer-events-none absolute inset-0 z-20 will-change-[opacity,transform]"
     >
-      <div className="absolute inset-x-0 top-[28%] flex flex-col items-center px-6 text-center">
+      <div className="absolute inset-x-0 top-[18%] flex flex-col items-center px-6 text-center">
         <p
           className="eyebrow animate-hero-enter"
           style={{ animationDelay: "0.1s" }}
