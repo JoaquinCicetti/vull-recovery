@@ -30,9 +30,30 @@ as $$
   select ((ts - interval '3 hours') at time zone 'UTC')::date;
 $$;
 
+-- Pre-launch reconciliation: existing data may already have >1 active booking per
+-- user per local day, which would block the unique index below. Cancel all but the
+-- best per (user, day) — confirmed > awaiting_payment > pending, then newest — so
+-- the index can be created. No-op on a clean database.
+with ranked as (
+  select
+    id,
+    row_number() over (
+      partition by user_id, public.booking_local_date(starts_at)
+      order by
+        case status when 'confirmed' then 0 when 'awaiting_payment' then 1 else 2 end,
+        created_at desc
+    ) as rn
+  from public.bookings
+  where status in ('pending', 'awaiting_payment', 'confirmed')
+)
+update public.bookings b
+set status = 'cancelled',
+    cancelled_at = now(),
+    cancellation_reason = 'Depuración: dos turnos activos el mismo día'
+from ranked r
+where b.id = r.id and r.rn > 1;
+
 -- At most one active booking per user per local day.
--- NOTE (pre-launch): if existing data already has two active same-day bookings
--- for a user, this index creation fails — clean up the duplicates first.
 create unique index bookings_one_per_day
   on public.bookings (user_id, public.booking_local_date(starts_at))
   where status in ('pending','awaiting_payment','confirmed');
