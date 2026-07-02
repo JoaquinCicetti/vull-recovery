@@ -20,7 +20,7 @@ export default function Scene({ active = true }: { active?: boolean }) {
   const isMobile =
     typeof window !== "undefined" &&
     window.matchMedia("(max-width: 768px)").matches;
-  const count = isMobile ? 650 : 1600;
+  const count = isMobile ? 440 : 1000;
 
   return (
     <Canvas
