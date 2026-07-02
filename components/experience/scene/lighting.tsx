@@ -10,7 +10,7 @@ export function Lighting() {
       <ambientLight intensity={0.5} />
       <directionalLight position={[5, 9, 6]} intensity={1.5} color="#f4f2ec" />
       <directionalLight position={[-7, 2, -5]} intensity={0.45} color="#20262a" />
-      <Environment resolution={160}>
+      <Environment resolution={96}>
         <Lightformer
           intensity={1.7}
           position={[0, 4, -6]}

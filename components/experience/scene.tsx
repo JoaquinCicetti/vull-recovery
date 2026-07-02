@@ -1,7 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import { Canvas } from "@react-three/fiber";
-import { AdaptiveDpr, AdaptiveEvents } from "@react-three/drei";
+import { AdaptiveDpr, AdaptiveEvents, PerformanceMonitor } from "@react-three/drei";
 import * as THREE from "three";
 import { Spheres } from "./scene/spheres";
 import { Lighting } from "./scene/lighting";
@@ -19,6 +20,10 @@ export default function Scene({ active = true }: { active?: boolean }) {
     typeof window !== "undefined" &&
     window.matchMedia("(max-width: 768px)").matches;
   const count = isMobile ? 650 : 1600;
+  // One-way step-down: on sustained FPS decline drop to a cheaper tier (no DoF,
+  // no MSAA); AdaptiveDpr handles the DPR side. Sphere count stays fixed (changing
+  // it would remount the InstancedMesh).
+  const [lowTier, setLowTier] = useState(false);
 
   return (
     <Canvas
@@ -33,10 +38,15 @@ export default function Scene({ active = true }: { active?: boolean }) {
       camera={{ fov: 32, near: 0.1, far: 100, position: [0, 0, 14] }}
     >
       <fog attach="fog" args={["#070908", 14, 40]} />
+      <PerformanceMonitor
+        flipflops={3}
+        onDecline={() => setLowTier(true)}
+        onFallback={() => setLowTier(true)}
+      />
       <Lighting />
       <Spheres count={count} />
       <Rig />
-      <Effects dof={!isMobile} />
+      <Effects dof={!isMobile} lowTier={lowTier} />
       {/* Drop DPR/events while scrolling so the scrub stays smooth. */}
       <AdaptiveDpr pixelated={false} />
       <AdaptiveEvents />

@@ -1,7 +1,9 @@
 import * as THREE from "three";
 
-// Premium sphere material: PBR clearcoat (glassy, suspended-in-water read) extended
-// via onBeforeCompile. The vertex shader does everything on the GPU:
+// Sphere material: matte-white MeshStandardMaterial (clearcoat dropped — its extra
+// BRDF lobe + env sampling is imperceptible on sub-0.14u spheres and one of the
+// costliest fragment paths) extended via onBeforeCompile. The vertex shader does
+// everything on the GPU:
 //   • idle organic drift (time)            — alive even when not scrolling
 //   • global rise (uRise, scroll)          — Phase C
 //   • staggered morph to the logo (uAssembly, scroll) — Phase E
@@ -17,17 +19,15 @@ export type SphereUniforms = {
 };
 
 export function makeSphereMaterial(): {
-  mat: THREE.MeshPhysicalMaterial;
+  mat: THREE.MeshStandardMaterial;
   uniforms: SphereUniforms;
 } {
-  // Realistic matte-white spheres (like the recovery-bath balls): soft sheen, not
-  // glassy. Per-instance color comes from instanceColor (some are green).
-  const mat = new THREE.MeshPhysicalMaterial({
+  // Matte-white spheres (like the recovery-bath balls): soft sheen, not glassy.
+  // Per-instance color comes from instanceColor (some are green).
+  const mat = new THREE.MeshStandardMaterial({
     color: new THREE.Color("#eef0ec"),
     roughness: 0.5,
     metalness: 0.0,
-    clearcoat: 0.25,
-    clearcoatRoughness: 0.45,
     envMapIntensity: 0.6,
   });
 

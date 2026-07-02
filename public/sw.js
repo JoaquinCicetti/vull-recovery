@@ -4,7 +4,7 @@ self.addEventListener("push", (event) => {
   let data = {};
   try {
     data = event.data ? event.data.json() : {};
-  } catch (_e) {
+  } catch {
     /* ignore */
   }
   const title = data.title || "VULL";
