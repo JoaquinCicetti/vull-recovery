@@ -199,6 +199,10 @@ export function Spheres({ count = 1600 }: { count?: number }) {
     const riseVal = E.expoOut(phaseLocal(p, PHASES.rise));
     uniforms.uTime.value = state.clock.elapsedTime;
     uniforms.uRise.value = riseVal;
+    // Stream blend + conveyor parameter: scroll scrubs the flow, and a slow time
+    // term keeps it running forever while the user holds mid-scene.
+    uniforms.uFlowIn.value = E.inOutSine(phaseLocal(p, PHASES.flow));
+    uniforms.uFlow.value = p * 2.2 + state.clock.elapsedTime * 0.03;
     uniforms.uAssembly.value = targetsReady.current
       ? phaseLocal(p, PHASES.assembly)
       : 0;

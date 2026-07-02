@@ -12,6 +12,8 @@ import * as THREE from "three";
 export type SphereUniforms = {
   uTime: { value: number };
   uRise: { value: number };
+  uFlow: { value: number }; // conveyor parameter: scroll + slow time drift
+  uFlowIn: { value: number }; // 0→1 blend into the endless stream
   uAssembly: { value: number };
   uAccent: { value: THREE.Color };
 };
@@ -32,6 +34,8 @@ export function makeSphereMaterial(): {
   const uniforms: SphereUniforms = {
     uTime: { value: 0 },
     uRise: { value: 0 },
+    uFlow: { value: 0 },
+    uFlowIn: { value: 0 },
     uAssembly: { value: 0 },
     uAccent: { value: new THREE.Color("#61b33b") },
   };
@@ -51,6 +55,8 @@ export function makeSphereMaterial(): {
         attribute float aTouchTime;
         uniform float uTime;
         uniform float uRise;
+        uniform float uFlow;
+        uniform float uFlowIn;
         uniform float uAssembly;
         varying vec3 vTint;
         varying float vGreen;`,
@@ -71,11 +77,25 @@ export function makeSphereMaterial(): {
             cos(uTime * speed * 0.8 + phase * 1.3) * sway * 0.6,
             sin(uTime * speed * 0.6 + phase * 0.7) * sway
           );
-          // Rise OUT of the bath and expand to full-width floating (uRise 0->1):
-          // base = pooled in the (far) bath, aFloat = spread across the screen.
-          vec3 driftPos = mix(base, aFloat, uRise) + drift;
+          // RISE (uRise 0->1): leave the bath through a COLUMN above it — a
+          // staggered quadratic bezier base -> funnel point -> aFloat, so the
+          // spheres read as a particle flow pouring out of the bath, not a
+          // uniform expansion. Stagger by aDelay = continuous stream.
+          float rp = clamp(uRise * 1.35 - aDelay * 0.35, 0.0, 1.0);
+          rp = 1.0 - pow(1.0 - rp, 3.0);
+          vec3 columnPt = vec3(base.x * 0.3, 4.0, base.z + 3.0);
+          vec3 risePos = mix(mix(base, columnPt, rp), mix(columnPt, aFloat, rp), rp);
 
-          // staggered ease-out-quint morph to the logo target
+          // FLOW (uFlowIn 0->1): an endless conveyor — each sphere keeps its
+          // spread x/y but travels in z toward (and past) the camera; fract()
+          // recycles it back into the deep fog, so the stream never runs out.
+          float ft = fract(aRandom.w + uFlow * (0.7 + aRandom.x * 0.6));
+          vec3 flowPos = vec3(aFloat.x, aFloat.y, mix(-18.0, 12.5, ft));
+          vec3 driftPos = mix(risePos, flowPos, uFlowIn) + drift;
+
+          // ASSEMBLY: staggered ease-out-quint morph to the logo target. High-delay
+          // spheres morph last — the ones that just passed the camera fly back in
+          // front and merge into the mark.
           float ap = clamp((uAssembly - aDelay * 0.55) / 0.6, 0.0, 1.0);
           ap = 1.0 - pow(1.0 - ap, 5.0);
           vec3 worldPos = mix(driftPos, aTarget, ap);

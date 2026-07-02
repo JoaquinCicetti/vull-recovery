@@ -14,6 +14,11 @@ export function Lighting() {
           spheres white so they read as white balls (with a green rim), instead of
           the green side lights turning the whole logo green. */}
       <directionalLight position={[0, 3, 20]} intensity={1.5} color="#ffffff" />
+      {/* SIDE lights: graze the bath at near-90° so its silhouette reads from the
+          edges while the front face (typo'd texture) stays in shadow. They also give
+          the passing spheres a cool secondary rim. */}
+      <directionalLight position={[-16, 2, -6]} intensity={0.8} color="#dfe9e2" />
+      <directionalLight position={[16, 1, -6]} intensity={0.6} color="#c3d6c8" />
       {/* Green accent lights — from the sides, for atmosphere + Bloom glow, NOT the
           key. Kept lower so they rim the spheres rather than flooding them green. */}
       <pointLight position={[-7, 1, 2]} intensity={7} distance={34} decay={2} color="#61b33b" />

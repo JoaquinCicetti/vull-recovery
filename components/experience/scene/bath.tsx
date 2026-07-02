@@ -8,11 +8,11 @@ import { useProgressStore } from "../progress-store";
 import { PHASES, phaseLocal } from "@/lib/experience/config";
 import { E, lerp } from "@/lib/experience/easing";
 
-// The recovery-bath centerpiece. Starts far away in the middle of the dark room;
-// as you scroll (rise phase) it moves toward the camera and sinks to the bottom
-// while the spheres rise out of it and spread across the screen.
-// The source texture is low-res + has a typo, so we wash it toward a near-black
-// matte (detail/typo hidden); the scene Environment + green lights give it form.
+// The recovery-bath centerpiece, presented CONCEPTUALLY: the source model is
+// low-res with a typo'd texture, so instead of showing it literally we read it as
+// a black monolith — texture washed almost fully out, and the silhouette defined
+// by a green fresnel rim (edge light). Side lights in the scene graze it; the
+// front face (where the typo lives) stays dark.
 export function Bath() {
   const { scene } = useGLTF("/model-bath.glb");
   const ref = useRef<THREE.Group>(null);
@@ -22,14 +22,23 @@ export function Bath() {
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh) return;
       const mat = mesh.material as THREE.MeshStandardMaterial;
-      mat.roughness = 0.7;
+      mat.roughness = 0.65;
       mat.onBeforeCompile = (shader) => {
-        shader.fragmentShader = shader.fragmentShader.replace(
-          "#include <map_fragment>",
-          `#include <map_fragment>
-           // Near-black matte: wash out the low-res texture / typo.
-           diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.03, 0.04, 0.035), 0.82);`,
-        );
+        shader.fragmentShader = shader.fragmentShader
+          .replace(
+            "#include <map_fragment>",
+            `#include <map_fragment>
+             // Near-pure-black matte: the low-res texture / typo contributes ~8%.
+             diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.02, 0.03, 0.025), 0.92);`,
+          )
+          .replace(
+            "#include <opaque_fragment>",
+            `#include <opaque_fragment>
+             // Green rim light: silhouette read — the shape pops at grazing angles
+             // while faces pointing at the camera stay black.
+             float rim = pow(1.0 - clamp(dot(normalize(vNormal), normalize(vViewPosition)), 0.0, 1.0), 2.5);
+             gl_FragColor.rgb += vec3(0.30, 0.62, 0.34) * rim * 0.4;`,
+          );
       };
       mat.needsUpdate = true;
     });

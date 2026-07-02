@@ -3,9 +3,9 @@
 import { useEffect, useRef } from "react";
 import { useProgressStore } from "./progress-store";
 
-// Narrative copy in the DOM (crisp, selectable). The first caption fades in/out
-// around step 1; the last fades in and holds through the final logo step. Driven by
-// a transient store subscribe — no React re-render per frame.
+// Narrative copy in the DOM (crisp, selectable), centered mid-screen over the scene.
+// The first caption lives inside the flow phase; the last fades in and holds through
+// the logo reveal. Driven by a transient store subscribe — no re-render per frame.
 type Caption = {
   in: [number, number];
   out: [number, number] | null;
@@ -15,13 +15,13 @@ type Caption = {
 
 const CAPTIONS: Caption[] = [
   {
-    in: [0.18, 0.3],
-    out: [0.52, 0.6],
-    eyebrow: "Recuperación deportiva",
-    title: "Tu cuerpo, suspendido",
+    in: [0.34, 0.46],
+    out: [0.66, 0.75],
+    eyebrow: "El proceso",
+    title: "La fatiga se disuelve",
   },
   {
-    in: [0.74, 0.93],
+    in: [0.8, 0.94],
     out: null,
     eyebrow: "VULL",
     title: "Todo encuentra su lugar",
@@ -53,7 +53,7 @@ export function Captions() {
   }, []);
 
   return (
-    <div className="pointer-events-none absolute inset-0 z-20 flex items-end justify-center pb-[9vh]">
+    <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
       {CAPTIONS.map((c, idx) => (
         <div
           key={c.title}
