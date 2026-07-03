@@ -77,12 +77,12 @@ export default function Scene({ active = true }: { active?: boolean }) {
           const pivot = new THREE.Vector3(0, -1, -6); // bath center (rig PIVOT)
           const radius = pos.distanceTo(pivot);
           const elev = (Math.asin((pos.y - pivot.y) / radius) * 180) / Math.PI;
-          alert(
-            `position: [${pos.x.toFixed(2)}, ${pos.y.toFixed(2)}, ${pos.z.toFixed(2)}]\n` +
-              `direction: [${dir.x.toFixed(3)}, ${dir.y.toFixed(3)}, ${dir.z.toFixed(3)}]\n` +
-              `radius from bath: ${radius.toFixed(1)}\n` +
-              `elevation: ${elev.toFixed(1)}°`,
-          );
+          console.log("[debugcam]", {
+            position: [+pos.x.toFixed(2), +pos.y.toFixed(2), +pos.z.toFixed(2)],
+            direction: [+dir.x.toFixed(3), +dir.y.toFixed(3), +dir.z.toFixed(3)],
+            radiusFromBath: +radius.toFixed(1),
+            elevationDeg: +elev.toFixed(1),
+          });
         }}
       >
         cam info
