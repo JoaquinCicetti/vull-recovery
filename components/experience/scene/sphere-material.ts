@@ -28,10 +28,10 @@ export function makeSphereMaterial(): {
     roughness: 0.45,
     metalness: 0.0,
     envMapIntensity: 0.5,
-    // Slightly translucent for the cinematic read (depthWrite stays on — one
-    // instanced draw call, so real sorting isn't possible anyway).
+    // Barely translucent (depthWrite stays on — one instanced draw call, so
+    // real sorting isn't possible anyway).
     transparent: true,
-    opacity: 0.92,
+    opacity: 0.97,
   });
 
   const uniforms: SphereUniforms = {
@@ -94,10 +94,11 @@ export function makeSphereMaterial(): {
 
           // RISE (uRise 0->1): pour out of the basin along a staggered bezier
           // whose END is the sphere's LIVE conveyor slot — rising and flowing
-          // are one continuous motion, no seam between phases.
-          float rp = clamp(uRise * 1.35 - aDelay * 0.35, 0.0, 1.0);
+          // are one continuous motion, no seam between phases. The WIDE stagger
+          // (0.6) is what makes it a stream rather than an explosion.
+          float rp = clamp(uRise * 1.6 - aDelay * 0.6, 0.0, 1.0);
           rp = 1.0 - pow(1.0 - rp, 3.0);
-          vec3 columnPt = vec3(base.x * 0.6, 1.5, base.z);
+          vec3 columnPt = vec3(base.x * 0.6, 0.5, base.z);
           vec3 driftPos = mix(mix(base, columnPt, rp), mix(columnPt, flowPos, rp), rp) + drift;
 
           // ASSEMBLY: staggered ease-out-quint morph to the logo target. High-delay
@@ -116,11 +117,11 @@ export function makeSphereMaterial(): {
           // Suppressed once the sphere assembles into the logo (uses aTint there).
           vGreen = clamp(1.0 - (uTime - aTouchTime) / 3.0, 0.0, 1.0) * (1.0 - ap);
 
-          // Organic variety: most spheres barely visible, a few bright enough to
-          // catch highlights. Both ease back to full presence as the mark
-          // assembles, so the logo stays solid.
-          float aVar = 0.2 + 0.8 * pow(aRandom.z, 2.6);
-          float dVar = 0.45 + 0.55 * aRandom.y;
+          // Organic variety: opacity/brightness vary per sphere (a few catch
+          // highlights), but the floor is HIGH — presence, not ghosts. Both ease
+          // back to full as the mark assembles, so the logo stays solid.
+          float aVar = 0.55 + 0.45 * pow(aRandom.z, 2.0);
+          float dVar = 0.62 + 0.38 * aRandom.y;
           vAlpha = mix(aVar, 1.0, ap);
           vDim = mix(dVar, 1.0, ap);
         }`,

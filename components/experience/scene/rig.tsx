@@ -15,9 +15,9 @@ import { E } from "@/lib/experience/easing";
 // steps never reach the camera — buttery even on notchy mouse wheels.
 const PATH = new THREE.CatmullRomCurve3(
   [
-    new THREE.Vector3(0, 4, 37.5), // hero — the user-approved framing (r 43.8, 6.5°)
-    new THREE.Vector3(-7, 13, 27), // lift, drifting left (asymmetric, cinematic)
-    new THREE.Vector3(-6, 26, 10), // climbing over the bath
+    new THREE.Vector3(0, 6, 50), // hero — far back so the bath reads small
+    new THREE.Vector3(-8, 14, 34), // lift, drifting left (asymmetric, cinematic)
+    new THREE.Vector3(-6, 27, 12), // climbing over the bath
     new THREE.Vector3(0, 33, -3), // near-zenith, inside the ball column
     new THREE.Vector3(5, 18, 6), // swing down, easing right
     new THREE.Vector3(0, 0, 13.5), // front-center for the logo reveal
@@ -26,7 +26,12 @@ const PATH = new THREE.CatmullRomCurve3(
   "centripetal",
 );
 
-const AIM_BATH = new THREE.Vector3(0, -1.5, -6); // slightly above the bath center
+// Aim choreography: at the hero the camera aims ABOVE the bath, dropping it
+// into the BOTTOM HALF of the frame (clear of the hero text); the aim then
+// eases down onto the bath as the ride starts, and to the logo plane at the end.
+const AIM_HERO = new THREE.Vector3(0, 7, -6);
+const AIM_BATH = new THREE.Vector3(0, -2, -6); // near the bath center
+const AIM_WINDOW = [0.08, 0.4] as const;
 const ORIGIN = new THREE.Vector3(0, 0, 0);
 const UP_Y = new THREE.Vector3(0, 1, 0);
 const UP_ZENITH = new THREE.Vector3(0, 0, -1); // stable "up" when looking straight down
@@ -36,7 +41,7 @@ export function Rig() {
   const v = useMemo(
     () => ({
       pos: PATH.getPointAt(0).clone(),
-      aim: AIM_BATH.clone(),
+      aim: AIM_HERO.clone(),
       targetPos: new THREE.Vector3(),
       targetAim: new THREE.Vector3(),
       dir: new THREE.Vector3(),
@@ -48,12 +53,14 @@ export function Rig() {
   useFrame((state, dt) => {
     const p = useProgressStore.getState().progress;
     const asm = E.quintOut(phaseLocal(p, PHASES.assembly));
+    const aimDrop = E.inOutSine(phaseLocal(p, AIM_WINDOW));
     const cam = state.camera;
 
     // Arc-length sampling → constant travel speed along the whole path.
     PATH.getPointAt(Math.min(1, Math.max(0, p)), v.targetPos);
-    // Aim rides the bath the whole way, easing to the logo plane at the end.
-    v.targetAim.copy(AIM_BATH).lerp(ORIGIN, asm);
+    // Aim: above the bath (hero, bath in the bottom half) → onto the bath as the
+    // ride starts → the logo plane at the end.
+    v.targetAim.copy(AIM_HERO).lerp(AIM_BATH, aimDrop).lerp(ORIGIN, asm);
 
     // Frame-rate-independent exponential damping (the smoothness).
     const k = 1 - Math.exp(-4.5 * Math.min(dt, 0.05));

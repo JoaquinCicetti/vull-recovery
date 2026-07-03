@@ -49,10 +49,9 @@ export default function Scene({ active = true }: { active?: boolean }) {
         toneMappingExposure: 0.95,
       }}
       // Long lens (~85mm equiv): compressed perspective, shallow-focus read.
-      // Initial position ≈ the rig's hero framing (radius 43.8, elev 6.5°) so
-      // there's no first-frame pop before the Rig takes over. far raised to clear
-      // the far side of the radius-43.8 orbit.
-      camera={{ fov: 24, near: 0.1, far: 200, position: [0, 3.96, 37.5] }}
+      // Initial position = the rig path's hero point so there's no first-frame
+      // pop before the Rig takes over.
+      camera={{ fov: 24, near: 0.1, far: 200, position: [0, 6, 50] }}
     >
       {/* Almost-black (not pure) neutral falloff: the haze gives light visible
           depth while distant geometry sinks into near-black. */}

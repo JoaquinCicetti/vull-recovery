@@ -53,6 +53,19 @@ const MIST_FRAG = /* glsl */ `
   }
 `;
 
+// Floor light pool: soft radial gradient hugging the floor under the product —
+// grounds the bath (contact light instead of a void beneath it).
+const POOL_FRAG = /* glsl */ `
+  varying vec2 vUv;
+  uniform float uOpacity;
+  uniform vec3 uColor;
+  void main() {
+    float d = length(vUv - 0.5) * 2.0;
+    float a = pow(max(0.0, 1.0 - d), 1.9) * uOpacity;
+    gl_FragColor = vec4(uColor * a, a);
+  }
+`;
+
 // Light beam: brightest at the source (uv.y = 0), fading along its length and
 // toward its sides, with a whisper of noise so it feels like lit haze.
 const BEAM_FRAG = /* glsl */ `
@@ -100,7 +113,7 @@ function beamTransform(from: THREE.Vector3, to: THREE.Vector3) {
 }
 
 export function Atmosphere() {
-  const { mists, beamMat, beamL, beamR } = useMemo(() => {
+  const { mists, beamMat, poolMat, beamL, beamR } = useMemo(() => {
     // Slightly more present than before — the haze is what gives light its
     // visible depth. Green tint lives HERE (scattered light), not on the scene.
     const mists = [
@@ -109,6 +122,7 @@ export function Atmosphere() {
       makeMat(MIST_FRAG, "#93b49e", 0.05, 0.016),
     ];
     const beamMat = makeMat(BEAM_FRAG, "#b7d3c0", 0.05);
+    const poolMat = makeMat(POOL_FRAG, "#a8bfae", 0.11);
     // Shafts follow the LOWER lights (lighting.tsx): the main one rides the
     // lower-left key toward the bath; a fainter one rises from the under-glow.
     const beamL = beamTransform(
@@ -119,7 +133,7 @@ export function Atmosphere() {
       new THREE.Vector3(6, -4.9, -10),
       new THREE.Vector3(-1, -1.5, -6),
     );
-    return { mists, beamMat, beamL, beamR };
+    return { mists, beamMat, poolMat, beamL, beamR };
   }, []);
 
   useFrame((state) => {
@@ -139,6 +153,11 @@ export function Atmosphere() {
       </mesh>
       <mesh position={[4, -3.2, -2]} material={mists[2]}>
         <planeGeometry args={[30, 3.6]} />
+      </mesh>
+
+      {/* Contact light pool under the bath — grounds it on the floor. */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -4.96, -6]} material={poolMat}>
+        <planeGeometry args={[20, 20]} />
       </mesh>
 
       {/* Faint beams rising from the rim lights through the haze. */}

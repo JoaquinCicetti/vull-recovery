@@ -69,11 +69,12 @@ export function Lighting() {
       <RevealKey />
 
       {/* Under-glow: a soft diffused source beneath the product with smooth
-          physical falloff — replaces the old blown-out floor pool. */}
+          physical falloff — lights the floor around it so the bath reads as
+          GROUNDED, not suspended in a void. */}
       <pointLight
-        position={[0, -4.5, -6]}
-        intensity={2.2}
-        distance={14}
+        position={[0, -4.4, -6]}
+        intensity={3.6}
+        distance={18}
         decay={2}
         color="#dfe8e1"
       />
@@ -87,11 +88,11 @@ export function Lighting() {
         <Lightformer intensity={0.18} position={[7, 1, 3]} scale={[4, 8, 1]} color="#2b3330" />
       </Environment>
 
-      {/* Floor: dark and DIFFUSE — high roughness so light pools softly instead
-          of reading as a blown-out reflective surface. */}
+      {/* Floor: dark but PRESENT — diffuse enough not to blow out, reflective
+          enough that the key + under-glow visibly pool on it and ground the bath. */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -5, 0]}>
         <planeGeometry args={[140, 140]} />
-        <meshStandardMaterial color="#030405" roughness={0.75} metalness={0.05} />
+        <meshStandardMaterial color="#05070a" roughness={0.62} metalness={0.1} />
       </mesh>
     </>
   );
