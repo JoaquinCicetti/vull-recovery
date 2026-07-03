@@ -13,7 +13,6 @@ export type SphereUniforms = {
   uTime: { value: number };
   uRise: { value: number };
   uFlow: { value: number }; // conveyor parameter: scroll + slow time drift
-  uFlowIn: { value: number }; // 0→1 blend into the endless stream
   uAssembly: { value: number };
   uAccent: { value: THREE.Color };
 };
@@ -39,7 +38,6 @@ export function makeSphereMaterial(): {
     uTime: { value: 0 },
     uRise: { value: 0 },
     uFlow: { value: 0 },
-    uFlowIn: { value: 0 },
     uAssembly: { value: 0 },
     uAccent: { value: new THREE.Color("#61b33b") },
   };
@@ -55,15 +53,17 @@ export function makeSphereMaterial(): {
         attribute vec3 aTarget;
         attribute vec3 aFloat;
         attribute vec3 aTint;
+        attribute vec3 aColumn; // (radius, angle, isColumn) — helix slot in the flux
         attribute float aDelay;
         attribute float aTouchTime;
         uniform float uTime;
         uniform float uRise;
         uniform float uFlow;
-        uniform float uFlowIn;
         uniform float uAssembly;
         varying vec3 vTint;
-        varying float vGreen;`,
+        varying float vGreen;
+        varying float vDim;
+        varying float vAlpha;`,
       )
       .replace(
         "#include <begin_vertex>",
@@ -82,21 +82,23 @@ export function makeSphereMaterial(): {
             cos(uTime * speed * 0.8 + phase * 1.3) * sway * 0.6,
             sin(uTime * speed * 0.6 + phase * 0.7) * sway
           );
-          // RISE (uRise 0->1): leave the basin UPWARD — a staggered quadratic
-          // bezier base -> funnel point above the bath -> aFloat (a spot in the
-          // tall column), so the spheres read as a particle flow pouring up out
-          // of the bath. Stagger by aDelay = continuous stream.
+          // FLOW target: column spheres ride an endless HELICAL conveyor above
+          // the basin — recycling y via fract(), swirling slowly, the column
+          // widening slightly as it climbs (organic, not a hard cylinder).
+          // Ambient spheres (aColumn.z = 0) simply hold their scattered spot.
+          float ft = fract(aRandom.w + uFlow * (0.7 + aRandom.x * 0.6));
+          float ang = aColumn.y + uTime * (0.05 + 0.08 * aRandom.y) + ft * 2.0;
+          float rad = aColumn.x * (0.72 + 0.55 * ft);
+          vec3 columnFlow = vec3(rad * cos(ang), mix(-4.5, 36.0, ft), -6.0 + rad * sin(ang));
+          vec3 flowPos = mix(aFloat, columnFlow, aColumn.z);
+
+          // RISE (uRise 0->1): pour out of the basin along a staggered bezier
+          // whose END is the sphere's LIVE conveyor slot — rising and flowing
+          // are one continuous motion, no seam between phases.
           float rp = clamp(uRise * 1.35 - aDelay * 0.35, 0.0, 1.0);
           rp = 1.0 - pow(1.0 - rp, 3.0);
-          vec3 columnPt = vec3(base.x * 0.6, 3.0, base.z);
-          vec3 risePos = mix(mix(base, columnPt, rp), mix(columnPt, aFloat, rp), rp);
-
-          // FLOW (uFlowIn 0->1): an endless VERTICAL conveyor — each sphere keeps
-          // its x/z spot in the column and travels upward past the zenith camera;
-          // fract() recycles it back down into the basin, so the flux never ends.
-          float ft = fract(aRandom.w + uFlow * (0.7 + aRandom.x * 0.6));
-          vec3 flowPos = vec3(aFloat.x, mix(-4.0, 32.0, ft), aFloat.z);
-          vec3 driftPos = mix(risePos, flowPos, uFlowIn) + drift;
+          vec3 columnPt = vec3(base.x * 0.6, 1.5, base.z);
+          vec3 driftPos = mix(mix(base, columnPt, rp), mix(columnPt, flowPos, rp), rp) + drift;
 
           // ASSEMBLY: staggered ease-out-quint morph to the logo target. High-delay
           // spheres morph last — the ones that just passed the camera fly back in
@@ -113,6 +115,14 @@ export function makeSphereMaterial(): {
           // Touch glow: 1 right after the cursor passes, fading to 0 over ~3s.
           // Suppressed once the sphere assembles into the logo (uses aTint there).
           vGreen = clamp(1.0 - (uTime - aTouchTime) / 3.0, 0.0, 1.0) * (1.0 - ap);
+
+          // Organic variety: most spheres barely visible, a few bright enough to
+          // catch highlights. Both ease back to full presence as the mark
+          // assembles, so the logo stays solid.
+          float aVar = 0.2 + 0.8 * pow(aRandom.z, 2.6);
+          float dVar = 0.45 + 0.55 * aRandom.y;
+          vAlpha = mix(aVar, 1.0, ap);
+          vDim = mix(dVar, 1.0, ap);
         }`,
       );
 
@@ -122,12 +132,15 @@ export function makeSphereMaterial(): {
         `#include <common>
         uniform vec3 uAccent;
         varying vec3 vTint;
-        varying float vGreen;`,
+        varying float vGreen;
+        varying float vDim;
+        varying float vAlpha;`,
       )
       .replace(
         "#include <color_fragment>",
         `#include <color_fragment>
-        diffuseColor.rgb *= vTint;
+        diffuseColor.rgb *= vTint * vDim;
+        diffuseColor.a *= vAlpha;
         diffuseColor.rgb = mix(diffuseColor.rgb, uAccent, vGreen * 0.85);`,
       )
       .replace(

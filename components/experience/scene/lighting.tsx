@@ -14,19 +14,22 @@ import { E } from "@/lib/experience/easing";
 // (scene.tsx is dynamically imported with ssr:false).
 RectAreaLightUniformsLib.init();
 
-// Silhouette rig: two LARGE soft rectangular area lights sitting on the floor
-// behind the product, one per side, tilted ~23° up toward the model's back. They
-// never hit front faces — their only job is a crisp bright rim. Cool white with a
-// subtle green tint; softness comes from size, not intensity.
-function RimLights() {
+// Cinematic three-point setup around the bath (0,-3,-6) — deliberately
+// ASYMMETRIC. The product stays mostly dark, but every curve reads: gradients
+// reveal it, never brute-force illumination.
+function KeyAndRim() {
   const lights = useMemo(() => {
-    const make = (x: number, intensity: number, color: string) => {
-      const l = new THREE.RectAreaLight(color, intensity, 12, 5);
-      l.position.set(x, -4.9, -13); // on the floor, behind the product
-      l.lookAt(-Math.sign(x) * 1.2, -0.4, -5); // ~23° up toward the model's back
-      return l;
-    };
-    return [make(-8, 9, "#dff0e6"), make(8, 7, "#cfe6dd")];
+    // KEY — strong but SOFT (large source): diagonal from the LOWER LEFT, in
+    // front of the product. Neutral white; the softness comes from the 16x9 area.
+    const key = new THREE.RectAreaLight("#edf1ec", 5.5, 16, 9);
+    key.position.set(-16, -3, 10);
+    key.lookAt(0, -2.5, -6);
+    // RIM — subtle and COOL, from the UPPER RIGHT behind the product: separates
+    // the dark side from the background without symmetry with the key.
+    const rim = new THREE.RectAreaLight("#c9d9e4", 2.6, 10, 6);
+    rim.position.set(12, 9, -18);
+    rim.lookAt(-1, -2.5, -5);
+    return [key, rim];
   }, []);
   return (
     <>
@@ -36,51 +39,59 @@ function RimLights() {
   );
 }
 
-// The ONLY front light. Nearly off through the whole act (the scene lives on its
-// rims), then ramps up during assembly so the VULL mark resolves white out of the
-// dark — luxury reveal, not product catalog.
+// The only extra front light: nearly off through the act, ramping up during
+// assembly so the VULL mark resolves out of the dark — luxury reveal.
 function RevealKey() {
   const ref = useRef<THREE.DirectionalLight>(null);
   useFrame(() => {
     const p = useProgressStore.getState().progress;
     const asm = E.quintOut(phaseLocal(p, PHASES.assembly));
-    if (ref.current) ref.current.intensity = 0.1 + asm * 1.15;
+    if (ref.current) ref.current.intensity = 0.08 + asm * 1.1;
   });
   return (
     <directionalLight
       ref={ref}
       position={[0, 2, 24]}
-      intensity={0.1}
+      intensity={0.08}
       color="#f2fff5"
     />
   );
 }
 
-// Cinematic dark-room rig: no strong front light, silhouettes only. The scene
-// should stay almost entirely black — separation comes from the rim lights and
-// the atmosphere, never from brightness.
 export function Lighting() {
   return (
     <>
-      {/* Fill: extremely weak, from above. Barely reveals the shapes; no hotspots. */}
+      {/* Overhead fill: just enough to reveal the silhouette. No hotspots. */}
       <ambientLight intensity={0.05} />
-      <directionalLight position={[0, 12, 2]} intensity={0.09} color="#e8f2ec" />
+      <directionalLight position={[0, 12, 2]} intensity={0.08} color="#e8f2ec" />
 
-      <RimLights />
+      <KeyAndRim />
       <RevealKey />
 
-      {/* Very dim environment: two faint side strips so sphere edges still catch a
-          sliver of green-white between the area lights. No bright panels. */}
+      {/* Under-glow: a soft diffused source beneath the product with smooth
+          physical falloff — replaces the old blown-out floor pool. */}
+      <pointLight
+        position={[0, -4.5, -6]}
+        intensity={2.2}
+        distance={14}
+        decay={2}
+        color="#dfe8e1"
+      />
+
+      {/* Very dim environment, asymmetric: one faint GREEN strip (the only green
+          source — it lives in reflections/particles, not the whole scene) and a
+          neutral counter-strip. */}
       <Environment resolution={64}>
-        <Lightformer intensity={0.12} position={[0, 6, -10]} scale={[16, 9, 1]} color="#0c110e" />
-        <Lightformer intensity={0.3} position={[-7, 0, 2]} scale={[3, 10, 1]} color="#3f6b47" />
-        <Lightformer intensity={0.25} position={[7, 0, 2]} scale={[3, 10, 1]} color="#33523f" />
+        <Lightformer intensity={0.1} position={[0, 6, -10]} scale={[16, 9, 1]} color="#0b0e0c" />
+        <Lightformer intensity={0.28} position={[-7, 0, 2]} scale={[3, 10, 1]} color="#3d5c45" />
+        <Lightformer intensity={0.18} position={[7, 1, 3]} scale={[4, 8, 1]} color="#2b3330" />
       </Environment>
 
-      {/* Near-black floor, faintly reflective so the rim light pools on it. */}
+      {/* Floor: dark and DIFFUSE — high roughness so light pools softly instead
+          of reading as a blown-out reflective surface. */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -5, 0]}>
         <planeGeometry args={[140, 140]} />
-        <meshStandardMaterial color="#020304" roughness={0.4} metalness={0.2} />
+        <meshStandardMaterial color="#030405" roughness={0.75} metalness={0.05} />
       </mesh>
     </>
   );

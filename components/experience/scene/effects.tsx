@@ -31,8 +31,8 @@ export function Effects({ dof = true }: { dof?: boolean }) {
       <EffectComposer multisampling={0}>
         <Bloom intensity={0.35} luminanceThreshold={0.8} luminanceSmoothing={0.3} mipmapBlur />
         <ChromaticAberration offset={CA_OFFSET} />
-        <BrightnessContrast brightness={-0.04} contrast={0.12} />
-        <Vignette offset={0.32} darkness={0.62} />
+        <BrightnessContrast brightness={-0.02} contrast={0.08} />
+        <Vignette offset={0.32} darkness={0.55} />
         <Noise opacity={0.025} />
         <SMAA />
       </EffectComposer>
@@ -40,14 +40,16 @@ export function Effects({ dof = true }: { dof?: boolean }) {
   }
   return (
     <EffectComposer multisampling={0}>
-      {/* Focus tracks a world point between the bath (0,-1,-6) and the logo plane
+      {/* Focus tracks a world point between the bath (0,-3,-6) and the logo plane
           (z 0) — the orbiting camera's distance to the subject varies too much for
-          a fixed focusDistance. */}
-      <DepthOfField target={[0, -0.5, -3]} focalLength={0.085} bokehScale={3.4} />
+          a fixed focusDistance. Only a few particles stay perfectly sharp. */}
+      <DepthOfField target={[0, -1.8, -4.5]} focalLength={0.085} bokehScale={3.4} />
       <Bloom intensity={0.35} luminanceThreshold={0.8} luminanceSmoothing={0.3} mipmapBlur />
       <ChromaticAberration offset={CA_OFFSET} />
-      <BrightnessContrast brightness={-0.04} contrast={0.12} />
-      <Vignette offset={0.32} darkness={0.62} />
+      {/* Gentle grade: local contrast comes from the lighting, not the LUT — keep
+          shadow detail, no crushed blacks. */}
+      <BrightnessContrast brightness={-0.02} contrast={0.08} />
+      <Vignette offset={0.32} darkness={0.55} />
       <Noise opacity={0.025} />
       <SMAA />
     </EffectComposer>

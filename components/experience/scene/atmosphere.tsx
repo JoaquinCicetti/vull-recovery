@@ -101,21 +101,23 @@ function beamTransform(from: THREE.Vector3, to: THREE.Vector3) {
 
 export function Atmosphere() {
   const { mists, beamMat, beamL, beamR } = useMemo(() => {
+    // Slightly more present than before — the haze is what gives light its
+    // visible depth. Green tint lives HERE (scattered light), not on the scene.
     const mists = [
-      makeMat(MIST_FRAG, "#a9c9b2", 0.07, 0.012),
-      makeMat(MIST_FRAG, "#9dbfa8", 0.055, -0.02),
-      makeMat(MIST_FRAG, "#93b49e", 0.04, 0.016),
+      makeMat(MIST_FRAG, "#a9c9b2", 0.085, 0.012),
+      makeMat(MIST_FRAG, "#9dbfa8", 0.065, -0.02),
+      makeMat(MIST_FRAG, "#93b49e", 0.05, 0.016),
     ];
-    const beamMat = makeMat(BEAM_FRAG, "#bcd8c4", 0.045);
-    // Beams follow the rim lights in lighting.tsx: floor at (±8,-4.9,-13) aiming
-    // up-inward toward the model's back.
+    const beamMat = makeMat(BEAM_FRAG, "#b7d3c0", 0.05);
+    // Shafts follow the LOWER lights (lighting.tsx): the main one rides the
+    // lower-left key toward the bath; a fainter one rises from the under-glow.
     const beamL = beamTransform(
-      new THREE.Vector3(-8, -4.9, -13),
-      new THREE.Vector3(1.2, -0.4, -5),
+      new THREE.Vector3(-14, -4.6, 6),
+      new THREE.Vector3(0, -2, -6),
     );
     const beamR = beamTransform(
-      new THREE.Vector3(8, -4.9, -13),
-      new THREE.Vector3(-1.2, -0.4, -5),
+      new THREE.Vector3(6, -4.9, -10),
+      new THREE.Vector3(-1, -1.5, -6),
     );
     return { mists, beamMat, beamL, beamR };
   }, []);
