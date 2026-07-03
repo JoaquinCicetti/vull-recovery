@@ -11,6 +11,8 @@ type Caption = {
   out: [number, number] | null;
   eyebrow: string;
   title: string;
+  /** Vertical offset in vh from the centered position (+ = down). */
+  offsetVh?: number;
 };
 
 const CAPTIONS: Caption[] = [
@@ -25,6 +27,7 @@ const CAPTIONS: Caption[] = [
     out: null,
     eyebrow: "VULL",
     title: "Todo encuentra su lugar",
+    offsetVh: 20, // below the assembled logo, not over it
   },
 ];
 
@@ -45,7 +48,7 @@ export function Captions() {
         if (!el) return;
         const o = fade(p, c);
         el.style.opacity = String(o);
-        el.style.transform = `translateY(${(1 - o) * 14}px)`;
+        el.style.transform = `translateY(calc(${(1 - o) * 14}px + ${c.offsetVh ?? 0}vh))`;
       });
     };
     apply(useProgressStore.getState().progress);

@@ -121,10 +121,25 @@ export function ExperienceClient() {
     const atEnd = () => target.v >= 1 - 1e-4;
     const atStart = () => target.v <= 1e-4;
 
+    // Sticky anchor at the crafted logo: once the mark assembles, downward
+    // scrolling first accumulates against this budget (the scene holds — a beat
+    // on the finished logo), and only then releases to the native page.
+    // Scrolling back up re-arms it.
+    const STICK_WHEEL = 420; // wheel px to hold before releasing
+    const STICK_TOUCH = 260; // touch px
+    let stick = 0;
+
     const onWheel = (e: WheelEvent) => {
       if (window.scrollY > 2) return; // below the experience → native scroll
-      // At the logo, a fresh downward scroll releases to the native page (plans).
-      if (atEnd() && e.deltaY > 0) return;
+      if (e.deltaY < 0) stick = 0; // going back re-arms the anchor
+      if (atEnd() && e.deltaY > 0) {
+        if (stick < STICK_WHEEL) {
+          stick += e.deltaY;
+          e.preventDefault();
+          return;
+        }
+        return; // anchor spent → release to the plans
+      }
       e.preventDefault();
       nudge(e.deltaY * WHEEL_SENS);
     };
@@ -138,7 +153,15 @@ export function ExperienceClient() {
       const y = e.touches[0]?.clientY ?? 0;
       const dy = touchY - y; // swipe up = progress forward
       touchY = y;
-      if (atEnd() && dy > 0) return;
+      if (dy < 0) stick = 0;
+      if (atEnd() && dy > 0) {
+        if (stick < STICK_TOUCH) {
+          stick += dy;
+          e.preventDefault();
+          return;
+        }
+        return;
+      }
       e.preventDefault();
       nudge(dy * TOUCH_SENS);
     };

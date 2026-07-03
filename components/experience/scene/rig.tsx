@@ -29,7 +29,7 @@ const PATH = new THREE.CatmullRomCurve3(
 // Aim choreography: at the hero the camera aims ABOVE the bath, dropping it
 // into the BOTTOM HALF of the frame (clear of the hero text); the aim then
 // eases down onto the bath as the ride starts, and to the logo plane at the end.
-const AIM_HERO = new THREE.Vector3(0, 7, -6);
+const AIM_HERO = new THREE.Vector3(0, 4.5, -6); // bath a touch below center, not sunk
 const AIM_BATH = new THREE.Vector3(0, -2, -6); // near the bath center
 const AIM_WINDOW = [0.08, 0.4] as const;
 const ORIGIN = new THREE.Vector3(0, 0, 0);
