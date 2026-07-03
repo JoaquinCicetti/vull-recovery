@@ -35,8 +35,11 @@ export function Bath() {
             "#include <opaque_fragment>",
             `#include <opaque_fragment>
              // Green rim light: silhouette read — the shape pops at grazing angles
-             // while faces pointing at the camera stay black.
-             float rim = pow(1.0 - clamp(dot(normalize(vNormal), normalize(vViewPosition)), 0.0, 1.0), 2.5);
+             // while faces pointing at the camera stay black. Uses the local
+             // \`normal\` from normal_fragment_begin (NOT the vNormal varying: this
+             // GLB ships without vertex normals, so three flat-shades it and never
+             // declares vNormal — referencing it kills the shader compile).
+             float rim = pow(1.0 - clamp(dot(normalize(normal), normalize(vViewPosition)), 0.0, 1.0), 2.5);
              gl_FragColor.rgb += vec3(0.42, 0.60, 0.47) * rim * 0.38;`,
           );
       };
