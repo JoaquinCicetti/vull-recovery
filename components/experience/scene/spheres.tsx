@@ -109,9 +109,9 @@ export function Spheres({ count = 1600 }: { count?: number }) {
         bases[i * 3 + 2] = fz;
       } else {
         // Column above the bath: tight radius, spanning from the basin up past
-        // the zenith camera (~y 10) so the flux visibly intercepts it.
+        // the zenith camera (~y 29 at radius 30) so the flux intercepts it.
         floats[i * 3] = (Math.random() * 2 - 1) * 2.8;
-        floats[i * 3 + 1] = -4 + Math.random() * 20;
+        floats[i * 3 + 1] = -4 + Math.random() * 36;
         floats[i * 3 + 2] = -6 + (Math.random() * 2 - 1) * 2.8;
         // Origin: pooled inside the basin, 1/4 height from the bottom.
         bases[i * 3] = (Math.random() * 2 - 1) * 2.2;

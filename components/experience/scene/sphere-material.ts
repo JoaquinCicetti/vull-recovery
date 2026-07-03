@@ -95,7 +95,7 @@ export function makeSphereMaterial(): {
           // its x/z spot in the column and travels upward past the zenith camera;
           // fract() recycles it back down into the basin, so the flux never ends.
           float ft = fract(aRandom.w + uFlow * (0.7 + aRandom.x * 0.6));
-          vec3 flowPos = vec3(aFloat.x, mix(-4.0, 16.0, ft), aFloat.z);
+          vec3 flowPos = vec3(aFloat.x, mix(-4.0, 32.0, ft), aFloat.z);
           vec3 driftPos = mix(risePos, flowPos, uFlowIn) + drift;
 
           // ASSEMBLY: staggered ease-out-quint morph to the logo target. High-delay
