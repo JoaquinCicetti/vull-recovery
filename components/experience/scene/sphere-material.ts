@@ -82,20 +82,20 @@ export function makeSphereMaterial(): {
             cos(uTime * speed * 0.8 + phase * 1.3) * sway * 0.6,
             sin(uTime * speed * 0.6 + phase * 0.7) * sway
           );
-          // RISE (uRise 0->1): leave the bath through a COLUMN above it — a
-          // staggered quadratic bezier base -> funnel point -> aFloat, so the
-          // spheres read as a particle flow pouring out of the bath, not a
-          // uniform expansion. Stagger by aDelay = continuous stream.
+          // RISE (uRise 0->1): leave the basin UPWARD — a staggered quadratic
+          // bezier base -> funnel point above the bath -> aFloat (a spot in the
+          // tall column), so the spheres read as a particle flow pouring up out
+          // of the bath. Stagger by aDelay = continuous stream.
           float rp = clamp(uRise * 1.35 - aDelay * 0.35, 0.0, 1.0);
           rp = 1.0 - pow(1.0 - rp, 3.0);
-          vec3 columnPt = vec3(base.x * 0.3, 4.0, base.z + 3.0);
+          vec3 columnPt = vec3(base.x * 0.6, 3.0, base.z);
           vec3 risePos = mix(mix(base, columnPt, rp), mix(columnPt, aFloat, rp), rp);
 
-          // FLOW (uFlowIn 0->1): an endless conveyor — each sphere keeps its
-          // spread x/y but travels in z toward (and past) the camera; fract()
-          // recycles it back into the deep fog, so the stream never runs out.
+          // FLOW (uFlowIn 0->1): an endless VERTICAL conveyor — each sphere keeps
+          // its x/z spot in the column and travels upward past the zenith camera;
+          // fract() recycles it back down into the basin, so the flux never ends.
           float ft = fract(aRandom.w + uFlow * (0.7 + aRandom.x * 0.6));
-          vec3 flowPos = vec3(aFloat.x, aFloat.y, mix(-18.0, 12.5, ft));
+          vec3 flowPos = vec3(aFloat.x, mix(-4.0, 16.0, ft), aFloat.z);
           vec3 driftPos = mix(risePos, flowPos, uFlowIn) + drift;
 
           // ASSEMBLY: staggered ease-out-quint morph to the logo target. High-delay
