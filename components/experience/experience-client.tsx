@@ -81,6 +81,14 @@ export function ExperienceClient() {
 
   useEffect(() => {
     if (reduced !== false) return;
+    // Free-camera debug mode (?debugcam): no scroll choreography — the wheel
+    // belongs to OrbitControls. ?debugcam&p=0.6 freezes the act at that beat.
+    const params = new URLSearchParams(window.location.search);
+    if (params.has("debugcam")) {
+      const pv = Number.parseFloat(params.get("p") ?? "0");
+      if (Number.isFinite(pv)) setProgress(Math.min(1, Math.max(0, pv)));
+      return;
+    }
     gsap.registerPlugin(ScrollToPlugin);
 
     // Continuous progress (no discrete steps). Scroll input accumulates a TARGET in
