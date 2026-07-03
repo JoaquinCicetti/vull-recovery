@@ -82,14 +82,21 @@ export function makeSphereMaterial(): {
             cos(uTime * speed * 0.8 + phase * 1.3) * sway * 0.6,
             sin(uTime * speed * 0.6 + phase * 0.7) * sway
           );
-          // FLOW target: column spheres ride an endless HELICAL conveyor above
-          // the basin — recycling y via fract(), swirling slowly, the column
-          // widening slightly as it climbs (organic, not a hard cylinder).
+          // FLOW target: column spheres ride an endless conveyor above the basin
+          // — recycling y via fract() — but ERRATICALLY: per-ball speed spread,
+          // wobbling radius, and layered incommensurate sines give each ball a
+          // smooth yet unpredictable wander instead of a clean procedural helix.
           // Ambient spheres (aColumn.z = 0) simply hold their scattered spot.
-          float ft = fract(aRandom.w + uFlow * (0.7 + aRandom.x * 0.6));
+          float ft = fract(aRandom.w + uFlow * (0.5 + aRandom.x * 1.0));
           float ang = aColumn.y + uTime * (0.04 + 0.06 * aRandom.y) + ft * 1.2;
           float rad = aColumn.x * (0.72 + 0.55 * ft);
+          rad *= 1.0 + 0.22 * sin(uTime * (0.3 + 0.4 * aRandom.z) + aRandom.w * 21.0 + ft * 10.0);
           vec3 columnFlow = vec3(rad * cos(ang), mix(-4.5, 36.0, ft), -6.0 + rad * sin(ang));
+          columnFlow += vec3(
+            sin(uTime * (0.35 + 0.5 * aRandom.y) + aRandom.x * 40.0 + ft * 9.0),
+            0.6 * sin(uTime * (0.28 + 0.4 * aRandom.z) + aRandom.w * 31.0 + ft * 7.0),
+            cos(uTime * (0.42 + 0.45 * aRandom.x) + aRandom.z * 47.0 + ft * 8.0)
+          ) * (0.35 + 0.75 * aRandom.w);
           vec3 flowPos = mix(aFloat, columnFlow, aColumn.z);
 
           // RISE (uRise 0->1): pour out of the basin along a staggered bezier
