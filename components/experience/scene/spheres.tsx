@@ -119,9 +119,10 @@ export function Spheres({ count = 1600 }: { count?: number }) {
         floats[i * 3] = r * Math.cos(th);
         floats[i * 3 + 1] = 8;
         floats[i * 3 + 2] = -6 + r * Math.sin(th);
-        // Origin: pooled inside the basin, 1/4 of the visible height up.
+        // Origin: pooled inside the basin, 1/4 of the visible height up
+        // (bath-2 spans y −5.3..−0.67 at scale 9 → band around y −3.9).
         bases[i * 3] = (Math.random() * 2 - 1) * 2.2;
-        bases[i * 3 + 1] = -3.5 + (Math.random() * 2 - 1) * 0.5;
+        bases[i * 3 + 1] = -3.9 + (Math.random() * 2 - 1) * 0.4;
         bases[i * 3 + 2] = -6 + (Math.random() * 2 - 1) * 1.8;
       }
       // Power-law sizes: mostly fine particles, a few large hero spheres.
@@ -210,7 +211,8 @@ export function Spheres({ count = 1600 }: { count?: number }) {
 
   useFrame((state) => {
     const p = useProgressStore.getState().progress;
-    const riseVal = E.expoOut(phaseLocal(p, PHASES.rise));
+    // inOutSine (not expoOut): the pour starts gently — a stream, not a burst.
+    const riseVal = E.inOutSine(phaseLocal(p, PHASES.rise));
     uniforms.uTime.value = state.clock.elapsedTime;
     uniforms.uRise.value = riseVal;
     // Conveyor parameter: scroll scrubs the flux, and a slow time term keeps it

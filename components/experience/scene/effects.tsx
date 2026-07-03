@@ -70,7 +70,7 @@ export function Effects({ dof = true }: { dof?: boolean }) {
     <EffectComposer multisampling={0}>
       {/* Focus tracks a world point near the bath; bokehScale starts at 0 and is
           driven per-frame from scroll velocity (speed effect). */}
-      <DepthOfField ref={dofRef} target={[0, -1.8, -4.5]} focalLength={0.085} bokehScale={0} />
+      <DepthOfField ref={dofRef} target={[0, -2.8, -5.5]} focalLength={0.085} bokehScale={0} />
       <Bloom intensity={0.35} luminanceThreshold={0.8} luminanceSmoothing={0.3} mipmapBlur />
       <ChromaticAberration offset={CA_OFFSET} />
       {/* Gentle grade: local contrast comes from the lighting, not the LUT — keep
