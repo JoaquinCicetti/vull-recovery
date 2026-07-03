@@ -66,6 +66,19 @@ const POOL_FRAG = /* glsl */ `
   }
 `;
 
+// Contact shadow: NORMAL-blended dark ellipse tight under the bath's footprint.
+// Darkening against the lit pool/stage ellipse is the strongest "it stands on
+// the floor" cue there is.
+const SHADOW_FRAG = /* glsl */ `
+  varying vec2 vUv;
+  uniform float uOpacity;
+  void main() {
+    float d = length(vUv - 0.5) * 2.0;
+    float a = smoothstep(1.0, 0.25, d) * uOpacity;
+    gl_FragColor = vec4(vec3(0.0), a);
+  }
+`;
+
 // Light beam: brightest at the source (uv.y = 0), fading along its length and
 // toward its sides, with a whisper of noise so it feels like lit haze.
 const BEAM_FRAG = /* glsl */ `
@@ -83,7 +96,13 @@ const BEAM_FRAG = /* glsl */ `
   }
 `;
 
-function makeMat(frag: string, color: string, opacity: number, speed = 0) {
+function makeMat(
+  frag: string,
+  color: string,
+  opacity: number,
+  speed = 0,
+  blending: THREE.Blending = THREE.AdditiveBlending,
+) {
   return new THREE.ShaderMaterial({
     uniforms: {
       uTime: { value: 0 },
@@ -95,7 +114,7 @@ function makeMat(frag: string, color: string, opacity: number, speed = 0) {
     fragmentShader: frag,
     transparent: true,
     depthWrite: false,
-    blending: THREE.AdditiveBlending,
+    blending,
     side: THREE.DoubleSide,
   });
 }
@@ -113,7 +132,7 @@ function beamTransform(from: THREE.Vector3, to: THREE.Vector3) {
 }
 
 export function Atmosphere() {
-  const { mists, beamMat, poolMat, beamL, beamR } = useMemo(() => {
+  const { mists, beamMat, poolMat, shadowMat, beamL, beamR } = useMemo(() => {
     // Slightly more present than before — the haze is what gives light its
     // visible depth. Green tint lives HERE (scattered light), not on the scene.
     const mists = [
@@ -122,7 +141,8 @@ export function Atmosphere() {
       makeMat(MIST_FRAG, "#93b49e", 0.05, 0.016),
     ];
     const beamMat = makeMat(BEAM_FRAG, "#b7d3c0", 0.05);
-    const poolMat = makeMat(POOL_FRAG, "#a8bfae", 0.11);
+    const poolMat = makeMat(POOL_FRAG, "#a8bfae", 0.16);
+    const shadowMat = makeMat(SHADOW_FRAG, "#000000", 0.55, 0, THREE.NormalBlending);
     // Shafts follow the LOWER lights (lighting.tsx): the main one rides the
     // lower-left key toward the bath; a fainter one rises from the under-glow.
     const beamL = beamTransform(
@@ -133,7 +153,7 @@ export function Atmosphere() {
       new THREE.Vector3(6, -4.9, -10),
       new THREE.Vector3(-1, -1.5, -6),
     );
-    return { mists, beamMat, poolMat, beamL, beamR };
+    return { mists, beamMat, poolMat, shadowMat, beamL, beamR };
   }, []);
 
   useFrame((state) => {
@@ -155,9 +175,25 @@ export function Atmosphere() {
         <planeGeometry args={[30, 3.6]} />
       </mesh>
 
-      {/* Contact light pool under the bath — grounds it on the floor. */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -4.96, -6]} material={poolMat}>
-        <planeGeometry args={[20, 20]} />
+      {/* Contact light pool + contact shadow under the bath — light around it,
+          dark right beneath it: the pair that makes it STAND on the floor.
+          renderOrder forces the shadow to composite over the pool. */}
+      <mesh
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[0, -4.96, -6]}
+        material={poolMat}
+        renderOrder={1}
+      >
+        <planeGeometry args={[24, 24]} />
+      </mesh>
+      <mesh
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[0, -4.94, -6]}
+        material={shadowMat}
+        renderOrder={2}
+      >
+        {/* Slightly larger than the bath footprint (~9 x 5.3 at scale 9). */}
+        <planeGeometry args={[11, 7]} />
       </mesh>
 
       {/* Faint beams rising from the rim lights through the haze. */}
