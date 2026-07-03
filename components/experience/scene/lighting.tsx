@@ -3,7 +3,11 @@
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
-import { Environment, Lightformer, MeshReflectorMaterial } from "@react-three/drei";
+import {
+  Environment,
+  Lightformer,
+  MeshReflectorMaterial,
+} from "@react-three/drei";
 import { RectAreaLightUniformsLib } from "three/examples/jsm/lights/RectAreaLightUniformsLib.js";
 import { useProgressStore } from "../progress-store";
 import { PHASES, phaseLocal } from "@/lib/experience/config";
@@ -93,7 +97,11 @@ export function Lighting({
     <>
       {/* Overhead fill: just enough to reveal the silhouette. No hotspots. */}
       <ambientLight intensity={0.05} />
-      <directionalLight position={[0, 12, 2]} intensity={0.08} color="#e8f2ec" />
+      <directionalLight
+        position={[0, 12, 2]}
+        intensity={0.08}
+        color="#e8f2ec"
+      />
 
       <StageSpot />
 
@@ -115,9 +123,24 @@ export function Lighting({
           source — it lives in reflections/particles, not the whole scene) and a
           neutral counter-strip. */}
       <Environment resolution={64}>
-        <Lightformer intensity={0.1} position={[0, 6, -10]} scale={[16, 9, 1]} color="#0b0e0c" />
-        <Lightformer intensity={0.28} position={[-7, 0, 2]} scale={[3, 10, 1]} color="#3d5c45" />
-        <Lightformer intensity={0.18} position={[7, 1, 3]} scale={[4, 8, 1]} color="#2b3330" />
+        <Lightformer
+          intensity={0.1}
+          position={[0, 6, -10]}
+          scale={[16, 9, 1]}
+          color="#0b0e0c"
+        />
+        <Lightformer
+          intensity={0.28}
+          position={[-7, 0, 2]}
+          scale={[3, 10, 1]}
+          color="#3d5c45"
+        />
+        <Lightformer
+          intensity={0.18}
+          position={[7, 1, 3]}
+          scale={[4, 8, 1]}
+          color="#2b3330"
+        />
       </Environment>
 
       {/* Floor: a soft-blurred REFLECTIVE surface (desktop) — the bath and the
@@ -141,7 +164,11 @@ export function Lighting({
             color="#0a0d10"
           />
         ) : (
-          <meshStandardMaterial color="#090c10" roughness={0.55} metalness={0.15} />
+          <meshStandardMaterial
+            color="#090c10"
+            roughness={0.55}
+            metalness={0.15}
+          />
         )}
       </mesh>
     </>
