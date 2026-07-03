@@ -57,7 +57,7 @@ export function Bath() {
     ref.current.position.set(0, lerp(0.5, -6.5, rise), lerp(-16, 3, rise));
   });
 
-  return <primitive ref={ref} object={prepared} scale={6} rotation={[0, 0, 0]} />;
+  return <primitive ref={ref} object={prepared} scale={9} rotation={[0, 0, 0]} />;
 }
 
 useGLTF.preload("/model-bath.glb");
