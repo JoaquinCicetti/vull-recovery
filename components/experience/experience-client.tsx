@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
+import { useProgress } from "@react-three/drei";
 import { gsap } from "gsap";
 import { ScrollToPlugin } from "gsap/ScrollToPlugin";
 import { HeroIntro } from "./hero-intro";
@@ -48,6 +49,46 @@ function SceneLayer() {
   return (
     <div ref={ref} className="absolute inset-0 z-10">
       <Scene active={active} />
+    </div>
+  );
+}
+
+// Branded loading screen: covers the hero while the scene assets (GLB, logo
+// sampling) load, then fades out. Driven by drei's global loader progress; a
+// hard timeout guarantees it can never trap the user.
+function LoadingScreen() {
+  const { active, progress } = useProgress();
+  const [gone, setGone] = useState(false);
+  const ready = !active && progress >= 100;
+
+  useEffect(() => {
+    if (!ready) return;
+    const t = setTimeout(() => setGone(true), 750); // let the fade finish
+    return () => clearTimeout(t);
+  }, [ready]);
+  useEffect(() => {
+    // Safety: if a loader never reports (cached, or an asset 404s), release anyway.
+    const t = setTimeout(() => setGone(true), 9000);
+    return () => clearTimeout(t);
+  }, []);
+
+  if (gone) return null;
+  return (
+    <div
+      aria-hidden="true"
+      className={`absolute inset-0 z-40 flex flex-col items-center justify-center gap-6 bg-black transition-opacity duration-700 ${
+        ready ? "pointer-events-none opacity-0" : "opacity-100"
+      }`}
+    >
+      <p className="animate-pulse text-4xl font-extrabold tracking-[0.3em] text-fg">
+        VULL
+      </p>
+      <div className="h-px w-44 overflow-hidden rounded-full bg-white/10">
+        <div
+          className="h-full bg-accent transition-[width] duration-300 ease-out"
+          style={{ width: `${Math.round(progress)}%` }}
+        />
+      </div>
     </div>
   );
 }
@@ -237,6 +278,7 @@ export function ExperienceClient() {
       <SceneLayer />
       <HeroIntro />
       <Captions />
+      <LoadingScreen />
     </section>
   );
 }

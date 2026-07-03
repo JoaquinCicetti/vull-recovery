@@ -58,12 +58,40 @@ function RevealKey() {
   );
 }
 
+// Soft stage light from above the bath, aimed straight down: draws a clear
+// light ellipse on the floor around the product — THE grounding cue (the bath
+// visibly stands on a lit surface instead of floating in a void).
+function StageSpot() {
+  const target = useMemo(() => {
+    const o = new THREE.Object3D();
+    o.position.set(0, -5, -6);
+    return o;
+  }, []);
+  return (
+    <>
+      <primitive object={target} />
+      <spotLight
+        position={[0, 13, -6]}
+        target={target}
+        angle={0.55}
+        penumbra={1}
+        intensity={190}
+        distance={60}
+        decay={2}
+        color="#e6efe8"
+      />
+    </>
+  );
+}
+
 export function Lighting() {
   return (
     <>
       {/* Overhead fill: just enough to reveal the silhouette. No hotspots. */}
       <ambientLight intensity={0.05} />
       <directionalLight position={[0, 12, 2]} intensity={0.08} color="#e8f2ec" />
+
+      <StageSpot />
 
       <KeyAndRim />
       <RevealKey />
@@ -88,11 +116,11 @@ export function Lighting() {
         <Lightformer intensity={0.18} position={[7, 1, 3]} scale={[4, 8, 1]} color="#2b3330" />
       </Environment>
 
-      {/* Floor: dark but PRESENT — diffuse enough not to blow out, reflective
-          enough that the key + under-glow visibly pool on it and ground the bath. */}
+      {/* Floor: visibly a surface — catches the stage spot, the key sheen and
+          the under-glow, so the horizon and the stage ellipse both read. */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -5, 0]}>
         <planeGeometry args={[140, 140]} />
-        <meshStandardMaterial color="#05070a" roughness={0.62} metalness={0.1} />
+        <meshStandardMaterial color="#090c10" roughness={0.55} metalness={0.15} />
       </mesh>
     </>
   );
