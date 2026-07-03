@@ -19,7 +19,7 @@ const ORIGIN = new THREE.Vector3(0, 0, 0);
 const UP_Y = new THREE.Vector3(0, 1, 0);
 const UP_ZENITH = new THREE.Vector3(0, 0, -1); // correct "up" when looking straight down
 
-const RADIUS = 30;
+const RADIUS = 60;
 const ORBIT_WINDOW = [0.15, 0.75] as const;
 
 export function Rig() {
