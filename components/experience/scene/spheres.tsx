@@ -99,9 +99,12 @@ export function Spheres({ count = 1600 }: { count?: number }) {
       // band around y −3.5) and ride the helical conveyor above the basin; their
       // slot is (radius, angle) in aColumn, √-sampled so the core is denser.
       if (Math.random() < 0.22) {
-        const fx = (Math.random() * 2 - 1) * 11;
-        const fy = -5 + Math.random() * 12;
-        const fz = -12 + Math.random() * 22;
+        // Wide domain: tall enough to fill the upper quarter of the hero frame
+        // (camera aims at y ~4.5 with ~12 units of half-height) and deep enough
+        // to spread well off the model in every axis.
+        const fx = (Math.random() * 2 - 1) * 14;
+        const fy = -5 + Math.random() * 20;
+        const fz = -14 + Math.random() * 28;
         floats[i * 3] = fx;
         floats[i * 3 + 1] = fy;
         floats[i * 3 + 2] = fz;
