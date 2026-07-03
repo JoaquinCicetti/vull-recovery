@@ -90,32 +90,38 @@ export function Spheres({ count = 1600 }: { count?: number }) {
     const aRandom = new Float32Array(count * 4);
     const aDelay = new Float32Array(count);
     const floats = new Float32Array(count * 3);
+    const aColumn = new Float32Array(count * 3);
     for (let i = 0; i < count; i++) {
-      // ~16% are "ambient" spheres scattered wide through the room for depth (some
+      // ~22% are "ambient" spheres scattered wide and deep through the room (some
       // at the lens, some deep in the fog); base ≈ float, so the rise barely moves
       // them — the shader drift keeps them wandering forever. The rest form the
-      // FLUX: they pool at 1/4 of the bath's height from its bottom (bath sits on
-      // the floor at y −5, 8.1 tall → band around y −3) and rise as a tall vertical
-      // COLUMN above the basin (aFloat), which the conveyor then recycles upward.
-      if (Math.random() < 0.16) {
-        const fx = (Math.random() * 2 - 1) * 9.5;
-        const fy = -5 + Math.random() * 10;
-        const fz = -9 + Math.random() * 17;
+      // FLUX: they pool at 1/4 of the bath's VISIBLE height (bath spans y −5..1 →
+      // band around y −3.5) and ride the helical conveyor above the basin; their
+      // slot is (radius, angle) in aColumn, √-sampled so the core is denser.
+      if (Math.random() < 0.22) {
+        const fx = (Math.random() * 2 - 1) * 11;
+        const fy = -5 + Math.random() * 12;
+        const fz = -12 + Math.random() * 22;
         floats[i * 3] = fx;
         floats[i * 3 + 1] = fy;
         floats[i * 3 + 2] = fz;
         bases[i * 3] = fx;
         bases[i * 3 + 1] = fy;
         bases[i * 3 + 2] = fz;
+        // aColumn stays (0,0,0): flowPos = aFloat, the sphere holds its spot.
       } else {
-        // Column above the bath: tight radius, spanning from the basin up past
-        // the zenith camera (~y 29 at radius 30) so the flux intercepts it.
-        floats[i * 3] = (Math.random() * 2 - 1) * 2.8;
-        floats[i * 3 + 1] = -4 + Math.random() * 36;
-        floats[i * 3 + 2] = -6 + (Math.random() * 2 - 1) * 2.8;
-        // Origin: pooled inside the basin, 1/4 height from the bottom.
+        const r = 3.2 * Math.sqrt(Math.random());
+        const th = Math.random() * Math.PI * 2;
+        aColumn[i * 3] = r;
+        aColumn[i * 3 + 1] = th;
+        aColumn[i * 3 + 2] = 1;
+        // aFloat only feeds the CPU touch-glow approximation for column spheres.
+        floats[i * 3] = r * Math.cos(th);
+        floats[i * 3 + 1] = 8;
+        floats[i * 3 + 2] = -6 + r * Math.sin(th);
+        // Origin: pooled inside the basin, 1/4 of the visible height up.
         bases[i * 3] = (Math.random() * 2 - 1) * 2.2;
-        bases[i * 3 + 1] = -3.0 + (Math.random() * 2 - 1) * 0.6;
+        bases[i * 3 + 1] = -3.5 + (Math.random() * 2 - 1) * 0.5;
         bases[i * 3 + 2] = -6 + (Math.random() * 2 - 1) * 1.8;
       }
       // Power-law sizes: mostly fine particles, a few large hero spheres.
@@ -141,6 +147,8 @@ export function Spheres({ count = 1600 }: { count?: number }) {
     );
     // Wide "floating across the screen" anchor the spheres rise/expand toward.
     g.setAttribute("aFloat", new THREE.InstancedBufferAttribute(floats, 3));
+    // Helix slot in the flux: (radius, angle, isColumn).
+    g.setAttribute("aColumn", new THREE.InstancedBufferAttribute(aColumn, 3));
     return { geo: g, bases, floats, scales };
   }, [count]);
 
@@ -205,9 +213,8 @@ export function Spheres({ count = 1600 }: { count?: number }) {
     const riseVal = E.expoOut(phaseLocal(p, PHASES.rise));
     uniforms.uTime.value = state.clock.elapsedTime;
     uniforms.uRise.value = riseVal;
-    // Stream blend + conveyor parameter: scroll scrubs the flow, and a slow time
-    // term keeps it running forever while the user holds mid-scene.
-    uniforms.uFlowIn.value = E.inOutSine(phaseLocal(p, PHASES.flow));
+    // Conveyor parameter: scroll scrubs the flux, and a slow time term keeps it
+    // flowing forever while the user holds mid-scene.
     uniforms.uFlow.value = p * 2.2 + state.clock.elapsedTime * 0.02;
     uniforms.uAssembly.value = targetsReady.current
       ? phaseLocal(p, PHASES.assembly)

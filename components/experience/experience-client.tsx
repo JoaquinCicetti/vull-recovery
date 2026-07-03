@@ -103,7 +103,7 @@ export function ExperienceClient() {
       raf = 0;
       if (cta) return; // the CTA tween owns progress while it runs
       const diff = target.v - current.v;
-      current.v += diff * 0.14;
+      current.v += diff * 0.09;
       if (Math.abs(diff) < 0.0006) current.v = target.v;
       setProgress(current.v);
       if (current.v !== target.v) raf = requestAnimationFrame(tick);
@@ -116,8 +116,8 @@ export function ExperienceClient() {
       kick();
     };
 
-    const WHEEL_SENS = 0.0011; // progress per wheel pixel
-    const TOUCH_SENS = 0.0016; // progress per touch pixel
+    const WHEEL_SENS = 0.00085; // progress per wheel pixel — slower, calmer ride
+    const TOUCH_SENS = 0.0013; // progress per touch pixel
     const atEnd = () => target.v >= 1 - 1e-4;
     const atStart = () => target.v <= 1e-4;
 

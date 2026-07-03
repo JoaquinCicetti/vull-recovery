@@ -44,8 +44,9 @@ export default function Scene({ active = true }: { active?: boolean }) {
         alpha: true,
         powerPreference: "high-performance",
         toneMapping: THREE.ACESFilmicToneMapping,
-        // Slight underexposure: the cinematic grade lives in the darks.
-        toneMappingExposure: 0.9,
+        // Near-neutral exposure: ACES gives the soft highlight rolloff; shadow
+        // detail is preserved rather than crushed.
+        toneMappingExposure: 0.95,
       }}
       // Long lens (~85mm equiv): compressed perspective, shallow-focus read.
       // Initial position ≈ the rig's hero framing (radius 43.8, elev 6.5°) so
@@ -53,9 +54,9 @@ export default function Scene({ active = true }: { active?: boolean }) {
       // the far side of the radius-43.8 orbit.
       camera={{ fov: 24, near: 0.1, far: 200, position: [0, 3.96, 37.5] }}
     >
-      {/* Pure-black falloff: objects separate via rim light, never a gradient.
-          Far pushed out for the radius-60 orbit — the bath is ~60 units away. */}
-      <fog attach="fog" args={["#010102", 20, 120]} />
+      {/* Almost-black (not pure) neutral falloff: the haze gives light visible
+          depth while distant geometry sinks into near-black. */}
+      <fog attach="fog" args={["#050608", 24, 130]} />
       <Lighting />
       <Suspense fallback={null}>
         <Bath />

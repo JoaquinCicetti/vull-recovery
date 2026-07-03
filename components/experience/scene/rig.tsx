@@ -5,65 +5,67 @@ import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
 import { useProgressStore } from "../progress-store";
 import { PHASES, phaseLocal } from "@/lib/experience/config";
-import { E, lerp } from "@/lib/experience/easing";
+import { E } from "@/lib/experience/easing";
 
-// Camera choreography — a CONSTANT-RADIUS circular arc around the bath, always
-// pointing at it:
-//   hero  — FAR away (radius 30), a bit up (30° elevation), aimed at the bath
-//   flow  — rides the arc up to the bath's ZENITH, same distance the whole way,
-//           intercepting the column of spheres rising out of the basin
-//   logo  — swings back down to a front-center framing as the mark assembles
-const PIVOT = new THREE.Vector3(0, -1, -6); // bath center — the aim, always
-const END_POS = new THREE.Vector3(0, 0, 13.5); // front-center for the logo reveal
+// ONE continuous camera path (Catmull-Rom, arc-length sampled) instead of the
+// old piecewise orbit — no velocity kinks between phases, so the ride feels like
+// a single dolly move: hero framing → lift over the left shoulder → near-zenith
+// above the bath (inside the rising column) → swing down front for the logo.
+// On top of the spline, position/aim are exponentially damped so raw scroll
+// steps never reach the camera — buttery even on notchy mouse wheels.
+const PATH = new THREE.CatmullRomCurve3(
+  [
+    new THREE.Vector3(0, 4, 37.5), // hero — the user-approved framing (r 43.8, 6.5°)
+    new THREE.Vector3(-7, 13, 27), // lift, drifting left (asymmetric, cinematic)
+    new THREE.Vector3(-6, 26, 10), // climbing over the bath
+    new THREE.Vector3(0, 33, -3), // near-zenith, inside the ball column
+    new THREE.Vector3(5, 18, 6), // swing down, easing right
+    new THREE.Vector3(0, 0, 13.5), // front-center for the logo reveal
+  ],
+  false,
+  "centripetal",
+);
+
+const AIM_BATH = new THREE.Vector3(0, -1.5, -6); // slightly above the bath center
 const ORIGIN = new THREE.Vector3(0, 0, 0);
 const UP_Y = new THREE.Vector3(0, 1, 0);
-const UP_ZENITH = new THREE.Vector3(0, 0, -1); // correct "up" when looking straight down
-
-const RADIUS = 43.8; // from the debug camera (radiusFromBath)
-const HERO_PHI = (6.5 * Math.PI) / 180; // hero elevation 6.5° (debug camera)
-const ZENITH_PHI = 1.5; // ~86°, nearly straight down over the basin
-const ORBIT_WINDOW = [0.15, 0.75] as const;
+const UP_ZENITH = new THREE.Vector3(0, 0, -1); // stable "up" when looking straight down
 
 export function Rig() {
-  // Scratch vectors — reused every frame, no per-frame allocation.
+  // Damped state + scratch vectors — reused every frame, no allocation.
   const v = useMemo(
     () => ({
-      pos: new THREE.Vector3(),
-      aim: new THREE.Vector3(),
-      up: new THREE.Vector3(),
-      orbitPos: new THREE.Vector3(),
-      orbitAim: new THREE.Vector3(),
-      orbitUp: new THREE.Vector3(),
+      pos: PATH.getPointAt(0).clone(),
+      aim: AIM_BATH.clone(),
+      targetPos: new THREE.Vector3(),
+      targetAim: new THREE.Vector3(),
+      dir: new THREE.Vector3(),
+      up: new THREE.Vector3(0, 1, 0),
     }),
     [],
   );
 
-  useFrame((state) => {
+  useFrame((state, dt) => {
     const p = useProgressStore.getState().progress;
-    const orbit = E.inOutSine(phaseLocal(p, ORBIT_WINDOW));
     const asm = E.quintOut(phaseLocal(p, PHASES.assembly));
     const cam = state.camera;
 
-    // Circle arc around the bath: hero elevation → ~86° (zenith) at a CONSTANT
-    // radius — the camera never moves closer, it only rides the arc.
-    const phi = lerp(HERO_PHI, ZENITH_PHI, orbit);
-    v.orbitPos
-      .set(0, Math.sin(phi) * RADIUS, Math.cos(phi) * RADIUS)
-      .add(PIVOT);
+    // Arc-length sampling → constant travel speed along the whole path.
+    PATH.getPointAt(Math.min(1, Math.max(0, p)), v.targetPos);
+    // Aim rides the bath the whole way, easing to the logo plane at the end.
+    v.targetAim.copy(AIM_BATH).lerp(ORIGIN, asm);
 
-    // Blend the up vector near the top of the arc — lookAt with +Y up degenerates
-    // when the view direction approaches straight down.
-    const t = Math.min(1, Math.max(0, (orbit - 0.55) / 0.4));
-    const upBlend = t * t * (3 - 2 * t);
-    v.orbitUp.copy(UP_Y).lerp(UP_ZENITH, upBlend).normalize();
+    // Frame-rate-independent exponential damping (the smoothness).
+    const k = 1 - Math.exp(-4.5 * Math.min(dt, 0.05));
+    v.pos.lerp(v.targetPos, k);
+    v.aim.lerp(v.targetAim, k);
 
-    // Always pointing at the bath — the aim never leaves it during the orbit.
-    v.orbitAim.copy(PIVOT);
-
-    // Assembly: swing down from the zenith to a front-center logo framing.
-    v.pos.copy(v.orbitPos).lerp(END_POS, asm);
-    v.up.copy(v.orbitUp).lerp(UP_Y, asm).normalize();
-    v.aim.copy(v.orbitAim).lerp(ORIGIN, asm);
+    // Up vector from view verticality: blends to (0,0,-1) as the view approaches
+    // straight down, so lookAt never degenerates near the zenith.
+    v.dir.copy(v.aim).sub(v.pos).normalize();
+    const vert = Math.min(1, Math.max(0, (Math.abs(v.dir.y) - 0.78) / 0.18));
+    const s = vert * vert * (3 - 2 * vert);
+    v.up.copy(UP_Y).lerp(UP_ZENITH, s).normalize();
 
     cam.position.copy(v.pos);
     cam.up.copy(v.up);
