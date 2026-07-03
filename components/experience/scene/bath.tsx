@@ -1,12 +1,8 @@
 "use client";
 
-import { useMemo, useRef } from "react";
+import { useMemo } from "react";
 import * as THREE from "three";
-import { useFrame } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
-import { useProgressStore } from "../progress-store";
-import { PHASES, phaseLocal } from "@/lib/experience/config";
-import { E, lerp } from "@/lib/experience/easing";
 
 // The recovery-bath centerpiece, presented CONCEPTUALLY: the source model is
 // low-res with a typo'd texture, so instead of showing it literally we read it as
@@ -15,7 +11,6 @@ import { E, lerp } from "@/lib/experience/easing";
 // front face (where the typo lives) stays dark.
 export function Bath() {
   const { scene } = useGLTF("/model-bath.glb");
-  const ref = useRef<THREE.Group>(null);
 
   const prepared = useMemo(() => {
     scene.traverse((o) => {
@@ -48,16 +43,12 @@ export function Bath() {
     return scene;
   }, [scene]);
 
-  useFrame(() => {
-    if (!ref.current) return;
-    const rise = E.inOutSine(
-      phaseLocal(useProgressStore.getState().progress, PHASES.rise),
-    );
-    // Far + middle → closer + sinking to the bottom as the spheres rise out.
-    ref.current.position.set(0, lerp(0.5, -6.5, rise), lerp(-16, 3, rise));
-  });
-
-  return <primitive ref={ref} object={prepared} scale={9} rotation={[0, 0, 0]} />;
+  // STATIC: the bath sits on the floor (y −5; model is ~0.9 tall centered, so
+  // scale 9 → half-height ~4.05). The CAMERA does all the traveling now — it
+  // orbits from a distant 30° view up to the bath's zenith (see rig.tsx).
+  return (
+    <primitive object={prepared} position={[0, -0.95, -6]} scale={9} rotation={[0, 0, 0]} />
+  );
 }
 
 useGLTF.preload("/model-bath.glb");

@@ -91,29 +91,32 @@ export function Spheres({ count = 1600 }: { count?: number }) {
     const aDelay = new Float32Array(count);
     const floats = new Float32Array(count * 3);
     for (let i = 0; i < count; i++) {
-      // END OF RISE: floating across the whole screen (the wide "floating" scene).
-      // Deep z spread for the cinematic read: some spheres drift right up to the
-      // lens (DoF melts them into bokeh), some hang behind the bath in the fog.
-      const fx = (Math.random() * 2 - 1) * 9.5;
-      const fy = -5 + Math.random() * 10;
-      const fz = -9 + Math.random() * 17;
-      floats[i * 3] = fx;
-      floats[i * 3 + 1] = fy;
-      floats[i * 3 + 2] = fz;
-      // ~16% are "ambient" spheres: they already live out in the open (base ≈ float),
-      // so the rise barely moves them — the shader drift just keeps them wandering
-      // forever. The rest START pooled tight in the FAR bath's middle-bottom (a small,
-      // dense cluster, not a scattered field) and rise/expand out of it.
+      // ~16% are "ambient" spheres scattered wide through the room for depth (some
+      // at the lens, some deep in the fog); base ≈ float, so the rise barely moves
+      // them — the shader drift keeps them wandering forever. The rest form the
+      // FLUX: they pool at 1/4 of the bath's height from its bottom (bath sits on
+      // the floor at y −5, 8.1 tall → band around y −3) and rise as a tall vertical
+      // COLUMN above the basin (aFloat), which the conveyor then recycles upward.
       if (Math.random() < 0.16) {
+        const fx = (Math.random() * 2 - 1) * 9.5;
+        const fy = -5 + Math.random() * 10;
+        const fz = -9 + Math.random() * 17;
+        floats[i * 3] = fx;
+        floats[i * 3 + 1] = fy;
+        floats[i * 3 + 2] = fz;
         bases[i * 3] = fx;
         bases[i * 3 + 1] = fy;
         bases[i * 3 + 2] = fz;
       } else {
-        // Cluster centered ~0.25 × the bath's height (≈1.35 units) above where it
-        // would sit at the basin floor, so the group reads a touch higher in the bath.
-        bases[i * 3] = (Math.random() * 2 - 1) * 1.3;
-        bases[i * 3 + 1] = -1.25 + Math.random() * 1.5;
-        bases[i * 3 + 2] = -16 + (Math.random() * 2 - 1) * 1.5;
+        // Column above the bath: tight radius, spanning from the basin up past
+        // the zenith camera (~y 10) so the flux visibly intercepts it.
+        floats[i * 3] = (Math.random() * 2 - 1) * 2.8;
+        floats[i * 3 + 1] = -4 + Math.random() * 20;
+        floats[i * 3 + 2] = -6 + (Math.random() * 2 - 1) * 2.8;
+        // Origin: pooled inside the basin, 1/4 height from the bottom.
+        bases[i * 3] = (Math.random() * 2 - 1) * 2.2;
+        bases[i * 3 + 1] = -3.0 + (Math.random() * 2 - 1) * 0.6;
+        bases[i * 3 + 2] = -6 + (Math.random() * 2 - 1) * 1.8;
       }
       // Power-law sizes: mostly fine particles, a few large hero spheres.
       scales[i] = 0.035 + Math.pow(Math.random(), 1.7) * 0.19;
