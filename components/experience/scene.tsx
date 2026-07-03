@@ -48,7 +48,10 @@ export default function Scene({ active = true }: { active?: boolean }) {
         toneMappingExposure: 0.9,
       }}
       // Long lens (~85mm equiv): compressed perspective, shallow-focus read.
-      camera={{ fov: 24, near: 0.1, far: 100, position: [0, 0, 18] }}
+      // Initial position ≈ the rig's hero framing (radius 43.8, elev 6.5°) so
+      // there's no first-frame pop before the Rig takes over. far raised to clear
+      // the far side of the radius-43.8 orbit.
+      camera={{ fov: 24, near: 0.1, far: 200, position: [0, 3.96, 37.5] }}
     >
       {/* Pure-black falloff: objects separate via rim light, never a gradient.
           Far pushed out for the radius-60 orbit — the bath is ~60 units away. */}
