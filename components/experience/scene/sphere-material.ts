@@ -87,7 +87,7 @@ export function makeSphereMaterial(): {
           // widening slightly as it climbs (organic, not a hard cylinder).
           // Ambient spheres (aColumn.z = 0) simply hold their scattered spot.
           float ft = fract(aRandom.w + uFlow * (0.7 + aRandom.x * 0.6));
-          float ang = aColumn.y + uTime * (0.05 + 0.08 * aRandom.y) + ft * 2.0;
+          float ang = aColumn.y + uTime * (0.04 + 0.06 * aRandom.y) + ft * 1.2;
           float rad = aColumn.x * (0.72 + 0.55 * ft);
           vec3 columnFlow = vec3(rad * cos(ang), mix(-4.5, 36.0, ft), -6.0 + rad * sin(ang));
           vec3 flowPos = mix(aFloat, columnFlow, aColumn.z);
