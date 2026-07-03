@@ -3,7 +3,7 @@
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
-import { Environment, Lightformer } from "@react-three/drei";
+import { Environment, Lightformer, MeshReflectorMaterial } from "@react-three/drei";
 import { RectAreaLightUniformsLib } from "three/examples/jsm/lights/RectAreaLightUniformsLib.js";
 import { useProgressStore } from "../progress-store";
 import { PHASES, phaseLocal } from "@/lib/experience/config";
@@ -84,7 +84,11 @@ function StageSpot() {
   );
 }
 
-export function Lighting() {
+export function Lighting({
+  reflectiveFloor = true,
+}: {
+  reflectiveFloor?: boolean;
+}) {
   return (
     <>
       {/* Overhead fill: just enough to reveal the silhouette. No hotspots. */}
@@ -116,11 +120,29 @@ export function Lighting() {
         <Lightformer intensity={0.18} position={[7, 1, 3]} scale={[4, 8, 1]} color="#2b3330" />
       </Environment>
 
-      {/* Floor: visibly a surface — catches the stage spot, the key sheen and
-          the under-glow, so the horizon and the stage ellipse both read. */}
+      {/* Floor: a soft-blurred REFLECTIVE surface (desktop) — the bath and the
+          flux visibly mirror beneath themselves, which welds them to the floor
+          in a way no light pool can. Mobile keeps the cheap standard material
+          (the reflector renders the scene an extra time). */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -5, 0]}>
         <planeGeometry args={[140, 140]} />
-        <meshStandardMaterial color="#090c10" roughness={0.55} metalness={0.15} />
+        {reflectiveFloor ? (
+          <MeshReflectorMaterial
+            blur={[280, 90]}
+            resolution={512}
+            mixBlur={1}
+            mixStrength={5}
+            depthScale={1.2}
+            minDepthThreshold={0.4}
+            maxDepthThreshold={1.4}
+            roughness={0.65}
+            metalness={0.25}
+            mirror={0.45}
+            color="#0a0d10"
+          />
+        ) : (
+          <meshStandardMaterial color="#090c10" roughness={0.55} metalness={0.15} />
+        )}
       </mesh>
     </>
   );

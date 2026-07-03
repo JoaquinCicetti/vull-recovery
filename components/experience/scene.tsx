@@ -56,7 +56,7 @@ export default function Scene({ active = true }: { active?: boolean }) {
       {/* Almost-black (not pure) neutral falloff: the haze gives light visible
           depth while distant geometry sinks into near-black. */}
       <fog attach="fog" args={["#050608", 24, 130]} />
-      <Lighting />
+      <Lighting reflectiveFloor={!isMobile} />
       <Suspense fallback={null}>
         <Bath />
       </Suspense>
