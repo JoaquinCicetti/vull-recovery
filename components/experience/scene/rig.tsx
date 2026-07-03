@@ -19,7 +19,9 @@ const ORIGIN = new THREE.Vector3(0, 0, 0);
 const UP_Y = new THREE.Vector3(0, 1, 0);
 const UP_ZENITH = new THREE.Vector3(0, 0, -1); // correct "up" when looking straight down
 
-const RADIUS = 60;
+const RADIUS = 43.8; // from the debug camera (radiusFromBath)
+const HERO_PHI = (6.5 * Math.PI) / 180; // hero elevation 6.5° (debug camera)
+const ZENITH_PHI = 1.5; // ~86°, nearly straight down over the basin
 const ORBIT_WINDOW = [0.15, 0.75] as const;
 
 export function Rig() {
@@ -42,9 +44,9 @@ export function Rig() {
     const asm = E.quintOut(phaseLocal(p, PHASES.assembly));
     const cam = state.camera;
 
-    // Circle arc around the bath: elevation 30° → ~86° (zenith) at a CONSTANT
+    // Circle arc around the bath: hero elevation → ~86° (zenith) at a CONSTANT
     // radius — the camera never moves closer, it only rides the arc.
-    const phi = lerp(Math.PI / 6, 1.5, orbit);
+    const phi = lerp(HERO_PHI, ZENITH_PHI, orbit);
     v.orbitPos
       .set(0, Math.sin(phi) * RADIUS, Math.cos(phi) * RADIUS)
       .add(PIVOT);
