@@ -8,6 +8,7 @@ import {
   PerformanceMonitor,
 } from "@react-three/drei";
 import * as THREE from "three";
+import { INTRO_FROM } from "@/lib/experience/intro";
 import { Spheres } from "./scene/spheres";
 import { Lighting } from "./scene/lighting";
 import { Rig } from "./scene/rig";
@@ -58,9 +59,14 @@ export default function Scene({ active = true }: { active?: boolean }) {
         toneMappingExposure: 0.95,
       }}
       // Long lens (~85mm equiv): compressed perspective, shallow-focus read.
-      // Initial position = the rig path's hero point so there's no first-frame
-      // pop before the Rig takes over.
-      camera={{ fov: 24, near: 0.1, far: 200, position: [0, 6, 50] }}
+      // Initial position = the entry point the intro pushes in FROM, so there's no
+      // first-frame pop before the Rig takes over.
+      camera={{
+        fov: 24,
+        near: 0.1,
+        far: 200,
+        position: [INTRO_FROM.x, INTRO_FROM.y, INTRO_FROM.z],
+      }}
     >
       {/* Almost-black (not pure) neutral falloff: the haze gives light visible
           depth while distant geometry sinks into near-black. */}
