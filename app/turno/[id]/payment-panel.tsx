@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { UploadIcon } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { uploadReceipt as uploadReceiptToStorage } from "@/lib/receipt-upload";
 import { formatARS, TRANSFER_ALIAS } from "@/lib/site";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -46,28 +47,21 @@ export function PaymentPanel({
   async function uploadReceipt(file: File) {
     setUploading(true);
     setError(null);
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
+    const res = await uploadReceiptToStorage(supabase, {
+      file,
+      pathPrefix: bookingId,
+    });
+    if (!res.ok) {
       setUploading(false);
-      setError("Tu sesión expiró. Ingresá de nuevo.");
-      return;
-    }
-    const ext = file.name.split(".").pop() || "jpg";
-    const path = `${user.id}/${bookingId}-${Date.now()}.${ext}`;
-    const up = await supabase.storage.from("receipts").upload(path, file);
-    if (up.error) {
-      setUploading(false);
-      setError("No se pudo subir el comprobante.");
+      setError(res.message);
       return;
     }
     const { error: fnErr } = await supabase.functions.invoke("create-payment", {
-      body: { booking_id: bookingId, method: "manual", receipt_path: path },
+      body: { booking_id: bookingId, method: "manual", receipt_path: res.path },
     });
     setUploading(false);
     if (fnErr) {
-      setError("No se pudo registrar el comprobante.");
+      setError("No se pudo registrar el comprobante. Probá de nuevo.");
       return;
     }
     router.refresh();
@@ -120,6 +114,7 @@ export function PaymentPanel({
           className="mt-3"
           accept={{ "image/*": [], "application/pdf": [] }}
           maxFiles={1}
+          maxSize={20 * 1024 * 1024}
           disabled={uploading}
           src={receipt}
           onDrop={(files) => {
@@ -128,7 +123,13 @@ export function PaymentPanel({
             setReceipt(files);
             uploadReceipt(file);
           }}
-          onError={() => setError("Ese archivo no se puede subir.")}
+          onError={(e) =>
+            setError(
+              /larger|size/i.test(e?.message ?? "")
+                ? "El archivo es muy grande (máximo 20 MB)."
+                : "Ese archivo no se puede subir.",
+            )
+          }
         >
           <DropzoneEmptyState>
             <div className="flex flex-col items-center justify-center">
