@@ -5,7 +5,14 @@ import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
 import { useProgressStore } from "../progress-store";
 import { PHASES, phaseLocal } from "@/lib/experience/config";
-import { E } from "@/lib/experience/easing";
+import { E, clamp01 } from "@/lib/experience/easing";
+import {
+  CAMERA_DUR,
+  INTRO_AIM_Y,
+  INTRO_FROM,
+  SCROLL_CANCEL,
+  introSeconds,
+} from "@/lib/experience/intro";
 
 // ONE continuous camera path (Catmull-Rom, arc-length sampled) instead of the
 // old piecewise orbit — no velocity kinks between phases, so the ride feels like
@@ -33,6 +40,7 @@ const AIM_HERO = new THREE.Vector3(0, 4.5, -6); // bath a touch below center, no
 const AIM_BATH = new THREE.Vector3(0, -2, -6); // near the bath center
 const AIM_WINDOW = [0.08, 0.4] as const;
 const ORIGIN = new THREE.Vector3(0, 0, 0);
+const INTRO_AIM = new THREE.Vector3(0, INTRO_AIM_Y, -6); // eases down onto AIM_HERO
 const UP_Y = new THREE.Vector3(0, 1, 0);
 const UP_ZENITH = new THREE.Vector3(0, 0, -1); // stable "up" when looking straight down
 
@@ -40,8 +48,12 @@ export function Rig() {
   // Damped state + scratch vectors — reused every frame, no allocation.
   const v = useMemo(
     () => ({
-      pos: PATH.getPointAt(0).clone(),
-      aim: AIM_HERO.clone(),
+      // Starts at the ENTRY point, not the path head. While the veil is up the
+      // camera waits out here; if it started on the path, the intro target would
+      // pull it backwards and the entrance would play in reverse.
+      pos: INTRO_FROM.clone(),
+      aim: INTRO_AIM.clone(),
+      pathPos: new THREE.Vector3(),
       targetPos: new THREE.Vector3(),
       targetAim: new THREE.Vector3(),
       dir: new THREE.Vector3(),
@@ -51,16 +63,29 @@ export function Rig() {
   );
 
   useFrame((state, dt) => {
-    const p = useProgressStore.getState().progress;
+    const { progress: p, introAt } = useProgressStore.getState();
     const asm = E.quintOut(phaseLocal(p, PHASES.assembly));
     const aimDrop = E.inOutSine(phaseLocal(p, AIM_WINDOW));
     const cam = state.camera;
 
+    // Entry weight: 0 behind the veil (introSeconds returns 0 while introAt is
+    // null), easing to 1 over CAMERA_DUR. Any real scroll forces it to 1 — the user
+    // asked to move, so the spline takes the camera and the entrance is abandoned.
+    const w = Math.max(
+      E.expoOut(clamp01(introSeconds(introAt) / CAMERA_DUR)),
+      clamp01(p / SCROLL_CANCEL),
+    );
+
     // Arc-length sampling → constant travel speed along the whole path.
-    PATH.getPointAt(Math.min(1, Math.max(0, p)), v.targetPos);
+    PATH.getPointAt(clamp01(p), v.pathPos);
     // Aim: above the bath (hero, bath in the bottom half) → onto the bath as the
     // ride starts → the logo plane at the end.
     v.targetAim.copy(AIM_HERO).lerp(AIM_BATH, aimDrop).lerp(ORIGIN, asm);
+
+    // Blend the entrance in front of all of it. At w = 1 both lines are identities,
+    // so the scroll ride is bit-for-bit what it was before the intro existed.
+    v.targetPos.lerpVectors(INTRO_FROM, v.pathPos, w);
+    v.targetAim.lerpVectors(INTRO_AIM, v.targetAim, w);
 
     // Frame-rate-independent exponential damping (the smoothness).
     const k = 1 - Math.exp(-4.5 * Math.min(dt, 0.05));

@@ -58,19 +58,27 @@ function SceneLayer() {
 // hard timeout guarantees it can never trap the user.
 function LoadingScreen() {
   const { active, progress } = useProgress();
+  const beginIntro = useProgressStore((s) => s.beginIntro);
   const [gone, setGone] = useState(false);
   const ready = !active && progress >= 100;
 
   useEffect(() => {
     if (!ready) return;
+    beginIntro(); // lights come up behind the last of the fade
     const t = setTimeout(() => setGone(true), 750); // let the fade finish
     return () => clearTimeout(t);
-  }, [ready]);
+  }, [ready, beginIntro]);
   useEffect(() => {
     // Safety: if a loader never reports (cached, or an asset 404s), release anyway.
-    const t = setTimeout(() => setGone(true), 9000);
+    // beginIntro() must fire here too and not only on `ready`: the lights and the
+    // camera are gated on the intro clock, so releasing the veil without starting
+    // it would reveal an unlit scene, forever. beginIntro is idempotent.
+    const t = setTimeout(() => {
+      beginIntro();
+      setGone(true);
+    }, 9000);
     return () => clearTimeout(t);
-  }, []);
+  }, [beginIntro]);
 
   if (gone) return null;
   return (
