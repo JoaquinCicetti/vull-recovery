@@ -28,10 +28,11 @@ export function makeSphereMaterial(): {
     roughness: 0.45,
     metalness: 0.0,
     envMapIntensity: 0.5,
-    // Barely translucent (depthWrite stays on — one instanced draw call, so
-    // real sorting isn't possible anyway).
-    transparent: true,
-    opacity: 0.97,
+    // Opaque on purpose. These were `transparent` at opacity 0.97 — visually
+    // solid, but it disabled early-Z, so a dense column of instances re-shaded
+    // every overlapping fragment. The per-instance `vAlpha` variance survives as
+    // a brightness multiply in the fragment shader: the scene composites over
+    // near-black, where dimming and alpha read the same.
   });
 
   const uniforms: SphereUniforms = {
@@ -147,8 +148,7 @@ export function makeSphereMaterial(): {
       .replace(
         "#include <color_fragment>",
         `#include <color_fragment>
-        diffuseColor.rgb *= vTint * vDim;
-        diffuseColor.a *= vAlpha;
+        diffuseColor.rgb *= vTint * vDim * vAlpha;
         diffuseColor.rgb = mix(diffuseColor.rgb, uAccent, vGreen * 0.85);`,
       )
       .replace(

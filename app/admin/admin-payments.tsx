@@ -61,18 +61,30 @@ export function AdminPayments({
 
   // Generate the signed receipt URL on demand (no N+1 at page load). Open a tab
   // synchronously so the popup isn't blocked, then point it at the signed URL.
+  //
+  // The feature string must NOT contain `noopener`: window.open() returns null
+  // whenever it is present, so we'd have no handle to navigate. We drop the
+  // opener by hand instead, which buys the same protection.
   async function viewReceipt(id: string, path: string) {
     setOpeningReceipt(id);
-    const win = window.open("", "_blank", "noopener,noreferrer");
-    const { data } = await supabase.storage
+    const win = window.open("about:blank", "_blank");
+    if (win) win.opener = null;
+
+    const { data, error } = await supabase.storage
       .from("receipts")
       .createSignedUrl(path, 120);
     setOpeningReceipt(null);
-    if (data?.signedUrl && win) win.location.href = data.signedUrl;
-    else {
+
+    if (!data?.signedUrl) {
+      console.error("signed receipt url failed:", error);
       win?.close();
       setErrors((e) => ({ ...e, [id]: "No se pudo abrir el comprobante." }));
+      return;
     }
+
+    // Popup blocked: fall back to a direct open, which needs no handle.
+    if (win) win.location.replace(data.signedUrl);
+    else window.open(data.signedUrl, "_blank", "noopener,noreferrer");
   }
 
   if (payments.length === 0) {
