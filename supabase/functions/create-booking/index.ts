@@ -72,6 +72,14 @@ Deno.serve(async (req) => {
       return json({ error: "Servicio no disponible" }, 404);
     }
 
+    // A pack's price_ars is the price of the WHOLE pack. Booking one without
+    // spending a credit would fall through to the ordinary paid path below and
+    // bill that full price for a single session, so packs are credit-only. The
+    // UI redirects to /comprar before this, but the invariant belongs here.
+    if (service.sessions_included > 1 && !use_credit) {
+      return json({ error: "Comprá el pack para reservar estas sesiones." }, 400);
+    }
+
     const start = new Date(starts_at);
     if (isNaN(start.getTime())) return json({ error: "Fecha inválida" }, 400);
     if (start.getTime() < Date.now()) {

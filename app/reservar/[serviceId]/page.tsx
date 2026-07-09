@@ -1,8 +1,9 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { getService } from "@/lib/services";
 import { getUserAndProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { getMyBalances } from "@/lib/credits";
+import { isPack } from "@/lib/types";
 import { formatARS } from "@/lib/site";
 import { localDate } from "@/lib/format";
 import { PageShell } from "@/components/ui/page-shell";
@@ -36,6 +37,12 @@ export default async function ReservarPage({
     credits = balances[service.id] ?? 0;
   }
 
+  // A pack's price_ars buys the WHOLE pack. Booking it without a credit would take
+  // the ordinary paid path and charge that full price for a single session, so send
+  // anyone holding no credit to the purchase page instead. Past this line the
+  // invariant holds: if you can see a pack's booking flow, you have a credit to spend.
+  if (isPack(service) && credits === 0) redirect(`/comprar/${service.id}`);
+
   return (
     <PageShell
       ambient
@@ -44,7 +51,7 @@ export default async function ReservarPage({
       description={
         <span>
           <span className="font-mono text-lg font-semibold text-accent">
-            {formatARS(service.price_ars)}
+            {credits > 0 ? "1 crédito" : formatARS(service.price_ars)}
           </span>
           <span className="text-fg-faint"> · {service.duration_minutes} min</span>
           {service.description && (

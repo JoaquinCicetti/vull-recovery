@@ -1,10 +1,13 @@
 import { requireUser } from "@/lib/auth";
+import { getMyCredits } from "@/lib/credits";
 import { ProfileForm } from "./profile-form";
+import { CreditsSection } from "@/components/credits-section";
 import { PageShell } from "@/components/ui/page-shell";
 import type { Profile } from "@/lib/types";
 
 export default async function CuentaPage() {
   const { user, profile } = await requireUser("/cuenta");
+  const credits = await getMyCredits();
 
   const initial: Profile = profile ?? {
     id: user!.id,
@@ -23,6 +26,7 @@ export default async function CuentaPage() {
         <span className="font-mono text-fg-faint">{user!.email}</span>
       }
     >
+      <CreditsSection credits={credits} />
       <div className="surface-card surface-lift animate-fade-up p-6">
         <ProfileForm profile={initial} />
       </div>

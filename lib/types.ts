@@ -21,6 +21,13 @@ export type Service = {
   validity_days: number | null;
 };
 
+// A pack is a plan that includes more than one session. Lives here rather than in
+// lib/credits.ts so client components can use it without pulling in the server
+// Supabase client.
+export function isPack(s: Pick<Service, "sessions_included">): boolean {
+  return s.sessions_included > 1;
+}
+
 // A per-user, per-service appointment-credit balance (from my_credit_balances()).
 export type CreditBalance = {
   service_id: string;

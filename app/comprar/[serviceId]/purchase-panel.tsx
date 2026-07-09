@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { UploadIcon } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -79,6 +80,9 @@ export function PurchasePanel({
     setDone(true);
   }
 
+  // Deliberately no "reservar" call to action here: a transfer stays `pending`
+  // until an admin approves the receipt, and grant_pack_credits refuses until
+  // then — so the credits do not exist yet and a booking link would dead-end.
   if (done) {
     return (
       <Card className="mt-6">
@@ -88,6 +92,12 @@ export function PurchasePanel({
             Verificamos la transferencia y acreditamos tus sesiones. Te avisamos
             por WhatsApp cuando queden disponibles.
           </p>
+          <Link
+            href="/mis-turnos"
+            className="mt-4 inline-block text-sm font-medium text-accent underline underline-offset-4"
+          >
+            Ver mis créditos
+          </Link>
         </CardContent>
       </Card>
     );
