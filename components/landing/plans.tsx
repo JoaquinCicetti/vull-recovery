@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { motion, type Variants } from "framer-motion";
 import { formatARS, waLink } from "@/lib/site";
-import type { Service } from "@/lib/types";
+import { isPack, type Service } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -28,7 +28,16 @@ const card: Variants = {
   },
 };
 
-export function Plans({ services }: { services: Service[] }) {
+// `balances` maps service id -> live credits the signed-in user holds for it
+// (empty when signed out). The call to action follows the BALANCE, not the shape
+// of the plan: holding credits means the next step is booking, not buying again.
+export function Plans({
+  services,
+  balances = {},
+}: {
+  services: Service[];
+  balances?: Record<string, number>;
+}) {
   return (
     <section
       id="planes"
@@ -71,7 +80,9 @@ export function Plans({ services }: { services: Service[] }) {
             viewport={{ once: true, margin: "-10%" }}
             className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-3"
           >
-            {services.map((s) => (
+            {services.map((s) => {
+              const credits = balances[s.id] ?? 0;
+              return (
               <motion.div key={s.id} variants={card} className="h-full">
                 <Card className="surface-lift group relative flex h-full flex-col rounded-2xl ring-0 transition-all duration-300 [--card-spacing:--spacing(6)] hover:-translate-y-1.5 hover:border-accent/50 hover:shadow-[0_28px_70px_-28px_rgba(97,179,59,0.65)] has-data-[slot=card-footer]:pb-(--card-spacing)">
                   {/* hover glow */}
@@ -87,28 +98,41 @@ export function Plans({ services }: { services: Service[] }) {
                     )}
                   </CardHeader>
                   <CardContent className="relative mt-auto flex items-end justify-between">
+                    {/* Already paid for: show what's left, not what it costs. */}
                     <span className="font-mono text-3xl font-semibold tracking-tight text-fg">
-                      {formatARS(s.price_ars)}
+                      {credits > 0 ? (
+                        <span className="text-accent">
+                          {credits}{" "}
+                          <span className="text-base font-medium">
+                            {credits === 1 ? "sesión" : "sesiones"}
+                          </span>
+                        </span>
+                      ) : (
+                        formatARS(s.price_ars)
+                      )}
                     </span>
                     <Badge
                       variant="secondary"
                       className="h-auto rounded-md px-2.5 py-1 font-mono font-medium text-fg-muted"
                     >
-                      {s.sessions_included > 1
+                      {isPack(s)
                         ? `${s.sessions_included} sesiones`
                         : `${s.duration_minutes} min`}
                     </Badge>
                   </CardContent>
                   <CardFooter className="relative border-t-0 bg-transparent p-0 px-(--card-spacing)">
                     <Button asChild size="lg" className="w-full">
-                      <Link href={s.sessions_included > 1 ? `/comprar/${s.id}` : `/reservar/${s.id}`}>
-                        {s.sessions_included > 1 ? "Comprar pack" : "Reservar"}
-                      </Link>
+                      {isPack(s) && credits === 0 ? (
+                        <Link href={`/comprar/${s.id}`}>Comprar pack</Link>
+                      ) : (
+                        <Link href={`/reservar/${s.id}`}>Reservar</Link>
+                      )}
                     </Button>
                   </CardFooter>
                 </Card>
               </motion.div>
-            ))}
+              );
+            })}
           </motion.div>
         )}
       </div>
