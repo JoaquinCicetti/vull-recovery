@@ -1,8 +1,12 @@
 "use client";
 
-import { Suspense, useRef } from "react";
+import { Suspense, useRef, useState } from "react";
 import { Canvas } from "@react-three/fiber";
-import { AdaptiveEvents, OrbitControls } from "@react-three/drei";
+import {
+  AdaptiveEvents,
+  OrbitControls,
+  PerformanceMonitor,
+} from "@react-three/drei";
 import * as THREE from "three";
 import { Spheres } from "./scene/spheres";
 import { Lighting } from "./scene/lighting";
@@ -30,6 +34,11 @@ export default function Scene({ active = true }: { active?: boolean }) {
     typeof window !== "undefined" &&
     window.location.search.includes("debugcam");
   const camRef = useRef<THREE.Camera | null>(null);
+  // Every post pass and render target is allocated at dpr², so this is the
+  // cheapest lever under load. Start at 1.5 (SMAA handles the edges) and let
+  // PerformanceMonitor drop us to 1 if the frame budget slips. We never climb
+  // back — re-inclining thrashes the render targets.
+  const [dpr, setDpr] = useState(isMobile ? 1 : 1.5);
 
   return (
     <>
@@ -38,7 +47,7 @@ export default function Scene({ active = true }: { active?: boolean }) {
         camRef.current = state.camera;
       }}
       frameloop={active ? "always" : "never"}
-      dpr={[1, isMobile ? 1.5 : 2]}
+      dpr={dpr}
       gl={{
         antialias: false,
         alpha: true,
@@ -56,7 +65,12 @@ export default function Scene({ active = true }: { active?: boolean }) {
       {/* Almost-black (not pure) neutral falloff: the haze gives light visible
           depth while distant geometry sinks into near-black. */}
       <fog attach="fog" args={["#050608", 24, 130]} />
-      <Lighting reflectiveFloor={!isMobile} />
+      <PerformanceMonitor
+        flipflops={3}
+        onDecline={() => setDpr(1)}
+        onFallback={() => setDpr(1)}
+      />
+      <Lighting />
       <Suspense fallback={null}>
         <Bath />
       </Suspense>
