@@ -14,7 +14,11 @@ import { json, errMessage } from "../_shared/cors.ts";
 import { adminClient } from "../_shared/supabase.ts";
 import { getOperationByReference } from "../_shared/mobbex.ts";
 import { patchEventStatus } from "../_shared/google.ts";
-import { sendBookingConfirmation, notifyAdmins } from "../_shared/email.ts";
+import {
+  sendBookingConfirmation,
+  sendPackConfirmation,
+  notifyAdmins,
+} from "../_shared/email.ts";
 
 // Mobbex status code → our payment status.
 // 200 = approved; 0/cancelled or >=400 = rejected; everything else = pending.
@@ -129,6 +133,8 @@ Deno.serve(async (req) => {
       if (isPack) {
         // Grant the pack's credits (idempotent per payment).
         await admin.rpc("grant_pack_credits", { p_payment_id: pay.id });
+        // Confirm to the client that their sessions are live (was silent before).
+        await sendPackConfirmation(admin, pay.id);
       } else if (booking && booking.status !== "confirmed") {
         await admin
           .from("bookings")

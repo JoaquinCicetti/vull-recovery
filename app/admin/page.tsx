@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { AdminPayments } from "./admin-payments";
 import { AdminBookings, type AdminBookingRow } from "./admin-bookings";
 import { BOOKINGS_SELECT } from "./bookings-select";
-import { PushManager } from "@/components/admin/push-manager";
+import { PushManager } from "@/components/push-manager";
 import { PageShell } from "@/components/ui/page-shell";
 import { Button } from "@/components/ui/button";
 import type { BookingStatus } from "@/lib/types";

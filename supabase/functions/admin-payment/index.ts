@@ -3,7 +3,7 @@
 import { responder, errMessage } from "../_shared/cors.ts";
 import { adminClient, userClient } from "../_shared/supabase.ts";
 import { patchEventStatus } from "../_shared/google.ts";
-import { sendBookingConfirmation } from "../_shared/email.ts";
+import { sendBookingConfirmation, sendPackConfirmation } from "../_shared/email.ts";
 
 Deno.serve(async (req) => {
   const { json, options } = responder(req);
@@ -51,6 +51,8 @@ Deno.serve(async (req) => {
     // Pack purchase: grant the credits (idempotent) — no booking to confirm.
     if (pay.kind === "pack") {
       await admin.rpc("grant_pack_credits", { p_payment_id: payment_id });
+      // Tell the client their sessions are live (best-effort; was silent before).
+      await sendPackConfirmation(admin, payment_id);
       return json({ ok: true });
     }
 

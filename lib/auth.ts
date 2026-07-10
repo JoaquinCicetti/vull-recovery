@@ -24,7 +24,7 @@ export const getUserAndProfile = cache(async () => {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("id, full_name, whatsapp_phone, email, is_admin")
+    .select("id, full_name, whatsapp_phone, email, is_admin, notify_email, notify_push")
     .eq("id", user.id)
     .single<Profile>();
 

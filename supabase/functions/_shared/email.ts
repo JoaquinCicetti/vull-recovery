@@ -106,6 +106,7 @@ function shell({ heading, lead, rows = [], note, cta, accent }: Shell): string {
 
 // ─── Shared booking context loader ──────────────────────────────────────────
 type BookingEmailCtx = {
+  userId: string;
   email: string;
   firstName: string;
   svc: string;
@@ -158,6 +159,7 @@ async function loadBookingCtx(
   }).format(new Date(b.starts_at));
 
   return {
+    userId: b.user_id,
     email,
     firstName,
     svc,
@@ -167,6 +169,57 @@ async function loadBookingCtx(
     appUrl: Deno.env.get("APP_URL") ?? "",
     bookingId: b.id,
   };
+}
+
+// Fan out a CLIENT notification to one user: email (Resend) + Web Push, each gated
+// by that user's own preference (profiles.notify_email / notify_push). Mirror of
+// fanOutToAdmins but keyed on a single user_id, and it reads the recipient's email
+// from profiles rather than assuming the caller has it. Best-effort throughout.
+async function fanOutToUser(
+  admin: SupabaseClient,
+  userId: string,
+  msg: { subject: string; html: string; push?: { title: string; body: string; url: string } },
+): Promise<void> {
+  const { data: p } = await admin
+    .from("profiles")
+    .select("email, notify_email, notify_push")
+    .eq("id", userId)
+    .single();
+  if (!p) return;
+  const prefs = p as {
+    email: string | null;
+    notify_email: boolean;
+    notify_push: boolean;
+  };
+
+  const jobs: Promise<unknown>[] = [];
+
+  if (prefs.notify_email && prefs.email) {
+    jobs.push(sendMail(prefs.email, msg.subject, msg.html));
+  }
+
+  if (prefs.notify_push && msg.push) {
+    const { data: subs } = await admin
+      .from("push_subscriptions")
+      .select("id, endpoint, p256dh, auth")
+      .eq("user_id", userId);
+    const payload = JSON.stringify(msg.push);
+    for (const s of (subs ?? []) as (PushSub & { id: string })[]) {
+      jobs.push(
+        (async () => {
+          const status = await sendPush(
+            { endpoint: s.endpoint, p256dh: s.p256dh, auth: s.auth },
+            payload,
+          );
+          if (status === 404 || status === 410) {
+            await admin.from("push_subscriptions").delete().eq("id", s.id);
+          }
+        })(),
+      );
+    }
+  }
+
+  await Promise.allSettled(jobs);
 }
 
 // All senders are best-effort: any failure (including email not configured) is
@@ -194,7 +247,12 @@ export async function sendBookingReceived(
         ? { label: "Pagar y confirmar", url: `${c.appUrl}/turno/${c.bookingId}` }
         : undefined,
     });
-    await sendMail(c.email, `Reserva tomada · VULL (${c.ref})`, html);
+    // Email only: this is a "we're holding your slot, pay to confirm" ack, not one
+    // of the alert events push is for.
+    await fanOutToUser(admin, c.userId, {
+      subject: `Reserva tomada · VULL (${c.ref})`,
+      html,
+    });
   } catch (_) {
     /* best-effort */
   }
@@ -223,7 +281,15 @@ export async function sendBookingConfirmation(
         ? { label: "Ver mi turno", url: `${c.appUrl}/turno/${c.bookingId}` }
         : undefined,
     });
-    await sendMail(c.email, `Turno confirmado · VULL (${c.ref})`, html);
+    await fanOutToUser(admin, c.userId, {
+      subject: `Turno confirmado · VULL (${c.ref})`,
+      html,
+      push: {
+        title: "Turno confirmado ✓",
+        body: `${c.svc} · ${c.when}`,
+        url: `${c.appUrl}/turno/${c.bookingId}`,
+      },
+    });
   } catch (_) {
     /* best-effort */
   }
@@ -253,7 +319,78 @@ export async function sendBookingCancellation(
       note: "Si fue un error o querés otro horario, podés reservar de nuevo cuando quieras.",
       cta: c.appUrl ? { label: "Reservar de nuevo", url: c.appUrl } : undefined,
     });
-    await sendMail(c.email, `Turno cancelado · VULL (${c.ref})`, html);
+    await fanOutToUser(admin, c.userId, {
+      subject: `Turno cancelado · VULL (${c.ref})`,
+      html,
+      push: {
+        title: "Turno cancelado",
+        body: `${c.svc} · ${c.when}`,
+        url: `${c.appUrl}/turno/${c.bookingId}`,
+      },
+    });
+  } catch (_) {
+    /* best-effort */
+  }
+}
+
+/** Confirm to the client that a PACK purchase was accredited and credits granted.
+ *  There is no booking here — the pack payment carries user_id + service_id — so it
+ *  can't reuse loadBookingCtx. Previously this event notified the client on no
+ *  channel at all. */
+export async function sendPackConfirmation(
+  admin: SupabaseClient,
+  paymentId: string,
+): Promise<void> {
+  try {
+    const { data: pay } = await admin
+      .from("payments")
+      .select("user_id, amount_ars, services(name, sessions_included)")
+      .eq("id", paymentId)
+      .single();
+    if (!pay) return;
+    const p = pay as {
+      user_id: string;
+      amount_ars: number;
+      // deno-lint-ignore no-explicit-any
+      services: any;
+    };
+    const packName = p.services?.name ?? "Pack";
+    const sessions = p.services?.sessions_included ?? 0;
+    const appUrl = Deno.env.get("APP_URL") ?? "";
+
+    const { data: profile } = await admin
+      .from("profiles")
+      .select("full_name")
+      .eq("id", p.user_id)
+      .single();
+    const firstName = (profile?.full_name ?? "").split(" ")[0] || "Hola";
+    const lead = `Hola ${firstName}, tu pago fue acreditado. Ya podés reservar tus sesiones.`;
+
+    const html = shell({
+      heading: "Sesiones acreditadas ✓",
+      accent: "#61b33b",
+      lead,
+      rows: [
+        { label: "Pack", value: packName },
+        {
+          label: "Sesiones",
+          value: `${sessions} ${sessions === 1 ? "sesión" : "sesiones"}`,
+        },
+        { label: "Pagado", value: money(p.amount_ars), mono: true },
+      ],
+      note: "Reservás cada turno con un crédito, cuando quieras.",
+      cta: appUrl ? { label: "Reservar una sesión", url: `${appUrl}/mis-turnos` } : undefined,
+    });
+
+    await fanOutToUser(admin, p.user_id, {
+      subject: `Sesiones acreditadas · VULL`,
+      html,
+      push: {
+        title: "Sesiones acreditadas ✓",
+        body: `${sessions} ${sessions === 1 ? "sesión" : "sesiones"} de ${packName}`,
+        url: `${appUrl}/mis-turnos`,
+      },
+    });
   } catch (_) {
     /* best-effort */
   }
