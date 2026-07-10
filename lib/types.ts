@@ -4,6 +4,8 @@ export type Profile = {
   whatsapp_phone: string | null;
   email: string | null;
   is_admin: boolean;
+  notify_email: boolean;
+  notify_push: boolean;
 };
 
 export type Service = {
