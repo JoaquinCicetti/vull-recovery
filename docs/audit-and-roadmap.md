@@ -1,5 +1,9 @@
 # Product audit & enhancement roadmap
 
+> **Superseded for current state — see [audit-2026-08.md](audit-2026-08.md) (2026-08-24).**
+> Everything below is the June pass and its closed items; the August pass re-audited the
+> whole codebase, found 4 P0s (all fixed) and 31 open P1s, and carries the live roadmap.
+
 > Audit date: 2026-06-30. Scope: move the prototype to a real product.
 > Divided into **Security · Performance · Booking invariants · Admin & turns · Packs/balance · Notifications**.
 > Priorities: **P0** = launch blocker / correctness-critical · **P1** = needed for a real product · **P2** = polish / later.

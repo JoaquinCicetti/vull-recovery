@@ -65,6 +65,14 @@ docs/       setup.md · architecture.md · adr/
 
 ## Status & roadmap
 
+- **[Full audit, 2026-08-24](docs/audit-2026-08.md)** — current bugs, UX and performance
+  findings, and the sprint roadmap. Four P0s (a credit-RPC privilege hole, silent
+  payment/booking desync, swallowed booking errors, missing error boundaries) were found
+  and fixed; the P0-1 migration still needs `supabase db push`.
+- ⚠️ **Online payments are off.** The Mobbex account is not enabled, so
+  `NEXT_PUBLIC_MOBBEX_ENABLED` defaults to `false` and bank transfer + receipt is the only
+  payment path. See [§7 of the audit](docs/audit-2026-08.md#7-mobbex--on-hold) before
+  turning it on.
 - Built; passes typecheck, lint, and a production build.
 - **Pending:** end-to-end validation against the local Supabase stack (needs Docker).
 - Transactional email (OTP codes + booking confirmation) via **Resend** free
