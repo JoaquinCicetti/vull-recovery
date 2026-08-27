@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { UploadIcon } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { uploadReceipt as uploadReceiptToStorage } from "@/lib/receipt-upload";
-import { formatARS, TRANSFER_ALIAS } from "@/lib/site";
+import { formatARS, TRANSFER_ALIAS, MOBBEX_ENABLED } from "@/lib/site";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -110,24 +110,41 @@ export function PurchasePanel({
           Comprar <span className="font-mono text-accent">{formatARS(amount)}</span>
         </p>
 
-        <Button
-          size="lg"
-          onClick={payOnline}
-          disabled={loading}
-          className="mt-4 w-full"
-        >
-          {loading
-            ? "Abriendo el pago…"
-            : !isAuthed
-              ? "Ingresar y comprar"
-              : "Pagar online (tarjeta · transferencia · QR)"}
-        </Button>
+        {MOBBEX_ENABLED ? (
+          <>
+            <Button
+              size="lg"
+              onClick={payOnline}
+              disabled={loading || uploading}
+              className="mt-4 w-full"
+            >
+              {loading
+                ? "Abriendo el pago…"
+                : !isAuthed
+                  ? "Ingresar y comprar"
+                  : "Pagar online (tarjeta · débito · QR)"}
+            </Button>
 
-        <div className="my-5 flex items-center gap-3 font-mono text-xs uppercase tracking-widest text-fg-faint">
-          <span className="h-px flex-1 bg-border" />o<span className="h-px flex-1 bg-border" />
-        </div>
+            <div className="my-5 flex items-center gap-3 font-mono text-xs uppercase tracking-widest text-fg-faint">
+              <span className="h-px flex-1 bg-border" />o
+              <span className="h-px flex-1 bg-border" />
+            </div>
+          </>
+        ) : (
+          !isAuthed && (
+            <Button
+              size="lg"
+              onClick={requireLogin}
+              className="mt-4 w-full"
+            >
+              Ingresar y comprar
+            </Button>
+          )
+        )}
 
-        <p className="text-sm font-medium text-fg">Pagué por transferencia</p>
+        <p className="mt-4 text-sm font-medium text-fg">
+          {MOBBEX_ENABLED ? "Pagué por transferencia" : "Pagá por transferencia"}
+        </p>
         {TRANSFER_ALIAS && (
           <p className="mt-1 text-sm text-fg-muted">
             Transferí a:{" "}
@@ -143,7 +160,7 @@ export function PurchasePanel({
           accept={{ "image/*": [], "application/pdf": [] }}
           maxFiles={1}
           maxSize={20 * 1024 * 1024}
-          disabled={uploading || !isAuthed}
+          disabled={uploading || loading || !isAuthed}
           src={receipt}
           onDrop={(files) => {
             const file = files[0];
