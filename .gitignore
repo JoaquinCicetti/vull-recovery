@@ -32,6 +32,10 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# ...except the template. `.env*` swallowed it, so the file README/docs tell you to
+# copy was never in the repo — a fresh clone had no env reference at all. It holds
+# only names and comments, never values.
+!.env.example
 envs/*
 
 # vercel
