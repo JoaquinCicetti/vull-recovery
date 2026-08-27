@@ -49,14 +49,32 @@ Deno.serve(async (req) => {
       if (!["pending", "awaiting_payment"].includes(booking.status)) {
         return json({ error: "Este turno no se puede confirmar." }, 409);
       }
-      await admin
+      // Guard the write with the same status set: between the read above and this
+      // UPDATE the hold can lapse (the lazy sweep flips it to `expired`), and the
+      // row could then be confirmed back out of a terminal state.
+      const { error: updErr } = await admin
         .from("bookings")
         .update({ status: "confirmed", hold_expires_at: null })
-        .eq("id", booking.id);
+        .eq("id", booking.id)
+        .in("status", ["pending", "awaiting_payment"]);
+      if (updErr) {
+        return json(
+          {
+            error:
+              updErr.code === "23P01"
+                ? "Ese horario ya fue tomado por otro turno."
+                : "No se pudo confirmar el turno.",
+          },
+          409,
+        );
+      }
+      // Settle only MANUAL receipts the client actually submitted. Approving every
+      // pending row would also mark an abandoned online checkout as paid.
       await admin
         .from("payments")
         .update({ status: "approved" })
         .eq("booking_id", booking.id)
+        .eq("provider", "manual")
         .eq("status", "pending");
       if (booking.google_event_id) {
         try {
@@ -79,7 +97,12 @@ Deno.serve(async (req) => {
       if (new Date(booking.starts_at).getTime() > Date.now()) {
         return json({ error: "El turno todavía no empezó." }, 409);
       }
-      await admin.from("bookings").update({ status: "no_show" }).eq("id", booking.id);
+      const { error: nsErr } = await admin
+        .from("bookings")
+        .update({ status: "no_show" })
+        .eq("id", booking.id)
+        .eq("status", "confirmed");
+      if (nsErr) return json({ error: "No se pudo marcar el turno." }, 409);
       if (booking.google_event_id) {
         try {
           await patchEventStatus(booking.google_event_id, "cancelled");
