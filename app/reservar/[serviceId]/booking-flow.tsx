@@ -100,9 +100,14 @@ export function BookingFlow({
     setStartDate(ds[0] ? toDate(ds[0].date) : null);
   }
 
-  async function reload() {
+  // `keepError` matters: after a failed booking we refresh the grid but must NOT
+  // wipe the server's explanation ("ese horario ya fue reservado", "ya tenés un
+  // turno ese día", the throttle 429). Clearing it here used to erase the message
+  // in the same tick it was set, so every booking failure looked like a silent
+  // flicker.
+  async function reload({ keepError = false } = {}) {
     setLoading(true);
-    setError(null);
+    if (!keepError) setError(null);
     setSelected(null);
     const { data, error } = await supabase.functions.invoke("availability", {
       body: { service_id: service.id },
@@ -184,11 +189,19 @@ export function BookingFlow({
     setSubmitting(false);
     if (error) {
       setError(await readError(error));
-      reload();
+      // Refresh the grid (the slot may be gone) but keep the message on screen.
+      reload({ keepError: true });
       return;
     }
     const bookingId = data?.booking?.id;
-    if (bookingId) router.push(`/turno/${bookingId}`);
+    if (!bookingId) {
+      // 200 with an unexpected shape: without this the button just re-enabled and
+      // nothing happened, so the client tapped again and double-booked.
+      setError("No pudimos crear la reserva. Probá de nuevo.");
+      reload({ keepError: true });
+      return;
+    }
+    router.push(`/turno/${bookingId}`);
   }
 
   const day = days?.find((d) => d.date === activeDay);
@@ -368,8 +381,17 @@ export function BookingFlow({
             </div>
           )}
 
+          {error && (
+            <p
+              role="alert"
+              className="mt-6 rounded-md border border-danger/30 bg-danger/5 px-3 py-2.5 text-sm text-danger"
+            >
+              {error}
+            </p>
+          )}
+
           {/* Confirm — sticky on mobile so booking stays one-handed */}
-          <div className="sticky bottom-0 z-10 -mx-5 mt-8 border-t border-border bg-bg/95 px-5 py-4 sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:p-0">
+          <div className="sticky bottom-0 z-10 -mx-5 mt-4 border-t border-border bg-bg/95 px-5 py-4 sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:p-0">
             <Button
               size="lg"
               onClick={confirm}
@@ -392,7 +414,25 @@ export function BookingFlow({
         </>
       )}
 
-      {error && <p className="mt-4 text-sm text-danger">{error}</p>}
+      {/* Availability failed (or we are pre-grid): the in-flow alert above only
+          renders once the grid exists, so surface it here too — with a retry. */}
+      {error && (!days || days.length === 0) && (
+        <div className="mt-4">
+          <p role="alert" className="text-sm text-danger">
+            {error}
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="mt-3"
+            onClick={() => reload()}
+            disabled={loading}
+          >
+            {loading ? "Reintentando…" : "Reintentar"}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
