@@ -23,6 +23,14 @@ export const WHATSAPP_NUMBER = process.env.NEXT_PUBLIC_WHATSAPP_BUSINESS_NUMBER 
 // Alias/CBU shown to clients paying by manual bank transfer.
 export const TRANSFER_ALIAS = process.env.NEXT_PUBLIC_TRANSFER_ALIAS ?? "";
 
+// Online payments (Mobbex) are OFF until the merchant account is enabled. While
+// this is false the checkout button is hidden entirely rather than shown and
+// failing: `create-payment` answers 503 "Pagos online no configurados" without
+// MOBBEX_API_KEY, so the button was a dead primary call to action. Bank transfer
+// + receipt is the live path. Flip NEXT_PUBLIC_MOBBEX_ENABLED=true (and set the
+// MOBBEX_* edge secrets) to bring it back.
+export const MOBBEX_ENABLED = process.env.NEXT_PUBLIC_MOBBEX_ENABLED === "true";
+
 // Build a wa.me deep link. The client tapping this messages us FIRST, which
 // opens the free 24h reply window (see plan). Optional prefilled message.
 export function waLink(message?: string) {
