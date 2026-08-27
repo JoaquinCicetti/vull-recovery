@@ -15,6 +15,7 @@ import { Rig } from "./scene/rig";
 import { Effects } from "./scene/effects";
 import { Bath } from "./scene/bath";
 import { Atmosphere } from "./scene/atmosphere";
+import { SceneBoundary } from "./scene-boundary";
 
 // WebGL layer: spheres rise from the bottom, then morph into the logo silhouette.
 // Transparent background so it composites over the static hero. ssr:false.
@@ -22,7 +23,19 @@ import { Atmosphere } from "./scene/atmosphere";
 // offscreen or the tab is hidden — the scene stops burning the GPU while the user
 // reads the plans below. Full DPR is kept while in view (crisp); anti-aliasing is
 // the EffectComposer's multisampling (canvas antialias off would be redundant).
-export default function Scene({ active = true }: { active?: boolean }) {
+export default function Scene({
+  active = true,
+  onAlive,
+}: {
+  active?: boolean;
+  /**
+   * Reports whether WebGL is actually running. True once the renderer exists,
+   * false again on `webglcontextlost`. The parent uses it to release the scroll
+   * hijack — otherwise a dead canvas leaves the visitor stuck at the top of a
+   * black page.
+   */
+  onAlive?: (alive: boolean) => void;
+}) {
   const isMobile =
     typeof window !== "undefined" &&
     window.matchMedia("(max-width: 768px)").matches;
@@ -46,6 +59,20 @@ export default function Scene({ active = true }: { active?: boolean }) {
     <Canvas
       onCreated={(state) => {
         camRef.current = state.camera;
+        onAlive?.(true);
+        // A GPU reset (thermal throttling on a phone, driver hiccup) otherwise
+        // leaves a permanently black hero AND a scroll lock, with nothing thrown
+        // for the error boundary to catch.
+        const canvas = state.gl.domElement;
+        canvas.addEventListener(
+          "webglcontextlost",
+          (e) => {
+            e.preventDefault();
+            onAlive?.(false);
+          },
+          { once: true },
+        );
+        canvas.addEventListener("webglcontextrestored", () => onAlive?.(true));
       }}
       frameloop={active ? "always" : "never"}
       dpr={dpr}
@@ -77,9 +104,11 @@ export default function Scene({ active = true }: { active?: boolean }) {
         onFallback={() => setDpr(1)}
       />
       <Lighting />
-      <Suspense fallback={null}>
-        <Bath />
-      </Suspense>
+      <SceneBoundary>
+        <Suspense fallback={null}>
+          <Bath />
+        </Suspense>
+      </SceneBoundary>
       <Atmosphere />
       <Spheres count={count} />
       {debugCam ? <OrbitControls makeDefault target={[0, -1, -6]} /> : <Rig />}

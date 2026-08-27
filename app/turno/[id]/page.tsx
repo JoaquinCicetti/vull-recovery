@@ -22,6 +22,7 @@ export default async function TurnoPage({
 }) {
   const { id } = await params;
   const { profile } = await requireUser(`/turno/${id}`);
+  const nowISO = new Date().toISOString();
 
   const supabase = await createClient();
   const { data } = await supabase
@@ -48,8 +49,11 @@ export default async function TurnoPage({
   // status flips to awaiting_payment and the hold is kept until verification).
   const showHold =
     booking.status === "pending" && Boolean(booking.hold_expires_at);
+  // Read the clock once, outside the render expression: calling Date.now() inline
+  // is an impure render (react-hooks/purity) and can disagree between renders.
+  const nowMs = new Date(nowISO).getTime();
   const cancellable =
-    new Date(booking.starts_at).getTime() > Date.now() &&
+    new Date(booking.starts_at).getTime() > nowMs &&
     ["pending", "awaiting_payment", "confirmed"].includes(booking.status);
 
   return (

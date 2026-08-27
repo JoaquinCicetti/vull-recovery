@@ -6,6 +6,8 @@ import { useProgress } from "@react-three/drei";
 import { gsap } from "gsap";
 import { ScrollToPlugin } from "gsap/ScrollToPlugin";
 import { HeroIntro } from "./hero-intro";
+import { StaticHero } from "./static-hero";
+import { SceneBoundary } from "./scene-boundary";
 import { Captions } from "./captions";
 import { useProgressStore } from "./progress-store";
 import { setScroller } from "./scroll-control";
@@ -13,6 +15,16 @@ import { phaseLocal } from "@/lib/experience/config";
 
 // WebGL scene is code-split and never SSR'd (three needs the DOM).
 const Scene = dynamic(() => import("./scene"), { ssr: false });
+
+// Has the WebGL scene actually produced a frame? The scroll choreography
+// preventDefault()s wheel and touch while the hero is at the top, so if the scene
+// never renders (no WebGL, blocklisted GPU, chunk 404, context lost) the visitor
+// is left pushing against a black screen that will not scroll — roughly 1,600px of
+// resistance before the page moves. The listeners consult this and step aside.
+let sceneAlive = false;
+const setSceneAlive = (v: boolean) => {
+  sceneAlive = v;
+};
 
 // Renders the WebGL scene and pauses its render loop when it leaves the viewport
 // (scrolled down to the plans) or the tab is hidden — the single biggest perf win,
@@ -48,7 +60,7 @@ function SceneLayer() {
 
   return (
     <div ref={ref} className="absolute inset-0 z-10">
-      <Scene active={active} />
+      <Scene active={active} onAlive={setSceneAlive} />
     </div>
   );
 }
@@ -122,11 +134,20 @@ function Scrim() {
 
 export function ExperienceClient() {
   const setProgress = useProgressStore((s) => s.setProgress);
-  const [reduced, setReduced] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    setReduced(window.matchMedia("(prefers-reduced-motion: reduce)").matches);
-  }, []);
+  // Resolved in the state INITIALIZER, not an effect. As an effect this both
+  // tripped react-hooks/set-state-in-effect and, worse, let the first client
+  // render fall through to the full branch: <SceneLayer> mounted, the ~1.3 MB
+  // scene chunk and the GLB preload fired, and only then did the fallback swap
+  // in — so a reduced-motion visitor paid for the WebGL scene they never see.
+  // On the server this stays `null` and the full branch is emitted (unchanged, and
+  // <Scene> is ssr:false so no canvas is in the HTML either way). A reduced-motion
+  // client therefore still re-renders once into the fallback — a cosmetic flash
+  // tracked as P2 — but it no longer downloads the scene to do it.
+  const [reduced] = useState<boolean | null>(() =>
+    typeof window === "undefined"
+      ? null
+      : window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+  );
 
   useEffect(() => {
     if (reduced !== false) return;
@@ -179,6 +200,7 @@ export function ExperienceClient() {
     let stick = 0;
 
     const onWheel = (e: WheelEvent) => {
+      if (!sceneAlive) return; // scene never came up → let the page scroll normally
       if (window.scrollY > 2) return; // below the experience → native scroll
       if (e.deltaY < 0) stick = 0; // going back re-arms the anchor
       if (atEnd() && e.deltaY > 0) {
@@ -198,6 +220,7 @@ export function ExperienceClient() {
       touchY = e.touches[0]?.clientY ?? 0;
     };
     const onTouchMove = (e: TouchEvent) => {
+      if (!sceneAlive) return;
       if (window.scrollY > 2) return;
       const y = e.touches[0]?.clientY ?? 0;
       const dy = touchY - y; // swipe up = progress forward
@@ -216,7 +239,13 @@ export function ExperienceClient() {
     };
 
     const onKey = (e: KeyboardEvent) => {
+      if (!sceneAlive) return;
       if (window.scrollY > 2) return;
+      // Never steal Space/arrows from a focused control (the hero CTA is a button).
+      const t = e.target as HTMLElement | null;
+      if (t && (t.closest("button, a, input, textarea, select") || t.isContentEditable)) {
+        return;
+      }
       if (["ArrowDown", "PageDown", " "].includes(e.key)) {
         if (atEnd()) return;
         e.preventDefault();
@@ -282,8 +311,18 @@ export function ExperienceClient() {
       aria-label="Experiencia VULL"
       className="relative h-screen w-full overflow-hidden bg-black"
     >
+      {/* Real image behind the canvas: while the scene loads, is paused, or has
+          failed, the hero is a photograph rather than a black rectangle. */}
+      <StaticHero />
       <Scrim />
-      <SceneLayer />
+      <SceneBoundary
+        onError={() => {
+          setSceneAlive(false);
+          setScroller(null); // hero CTA falls back to a plain smooth scroll
+        }}
+      >
+        <SceneLayer />
+      </SceneBoundary>
       <HeroIntro />
       <Captions />
       <LoadingScreen />
