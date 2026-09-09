@@ -41,6 +41,14 @@ export default function Scene({
   const isMobile =
     typeof window !== "undefined" &&
     window.matchMedia("(max-width: 768px)").matches;
+  // The wide lens is about ASPECT, not device: a portrait phone sees almost
+  // nothing sideways at fov 24. A narrow or zoomed desktop window also matches
+  // the max-width query, and it must keep the desktop framing — so the lens
+  // and the hero aim only change when the viewport is genuinely portrait.
+  const portrait =
+    isMobile &&
+    typeof window !== "undefined" &&
+    window.innerHeight > window.innerWidth;
   const count = isMobile ? 440 : 1000;
   // Free-camera debug mode (?debugcam): OrbitControls instead of the scripted
   // Rig, plus a button that alerts the current camera position/direction — for
@@ -89,12 +97,12 @@ export default function Scene({
       }}
       // Long lens (~85mm equiv) on desktop: compressed perspective, shallow-focus
       // read. fov is VERTICAL, so on a portrait phone that same 24° sees only
-      // ±5.6° sideways — the bath and nothing else. The phone gets a wider lens so
+      // ±5.6° sideways — the bath and nothing else. Portrait gets a wider lens so
       // the room (tent, boots, recliner, towels) is actually in the frame.
       // Initial position = the entry point the intro pushes in FROM, so there's no
       // first-frame pop before the Rig takes over.
       camera={{
-        fov: isMobile ? 62 : 24,
+        fov: portrait ? 56 : 24,
         near: 0.1,
         far: 200,
         position: [INTRO_FROM.x, INTRO_FROM.y, INTRO_FROM.z],
@@ -127,7 +135,7 @@ export default function Scene({
         {!isMobile && <Steam />}
       </SceneBoundary>
       <Spheres count={count} />
-      {debugCam ? <OrbitControls makeDefault target={[0, -1, -6]} /> : <Rig />}
+      {debugCam ? <OrbitControls makeDefault target={[0, -1, -6]} /> : <Rig portrait={portrait} />}
       <Effects dof={!isMobile} />
       {/* Throttle raycasting/events while scrolling; DPR stays full for crispness. */}
       <AdaptiveEvents />

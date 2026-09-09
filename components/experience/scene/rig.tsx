@@ -37,23 +37,28 @@ const PATH = new THREE.CatmullRomCurve3(
 // into the BOTTOM HALF of the frame (clear of the hero text); the aim then
 // eases down onto the bath as the ride starts, and to the logo plane at the end.
 //
-// On a phone the lens is much wider (fov 62 vs 24, see scene.tsx) and the copy
-// stacks four lines deep, so the same aim would pin the whole room up under the
-// CTA buttons with nothing below. Aiming higher there pushes the room down into
-// the empty band between the buttons and the scroll cue.
-const IS_MOBILE =
-  typeof window !== "undefined" && window.matchMedia("(max-width: 768px)").matches;
-const HERO_AIM_Y = IS_MOBILE ? 13 : 2.6;
-const AIM_HERO = new THREE.Vector3(0, HERO_AIM_Y, -6); // lifts the room out of the bottom band
+// In a portrait viewport the lens is much wider (fov 56 vs 24, see scene.tsx)
+// and the copy stacks four lines deep, so the same aim would pin the whole room
+// up under the CTA buttons with nothing below. Aiming higher there pushes the
+// room down into the empty band between the buttons and the scroll cue.
+const HERO_AIM_Y_LANDSCAPE = 2.6; // lifts the room out of the bottom band
+const HERO_AIM_Y_PORTRAIT = 11.5;
 const AIM_BATH = new THREE.Vector3(0, -2, -6); // near the bath center
 const AIM_WINDOW = [0.08, 0.4] as const;
 const ORIGIN = new THREE.Vector3(0, 0, 0);
-// Eases down onto AIM_HERO; keeps the same offset above it on every device.
-const INTRO_AIM = new THREE.Vector3(0, HERO_AIM_Y + (INTRO_AIM_Y - 2.6), -6);
 const UP_Y = new THREE.Vector3(0, 1, 0);
 const UP_ZENITH = new THREE.Vector3(0, 0, -1); // stable "up" when looking straight down
 
-export function Rig() {
+export function Rig({ portrait = false }: { portrait?: boolean }) {
+  const { AIM_HERO, INTRO_AIM } = useMemo(() => {
+    const heroY = portrait ? HERO_AIM_Y_PORTRAIT : HERO_AIM_Y_LANDSCAPE;
+    return {
+      AIM_HERO: new THREE.Vector3(0, heroY, -6),
+      // Eases down onto AIM_HERO; same offset above it in either orientation.
+      INTRO_AIM: new THREE.Vector3(0, heroY + (INTRO_AIM_Y - HERO_AIM_Y_LANDSCAPE), -6),
+    };
+  }, [portrait]);
+
   // Damped state + scratch vectors — reused every frame, no allocation.
   const v = useMemo(
     () => ({
@@ -68,7 +73,7 @@ export function Rig() {
       dir: new THREE.Vector3(),
       up: new THREE.Vector3(0, 1, 0),
     }),
-    [],
+    [INTRO_AIM],
   );
 
   useFrame((state, dt) => {
