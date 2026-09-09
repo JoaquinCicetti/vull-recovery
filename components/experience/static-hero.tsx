@@ -1,35 +1,28 @@
-import Image from "next/image";
-
-// Fixed hero image behind the experience. The source is low-res, so it's slightly
-// scaled + blurred + graded with gradients, grain and a vignette to read as an
-// intentional cinematic backdrop rather than a sharp photo. The Scrim above darkens
-// it toward black as the spheres rise.
+// Backdrop behind the WebGL experience — and, because <SceneBoundary> renders no
+// fallback of its own, the no-WebGL fallback too. It therefore has to look
+// deliberate on its own, with nothing composited on top.
 //
-// This is the homepage LCP element, so it's served through next/image (priority +
-// AVIF/WebP + responsive sizing) rather than a raw <img> of the full JPEG. It's
-// blurred anyway, so a lower quality is imperceptible and saves bytes.
+// This used to be a blurred photograph (/vull-image-7.jpeg). It read as a stock
+// plate under an art-directed 3D scene, and it was the homepage LCP element. It's
+// now pure CSS — no image request, and the scene owns all the visuals. The JPEG
+// itself stays in public/; components/landing/hero.tsx still uses it on /planes.
+//
+// Deliberately almost pure black. The canvas composites on top of this, and the
+// 3D floor is #090c10 under near-black fog, so any lift here reads as a "sky"
+// brighter than the ground — an inverted, washed-out room. Every gradient below
+// is a soft radial with no hard stop, because a linear ramp puts a visible seam
+// straight across the frame.
 export function StaticHero() {
   return (
     <div className="absolute inset-0 overflow-hidden bg-black">
-      <Image
-        src="/vull-image-7.jpeg"
-        alt=""
-        aria-hidden="true"
-        fill
-        priority
-        sizes="100vw"
-        quality={40}
-        style={{ transform: "scale(1.12) translateY(-5%)" }}
-        className="object-cover [filter:blur(3px)_saturate(1.05)_contrast(1.06)_brightness(0.9)]"
-      />
-      {/* depth + legibility gradients */}
-      <div className="absolute inset-0 bg-gradient-to-b from-black/55 via-black/30 to-black/85" />
-      {/* faint brand glow from the top */}
-      <div className="absolute inset-0 bg-[radial-gradient(60%_45%_at_50%_6%,rgba(97,179,59,0.1),transparent_70%)]" />
-      {/* film grain */}
-      <div className="bg-noise pointer-events-none absolute inset-0 opacity-[0.12] mix-blend-overlay" />
-      {/* vignette */}
-      <div className="pointer-events-none absolute inset-0 shadow-[inset_0_0_220px_70px_rgba(0,0,0,0.75)]" />
+      {/* Faint brand glow from the top — the same gesture as the body glow in globals.css. */}
+      <div className="absolute inset-0 bg-[radial-gradient(58%_42%_at_50%_2%,rgba(97,179,59,0.07),transparent_72%)]" />
+      {/* Low pool of light behind the product, so the bath has something to sit against. */}
+      <div className="absolute inset-0 bg-[radial-gradient(70%_38%_at_50%_92%,rgba(24,34,28,0.55),transparent_74%)]" />
+      {/* Film grain */}
+      <div className="bg-noise pointer-events-none absolute inset-0 opacity-[0.1] mix-blend-overlay" />
+      {/* Vignette */}
+      <div className="pointer-events-none absolute inset-0 shadow-[inset_0_0_220px_70px_rgba(0,0,0,0.8)]" />
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { gsap } from "gsap";
 import { ScrollToPlugin } from "gsap/ScrollToPlugin";
 import { HeroIntro } from "./hero-intro";
 import { StaticHero } from "./static-hero";
+import { Wordmark } from "./wordmark";
 import { SceneBoundary } from "./scene-boundary";
 import { Captions } from "./captions";
 import { useProgressStore } from "./progress-store";
@@ -325,6 +326,7 @@ export function ExperienceClient() {
       </SceneBoundary>
       <HeroIntro />
       <Captions />
+      <Wordmark />
       <LoadingScreen />
     </section>
   );

@@ -15,6 +15,8 @@ import { Rig } from "./scene/rig";
 import { Effects } from "./scene/effects";
 import { Bath } from "./scene/bath";
 import { Atmosphere } from "./scene/atmosphere";
+import { RoomProps } from "./scene/props";
+import { Steam } from "./scene/steam";
 import { SceneBoundary } from "./scene-boundary";
 
 // WebGL layer: spheres rise from the bottom, then morph into the logo silhouette.
@@ -110,6 +112,19 @@ export default function Scene({
         </Suspense>
       </SceneBoundary>
       <Atmosphere />
+      {/* Background studio: sauna, compression boots, red-light panel, shelf.
+          Desktop only — fov 24 is VERTICAL, so at a phone's aspect the horizontal
+          half-angle is 5.6° and the bath alone already spans ±4.6°: every prop is
+          off-screen there. Gated on the pre-render `isMobile` so the light and
+          material counts never change after first render (which would recompile
+          every lit material). Boundaried like <Bath/> — a bad shader degrades to
+          the bare scene instead of taking the canvas down. */}
+      {!isMobile && (
+        <SceneBoundary>
+          <RoomProps />
+          <Steam />
+        </SceneBoundary>
+      )}
       <Spheres count={count} />
       {debugCam ? <OrbitControls makeDefault target={[0, -1, -6]} /> : <Rig />}
       <Effects dof={!isMobile} />
