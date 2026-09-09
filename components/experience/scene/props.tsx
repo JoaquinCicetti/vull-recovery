@@ -51,16 +51,13 @@ RectAreaLightUniformsLib.init();
 
 const FLOOR_Y = -5;
 
-// World placements (x, z) on the floor. Pulled in tight around the bath at z −6:
-// with the nearest prop at −14 there was a dead gap, all the lit floor sat BEHIND
-// the tub, and the eye read that band as the ground with the tub floating below
-// it. The depth ramp is now continuous — crate −2, bath −6, boots −10, panel −13,
-// sauna −14, shelf −17 — and every prop clears the bath's ±4.6° silhouette cone.
+// World placements (x, z) on the floor. The depth ramp is continuous — towel rack
+// −1, bath −6, boots −11, panel −16, tent −24 — so the eye never falls into a gap,
+// and every prop clears the bath's ~±5° silhouette cone from the hero camera.
 const S: [number, number, number] = [-13, FLOOR_Y, -24]; // sauna tent
-const B: [number, number, number] = [6.6, FLOOR_Y, -10]; // boots + bench
-const P: [number, number, number] = [7.0, FLOOR_Y, -13]; // red-light panel
-const H: [number, number, number] = [-9.0, FLOOR_Y, -17]; // shelf
-const F: [number, number, number] = [-8, FLOOR_Y, -2]; // foreground
+const B: [number, number, number] = [8, FLOOR_Y, -11]; // boots + pump table
+const P: [number, number, number] = [15, FLOOR_Y, -19]; // red-light panel
+const F: [number, number, number] = [-7.5, FLOOR_Y, -1]; // foreground towel rack
 const S_YAW = 0.35;
 const B_YAW = 0.26;
 const P_YAW = -0.5;
@@ -119,149 +116,173 @@ const TENT_H = 10.6; // 2.0m
 
 function sauna(): Part[] {
   const halfW = TENT_W / 2;
-  const bodyH = TENT_H - 0.7; // sits on a shallow floor pan
+  const bodyH = TENT_H - 0.7;
+  const cy = 0.35 + bodyH / 2;
+  // Bevel is DELIBERATELY tiny. A grow tent is fabric pulled taut over a square
+  // frame: flat panels, hard corners. The previous 0.5 bevel rounded it into a
+  // soft pod, which is what made it read as a shower cubicle rather than a tent.
   const parts: Part[] = [
-    // Floor pan
-    { geo: place(rbox(TENT_W, 0.35, TENT_W, 0.08), [0, 0.17, 0]), slot: "metal" },
-    // Shell. A big bevel is doing the work here — it rounds every edge the way
-    // tensioned fabric does, which is most of what separates "tent" from "box".
-    { geo: place(rbox(TENT_W - 0.3, bodyH, TENT_W - 0.3, 0.5), [0, 0.35 + bodyH / 2, 0]), slot: "plastic" },
+    { geo: place(rbox(TENT_W, 0.3, TENT_W, 0.05), [0, 0.15, 0]), slot: "metal" },
+    { geo: place(rbox(TENT_W - 0.24, bodyH, TENT_W - 0.24, 0.09), [0, cy, 0]), slot: "plastic" },
   ];
-  // Corner poles + top rails: the frame the skin is stretched over.
+  // Exposed corner poles + top and bottom rails — the frame is part of the look.
   for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
     parts.push({
-      geo: place(cyl(0.09, TENT_H - 0.4, 8), [x * (halfW - 0.16), 0.35 + (TENT_H - 0.4) / 2, z * (halfW - 0.16)]),
+      geo: place(cyl(0.1, TENT_H - 0.4, 8), [x * (halfW - 0.1), 0.35 + (TENT_H - 0.4) / 2, z * (halfW - 0.1)]),
       slot: "metal",
     });
   }
-  const railY = TENT_H - 0.15;
-  parts.push(
-    { geo: place(rbox(TENT_W - 0.2, 0.1, 0.1, 0.03), [0, railY, halfW - 0.16]), slot: "metal" },
-    { geo: place(rbox(TENT_W - 0.2, 0.1, 0.1, 0.03), [0, railY, -(halfW - 0.16)]), slot: "metal" },
-    { geo: place(rbox(0.1, 0.1, TENT_W - 0.2, 0.03), [halfW - 0.16, railY, 0]), slot: "metal" },
-    { geo: place(rbox(0.1, 0.1, TENT_W - 0.2, 0.03), [-(halfW - 0.16), railY, 0]), slot: "metal" },
-  );
-  // Zip up the front, and its pull.
-  parts.push(
-    { geo: place(rbox(0.13, bodyH - 1.2, 0.07, 0.04), [0, 0.35 + bodyH / 2 - 0.2, halfW - 0.16]), slot: "metal" },
-    { geo: place(cyl(0.05, 0.3, 6), [0, 1.5, halfW - 0.1]), slot: "metal" },
-  );
-  // Horizontal quilt seams. Without them the shell is one flat panel and reads
-  // as a shower cubicle; segmenting it is what says "stitched fabric".
-  for (const sy of [2.4, 4.8, 7.2]) {
+  for (const ry of [TENT_H - 0.2, 0.5]) {
     parts.push(
-      { geo: place(rbox(TENT_W - 0.34, 0.09, 0.06, 0.03), [0, sy, halfW - 0.17]), slot: "metal" },
-      { geo: place(rbox(0.06, 0.09, TENT_W - 0.34, 0.03), [halfW - 0.17, sy, 0]), slot: "metal" },
-      { geo: place(rbox(0.06, 0.09, TENT_W - 0.34, 0.03), [-(halfW - 0.17), sy, 0]), slot: "metal" },
+      { geo: place(rbox(TENT_W - 0.1, 0.11, 0.11, 0.03), [0, ry, halfW - 0.1]), slot: "metal" },
+      { geo: place(rbox(TENT_W - 0.1, 0.11, 0.11, 0.03), [0, ry, -(halfW - 0.1)]), slot: "metal" },
+      { geo: place(rbox(0.11, 0.11, TENT_W - 0.1, 0.03), [halfW - 0.1, ry, 0]), slot: "metal" },
+      { geo: place(rbox(0.11, 0.11, TENT_W - 0.1, 0.03), [-(halfW - 0.1), ry, 0]), slot: "metal" },
     );
   }
-  // Head opening at the top — the detail that makes a sauna tent legible.
-  parts.push({
-    geo: place(rbox(2.2, 0.28, 2.0, 0.13), [0, TENT_H - 0.5, 0]),
-    slot: "metal",
-  });
+  // The door: a big rectangular zip outline across the front face, which is the
+  // single most recognisable thing about a grow tent.
+  const dW = TENT_W - 1.2, dTop = TENT_H - 1.3, dBot = 0.9, fz = halfW - 0.13;
+  const dH = dTop - dBot, dCy = (dTop + dBot) / 2;
+  parts.push(
+    { geo: place(rbox(0.12, dH, 0.07, 0.03), [-dW / 2, dCy, fz]), slot: "metal" },
+    { geo: place(rbox(0.12, dH, 0.07, 0.03), [dW / 2, dCy, fz]), slot: "metal" },
+    { geo: place(rbox(dW, 0.12, 0.07, 0.03), [0, dTop, fz]), slot: "metal" },
+    { geo: place(rbox(dW, 0.12, 0.07, 0.03), [0, dBot, fz]), slot: "metal" },
+    // Zip pull parked at the bottom corner of the perimeter zip.
+    { geo: place(cyl(0.05, 0.3, 6), [dW / 2 - 0.15, dBot + 0.42, fz + 0.06]), slot: "metal" },
+  );
+  // Roll-up straps across the door.
+  for (const sy of [dBot + dH * 0.34, dBot + dH * 0.68]) {
+    parts.push({ geo: place(rbox(dW - 0.5, 0.1, 0.05, 0.03), [0, sy, fz + 0.02]), slot: "fabric" });
+  }
+  // Ducting ports, high and low on the side wall.
+  for (const [py, pr] of [[TENT_H - 1.9, 0.62], [1.9, 0.5]]) {
+    const ring = new THREE.TorusGeometry(pr, 0.085, 6, 20);
+    ring.rotateY(Math.PI / 2);
+    parts.push({ geo: place(ring, [-(halfW - 0.12), py, 0]), slot: "metal" });
+  }
   return parts;
 }
 
-/** One compression boot: a tapered sleeve with segment seams and a zip. */
+/** One compression boot — a full leg sleeve, ~0.85m tall.
+ *
+ *  The previous version was a plain 0.33m tube with ribs, and the reason it read
+ *  as a stack of tyres rather than a boot is that it had NO FOOT. A boot is an
+ *  L: a vertical leg and a horizontal foot at the bottom. That silhouette is the
+ *  whole recognition cue — the chambers and zip are just detail on top of it. */
 function boot(): Part[] {
-  // Taller and narrower than the first pass, which at this distance read as a
-  // stack of tyres. A leg sleeve is tall relative to its width.
+  // Tapered leg: narrow at the ankle, widest at the thigh.
   const profile = [
-    [0.36, 0], [0.355, 0.3], [0.335, 0.62], [0.30, 0.95],
-    [0.26, 1.28], [0.215, 1.58], [0.19, 1.74], [0, 1.76],
+    [0.30, 0.55], [0.33, 0.95], [0.365, 1.45], [0.40, 1.95],
+    [0.445, 2.5], [0.49, 3.05], [0.53, 3.6], [0.555, 4.05], [0.5, 4.2], [0, 4.22],
   ].map(([r, y]) => new THREE.Vector2(r, y));
   const parts: Part[] = [
     { geo: new THREE.LatheGeometry(profile, 18), slot: "rubber" },
+    // The foot, projecting forward. Rounded because it is padded fabric.
+    { geo: place(rbox(0.66, 0.6, 1.5, 0.22), [0, 0.32, 0.42]), slot: "rubber" },
+    // Ankle joint, blending leg into foot.
+    { geo: place(rbox(0.62, 0.5, 0.62, 0.2), [0, 0.5, 0.02]), slot: "rubber" },
   ];
-  // Explicit torus segments: the default (12, 48) is 1,152 triangles for a rib
-  // that lands ~8 device px wide — sub-pixel detail SMAA turns into shimmer.
-  for (const [y, r] of [[0.44, 0.348], [0.86, 0.315], [1.26, 0.265], [1.6, 0.213]]) {
-    const t = new THREE.TorusGeometry(r, 0.022, 6, 18);
+  // Five chambers — the real ones inflate in sequence up the leg.
+  for (const [y, r] of [
+    [1.0, 0.345], [1.75, 0.385], [2.5, 0.448], [3.2, 0.5], [3.9, 0.545],
+  ]) {
+    const t = new THREE.TorusGeometry(r, 0.028, 6, 18);
     t.rotateX(Math.PI / 2);
     t.translate(0, y, 0);
     parts.push({ geo: t, slot: "rubber" });
   }
-  // Zip strip down the front — the detail that says "garment", not "cylinder".
-  parts.push({ geo: place(rbox(0.07, 1.62, 0.06, 0.02), [0, 0.85, 0.3]), slot: "metal" });
+  parts.push(
+    // Zip up the outside of the leg.
+    { geo: place(rbox(0.07, 3.5, 0.06, 0.02), [0.34, 2.4, 0.28]), slot: "metal" },
+    // Hose port at the cuff.
+    { geo: place(cyl(0.09, 0.4, 8), [0.3, 4.3, 0]), slot: "metal" },
+  );
   return parts;
 }
 
-/** Compression boots on a low bench, plus the pump unit and its hoses. */
+/** The boots standing on the floor beside a side table carrying the pump. */
 function bench(): Part[] {
-  const parts: Part[] = [
-    { geo: place(rbox(3, 0.14, 1.1, 0.04), [0, 0.62, 0]), slot: "metal" },
-  ];
-  for (const [x, z] of [[-1.35, 0.45], [1.35, 0.45], [-1.35, -0.45], [1.35, -0.45]]) {
-    parts.push({ geo: place(cyl(0.05, 0.62, 8), [x, 0.31, z]), slot: "metal" });
-  }
-  for (const bx of [-0.5, 0.32]) {
+  const parts: Part[] = [];
+  // Two boots, side by side, feet toward camera.
+  for (const [bx, yaw] of [[-0.75, 0.12], [0.75, -0.1]]) {
     for (const p of boot()) {
-      parts.push({ slot: p.slot, geo: place(p.geo, [bx, 0.69, 0]) });
+      parts.push({ slot: p.slot, geo: place(p.geo, [bx, 0, 0], yaw) });
     }
   }
-  // Pump unit
-  parts.push({ geo: place(rbox(0.52, 0.34, 0.36, 0.04), [1.18, 0.86, 0]), slot: "metal" });
-  // Hoses from the unit up to each boot cuff — a curve reads as equipment in a
-  // way that another box never does.
-  for (const bx of [-0.5, 0.32]) {
+  // Side table: 0.6m x 0.45m tall.
+  const tw = 3.2, th = 2.4, td = 2.1;
+  parts.push({ geo: place(rbox(tw, 0.16, td, 0.05), [2.9, th, 0]), slot: "metal" });
+  for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+    parts.push({
+      geo: place(cyl(0.07, th, 8), [2.9 + x * (tw / 2 - 0.2), th / 2, z * (td / 2 - 0.2)]),
+      slot: "metal",
+    });
+  }
+  // Pump unit on the table.
+  parts.push({ geo: place(rbox(1.3, 0.85, 0.9, 0.08), [2.9, th + 0.5, 0]), slot: "metal" });
+  // Hoses from the pump to each cuff.
+  for (const bx of [-0.75, 0.75]) {
     const curve = new THREE.CatmullRomCurve3([
-      new THREE.Vector3(1.05, 0.95, 0.12),
-      new THREE.Vector3((1.05 + bx) / 2, 1.5, 0.34),
-      new THREE.Vector3(bx, 2.2, 0.24),
+      new THREE.Vector3(2.35, th + 0.6, 0.3),
+      new THREE.Vector3((2.35 + bx) / 2, 4.3, 0.7),
+      new THREE.Vector3(bx + 0.3, 4.35, 0.1),
     ]);
-    parts.push({ geo: new THREE.TubeGeometry(curve, 14, 0.035, 5, false), slot: "rubber" });
+    parts.push({ geo: new THREE.TubeGeometry(curve, 16, 0.055, 5, false), slot: "rubber" });
   }
   return parts;
 }
 
-/** Red-light therapy panel on a weighted stand. */
+/** Red-light therapy panel on a weighted stand, ~1.2m tall. */
 function panel(): Part[] {
   return [
-    { geo: place(cyl(0.5, 0.09, 16), [0, 0.045, 0]), slot: "metal" },
-    { geo: place(cyl(0.07, 0.95, 10), [0, 0.52, 0]), slot: "metal" },
-    { geo: place(rbox(1.7, 1.7, 0.14, 0.05), [0, 1.85, 0]), slot: "metal" },
-    // Yoke brackets either side of the frame.
-    { geo: place(rbox(0.08, 0.5, 0.1, 0.03), [-0.86, 1.5, 0]), slot: "metal" },
-    { geo: place(rbox(0.08, 0.5, 0.1, 0.03), [0.86, 1.5, 0]), slot: "metal" },
+    { geo: place(cyl(0.7, 0.14, 16), [0, 0.07, 0]), slot: "metal" },
+    { geo: place(cyl(0.09, 1.7, 10), [0, 0.85, 0]), slot: "metal" },
+    { geo: place(rbox(2.6, 4.4, 0.2, 0.06), [0, 3.9, 0]), slot: "metal" },
+    { geo: place(rbox(0.1, 0.7, 0.12, 0.03), [-1.3, 2.6, 0]), slot: "metal" },
+    { geo: place(rbox(0.1, 0.7, 0.12, 0.03), [1.3, 2.6, 0]), slot: "metal" },
   ];
 }
 
-/** Shelf of folded towels. */
-function shelf(): Part[] {
-  const parts: Part[] = [
-    { geo: place(rbox(5, 0.12, 1, 0.03), [0, 1, 0]), slot: "wood" },
-    { geo: place(rbox(4.8, 0.09, 0.9, 0.03), [0, 0.45, 0]), slot: "wood" },
-    { geo: place(rbox(0.1, 1, 1, 0.03), [-2.45, 0.5, 0]), slot: "metal" },
-    { geo: place(rbox(0.1, 1, 1, 0.03), [2.45, 0.5, 0]), slot: "metal" },
-  ];
-  // Generous bevel: a folded towel has no sharp edge anywhere on it.
-  const towels: [number, number, number][] = [
-    [-1.5, 1.14, 0.03], [-1.46, 1.29, -0.02], [-1.53, 1.44, 0.01],
-    [1.3, 1.14, 0.0], [1.34, 1.29, 0.04],
-  ];
-  for (const t of towels) {
-    parts.push({ geo: place(rbox(0.7, 0.15, 0.5, 0.06), t), slot: "fabric" });
-  }
-  return parts;
-}
-
-/** Foreground: a foam roller and folded towels on a low crate, close to camera.
- *  A near object is the cheapest depth cue there is — it gives the long lens
- *  something to measure the room against and anchors the near end of the ramp.
- *  It sits on a crate rather than flat on the floor for a framing reason: at fov
- *  24 the camera is 11 units above the ground, so anything lying ON the floor
- *  this close lands ~94% of the way to the bottom edge and clips.
- *  "Rodillo" is real VULL kit — it appears in the studio photography on /planes. */
+/** Towel rack in the FOREGROUND, with the foam roller on the lower tier.
+ *
+ *  This started as a shelf 17 units back where the towels were an unreadable
+ *  smudge. Folded towels are the one soft, light-toned thing in an otherwise
+ *  hard, dark room, so they earn a place up front — and a near object is the
+ *  cheapest depth cue there is, giving the long lens something to measure the
+ *  room against.
+ *
+ *  It stands rather than lying flat for a framing reason: at fov 24 the camera is
+ *  13 units above the ground, so anything low and this close falls to the bottom
+ *  edge and clips. "Rodillo" is real VULL kit — it is in the studio photography
+ *  on /planes. */
 function foreground(): Part[] {
-  const roller = cyl(0.3, 1.5, 16);
-  roller.rotateZ(Math.PI / 2); // lay it on its side
-  return [
-    { geo: place(rbox(1.5, 0.55, 0.8, 0.05), [0, 0.275, 0]), slot: "wood" },
-    { geo: roller.translate(0, 0.85, 0), slot: "rubber" },
-    { geo: place(rbox(0.5, 0.13, 0.36, 0.05), [0.85, 0.62, 0.12]), slot: "fabric" },
-    { geo: place(rbox(0.46, 0.11, 0.33, 0.05), [0.83, 0.74, 0.16]), slot: "fabric" },
+  const W = 4.8, H = 4.2, D = 2.1;
+  const parts: Part[] = [
+    { geo: place(rbox(W, 0.16, D, 0.04), [0, H, 0]), slot: "wood" },
+    { geo: place(rbox(W - 0.3, 0.14, D - 0.2, 0.04), [0, H * 0.52, 0]), slot: "wood" },
   ];
+  for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+    parts.push({
+      geo: place(cyl(0.1, H, 8), [x * (W / 2 - 0.18), H / 2, z * (D / 2 - 0.18)]),
+      slot: "metal",
+    });
+  }
+  // Folded towels on the top shelf — generous bevels, because a folded towel has
+  // no sharp edge anywhere on it.
+  const stack: [number, number, number][] = [
+    [-1.25, 4.32, 0], [-1.2, 4.62, 0.05], [-1.28, 4.9, -0.04],
+    [0.75, 4.32, 0.02], [0.8, 4.6, -0.03],
+  ];
+  for (const t of stack) {
+    parts.push({ geo: place(rbox(1.7, 0.32, 1.35, 0.14), t), slot: "fabric" });
+  }
+  // Foam roller on the lower tier.
+  const roller = cyl(0.42, 2.4, 16);
+  roller.rotateZ(Math.PI / 2);
+  parts.push({ geo: place(roller, [0, H * 0.52 + 0.5, 0]), slot: "rubber" });
+  return parts;
 }
 
 // ─── lighting + volumetrics ─────────────────────────────────────────────────
@@ -280,9 +301,9 @@ const PANELS = [
     intensity: 5.2,
   },
   {
-    pos: [10, 4.5, -7] as const,
-    aim: [7, -4.5, -13] as const,
-    size: [13, 8] as const,
+    pos: [12, 6, -5] as const,
+    aim: [11, -3, -16] as const,
+    size: [14, 11] as const,
     color: "#bfd0c8",
     intensity: 5.5,
   },
@@ -355,7 +376,6 @@ export function RoomProps() {
       ...at(sauna(), S, S_YAW),
       ...at(bench(), B, B_YAW),
       ...at(panel(), P, P_YAW),
-      ...at(shelf(), H, 0),
       ...at(foreground(), F, F_YAW),
     ];
 
@@ -377,7 +397,7 @@ export function RoomProps() {
       // Coated vinyl/plastic shell — lighter than everything else out here so the
       // tent reads as a soft skin stretched on a frame, not another dark box.
       plastic: new THREE.MeshStandardMaterial({
-        color: "#242a28", roughness: 0.62, metalness: 0.08, transparent: true,
+        color: "#1e2422", roughness: 0.64, metalness: 0.08, transparent: true,
       }),
     };
 
@@ -404,7 +424,7 @@ export function RoomProps() {
       },
       {
         // Pump-unit LED — the one brand-green note out here.
-        geo: place(place(rbox(0.08, 0.05, 0.03, 0.01), [1.18, 0.97, 0.19]), B, B_YAW),
+        geo: place(place(rbox(0.12, 0.08, 0.04, 0.02), [2.9, 3.05, 0.47]), B, B_YAW),
         mat: emissive(PALETTE.green),
       },
     ];
@@ -425,21 +445,16 @@ export function RoomProps() {
       {
         // The panel's emitting face — a radial falloff rather than a flat quad,
         // so it has no hard edge to read as a pasted-on rectangle.
-        pos: [7.42, FLOOR_Y + 1.85, -12.93] as [number, number, number],
-        size: [2.3, 2.3] as [number, number],
+        pos: [15.5, FLOOR_Y + 3.9, -18.87] as [number, number, number],
+        size: [3.4, 5.0] as [number, number],
         rotY: P_YAW,
         mat: makeMat(GLOW_FRAG, "#ff5330", 0.5),
       },
       {
-        pos: [7.2, FLOOR_Y + 1.85, -12.3] as [number, number, number],
-        size: [5.5, 5.5] as [number, number],
+        pos: [15.2, FLOOR_Y + 3.9, -18.2] as [number, number, number],
+        size: [8.5, 8.5] as [number, number],
         rotY: P_YAW,
         mat: makeMat(GLOW_FRAG, "#ff4a3a", 0.16),
-      },
-      {
-        pos: [-9, FLOOR_Y + 0.8, -16.4] as [number, number, number],
-        size: [5.4, 1.8] as [number, number],
-        mat: makeMat(GLOW_FRAG, "#9fbfa8", 0.2),
       },
     ];
 
@@ -448,10 +463,9 @@ export function RoomProps() {
     const contacts = (
       [
         { pos: [S[0], FLOOR_Y + 0.03, S[2]], size: [7.2, 7.2] },
-        { pos: [B[0], FLOOR_Y + 0.03, B[2]], size: [4.4, 2.4] },
-        { pos: [P[0], FLOOR_Y + 0.03, P[2]], size: [2.2, 1.8] },
-        { pos: [H[0], FLOOR_Y + 0.03, H[2]], size: [6.4, 2.4] },
-        { pos: [F[0], FLOOR_Y + 0.03, F[2]], size: [2.8, 2.0] },
+        { pos: [B[0], FLOOR_Y + 0.03, B[2]], size: [6.5, 3.6] },
+        { pos: [P[0], FLOOR_Y + 0.03, P[2]], size: [3.0, 2.4] },
+        { pos: [F[0], FLOOR_Y + 0.03, F[2]], size: [6.0, 3.2] },
       ] as { pos: [number, number, number]; size: [number, number] }[]
     ).map((c) => ({
       ...c,
