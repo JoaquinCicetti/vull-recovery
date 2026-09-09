@@ -23,12 +23,17 @@ export const WHATSAPP_NUMBER = process.env.NEXT_PUBLIC_WHATSAPP_BUSINESS_NUMBER 
 // Alias/CBU shown to clients paying by manual bank transfer.
 export const TRANSFER_ALIAS = process.env.NEXT_PUBLIC_TRANSFER_ALIAS ?? "";
 
-// Online payments (Mobbex) are OFF until the merchant account is enabled. While
-// this is false the checkout button is hidden entirely rather than shown and
-// failing: `create-payment` answers 503 "Pagos online no configurados" without
-// MOBBEX_API_KEY, so the button was a dead primary call to action. Bank transfer
-// + receipt is the live path. Flip NEXT_PUBLIC_MOBBEX_ENABLED=true (and set the
-// MOBBEX_* edge secrets) to bring it back.
+// Automatic bank transfers via Talo (talo.com.ar). While this is false the
+// "se acredita solo" option is hidden entirely rather than shown and failing:
+// `create-payment` answers 503 "Pagos online no configurados" without the
+// TALO_* edge secrets, so the button would be a dead primary call to action.
+// Manual transfer + receipt stays the fallback either way. Flip
+// NEXT_PUBLIC_TALO_ENABLED=true once the TALO_* secrets are set (sandbox first:
+// TALO_TEST=true). See docs/adr/0010-payments-talo-transfers.md.
+export const TALO_ENABLED = process.env.NEXT_PUBLIC_TALO_ENABLED === "true";
+
+// Legacy Mobbex switch. Never enabled in production; Talo replaced it. Kept
+// only until the Mobbex code is deleted.
 export const MOBBEX_ENABLED = process.env.NEXT_PUBLIC_MOBBEX_ENABLED === "true";
 
 // Build a wa.me deep link. The client tapping this messages us FIRST, which

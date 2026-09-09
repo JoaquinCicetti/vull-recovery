@@ -117,22 +117,53 @@ pnpm dlx supabase functions serve --env-file supabase/functions/.env
 > Without this, availability is computed from DB bookings only. Working hours,
 > days, and timezone live in the **`settings`** table (edit in Studio).
 
-## 9. Mobbex (payments)
+## 9. Talo (automatic bank transfers)
 
-1. **mobbex.dev** → create an application → request access to the merchant entity
-   (CUIT) → get the **API key** and **access token**.
-2. Set `MOBBEX_API_KEY`, `MOBBEX_ACCESS_TOKEN`; set `MOBBEX_TEST=true` for sandbox.
-3. Choose any random `MOBBEX_WEBHOOK_SECRET`. **Required.** It's appended as
-   `?token=…` to the webhook URL and checked by `mobbex-webhook` (Mobbex doesn't
-   sign webhooks). The webhook now **fails closed**: if this secret is unset every
-   IPN is rejected and bookings never auto-confirm. The webhook also re-queries
-   Mobbex server-side (`/p/operations/ref\<reference>`, same API creds) and checks
-   the paid amount against the service price before confirming — so a forged IPN
-   can't confirm a booking without a real payment.
-4. `create-payment` builds the webhook URL automatically as
-   `${SUPABASE_URL}/functions/v1/mobbex-webhook?token=…` — just make sure it's
-   publicly reachable (tunnel locally; already public on cloud).
-5. Test cards: see `mobbex.dev/medios-de-pago-para-pruebas`.
+Talo mints a one-time CVU/alias per payment and notifies us when the transfer
+lands; the booking then confirms itself. See ADR 0010 for the design and the
+list of assumptions the sandbox run below resolves.
+
+1. Create a **sandbox** account at `sandbox.talo.com.ar` (it is separate from a
+   production account) → Dashboard → Usuario → Credenciales → `user_id`,
+   `client_id`, `client_secret`.
+2. Set the Edge Function secrets:
+   ```bash
+   pnpm exec supabase secrets set TALO_USER_ID=... TALO_CLIENT_ID=... TALO_CLIENT_SECRET=... \
+     TALO_WEBHOOK_SECRET="$(openssl rand -hex 24)" TALO_RECONCILE_TOKEN="$(openssl rand -hex 24)" \
+     TALO_TEST=true TALO_PAYMENT_MINUTES=30
+   ```
+   `TALO_WEBHOOK_SECRET` is **required** — `talo-webhook` fails closed without it.
+   Talo does not sign webhooks; every payment is re-fetched from Talo's API before
+   anything is confirmed, so this token only rate-limits who may trigger a check.
+3. Deploy `talo-webhook` and `talo-reconcile` (both `verify_jwt = false`, gated by
+   their own tokens). `create-payment` builds the webhook URL automatically as
+   `${SUPABASE_URL}/functions/v1/talo-webhook?token=…`, which must be publicly
+   reachable — deploy to the cloud project rather than running it locally.
+4. Point an external cron (cron-job.org, GitHub Actions…) at
+   `POST ${SUPABASE_URL}/functions/v1/talo-reconcile?token=$TALO_RECONCILE_TOKEN`
+   every ~10 minutes. The webhook's retry policy is undocumented; this sweep is
+   what guarantees a paid turno is eventually confirmed.
+5. Flip `NEXT_PUBLIC_TALO_ENABLED=true` and run the sandbox checklist:
+   1. Book a turno, choose *Pagar por transferencia*. One `payments` row,
+      `provider='talo'`, `status='pending'`, `talo_payment_id`/`talo_cvu` set;
+      booking still `pending` with `hold_expires_at` ≈ now + 30 min.
+   2. Get a token (`POST /users/{user_id}/tokens`) and simulate the transfer:
+      `curl -X POST https://sandbox-api.talo.com.ar/cvu/<CVU>/faucet -H "Authorization: Bearer TL-…" -d '{"amount": <exact price>}'`
+      → payment `approved`, booking `confirmed`, confirmation email, admin alert.
+   3. Underpay (`price − 1`) → stays `pending`, flagged *pagó de menos*, visible in
+      `/admin`. **Note the field that carried the received amount** — it confirms
+      `parseReceived` in `_shared/talo.ts`.
+   4. Overpay → `approved` + flagged *pagó de más*.
+   5. **Expiry gate:** create, `PUT /payments/{id}/expiration` to now + 60 s, wait,
+      then faucet. Whether the transfer bounces or credits decides whether the
+      `EXPIRED → rejected` branch may stay as written (ADR 0010, assumption 4).
+   6. Two concurrent *Pagar* clicks → one row, one CVU, both responses identical.
+   7. Re-POST the same webhook body five times → one email, one credit-ledger row.
+   8. Webhook without `?token=` → 401; with a bogus `paymentId` → 200 and no writes.
+   9. Cancel a booking that has a live CVU → the CVU is expired at Talo.
+   10. Stop the webhook (bad URL), faucet, invoke `talo-reconcile` → same end state.
+6. For production: repeat with a production account, `TALO_TEST=false`, and a
+   fresh `TALO_WEBHOOK_SECRET`.
 
 ## 10. WhatsApp
 

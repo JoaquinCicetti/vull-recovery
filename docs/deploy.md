@@ -78,7 +78,7 @@ This is what allows the Google OAuth round-trip to redirect back to `/auth/callb
 on the live site. (Google Cloud needs no change — its redirect URI stays the Supabase
 callback `https://wjdiojyelthaumuzkfxt.supabase.co/auth/v1/callback`.)
 
-### 2. Edge Function `APP_URL`  (for Mobbex return URL, when you enable payments)
+### 2. Edge Function `APP_URL`  (Talo redirect URL, email links, CORS allow-list)
 ```bash
 pnpm exec supabase secrets set APP_URL="https://your-domain.com"
 ```
