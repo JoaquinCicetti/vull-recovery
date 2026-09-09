@@ -14,6 +14,7 @@
 //     silently move a possibly-paid client).
 //   • event with no matching booking (owner's personal block) → ignore.
 import { json, errMessage } from "../_shared/cors.ts";
+import { killLiveTaloPayments } from "../_shared/talo-settle.ts";
 import { adminClient } from "../_shared/supabase.ts";
 import { listEvents } from "../_shared/google.ts";
 import { sendBookingCancellation, notifyAdminsSimple } from "../_shared/email.ts";
@@ -78,6 +79,8 @@ Deno.serve(async (req) => {
             hold_expires_at: null,
           })
           .eq("id", booking.id);
+        // A cancelled turno must not leave a live CVU behind.
+        await killLiveTaloPayments(admin, booking.id);
         await admin
           .from("payments")
           .update({ status: "rejected" })

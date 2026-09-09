@@ -428,6 +428,16 @@ verify_jwt = false
 [functions.calendar-poll]
 verify_jwt = false
 
+# Talo payment notifications. No Supabase JWT: gated by its own ?token= secret,
+# and every fact about money is re-fetched from Talo server-side regardless.
+[functions.talo-webhook]
+verify_jwt = false
+
+# Cron-driven Talo reconciliation (the webhook's retry policy is undocumented);
+# auth via its own ?token= secret.
+[functions.talo-reconcile]
+verify_jwt = false
+
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 

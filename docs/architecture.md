@@ -15,8 +15,9 @@ Booking / My bookings     ──▶     Storage (receipts)
 Admin panel               ──▶     Edge Functions:                 Google Calendar
                                    • availability      ─────────▶  (freeBusy)
                                    • create-booking
-                                   • create-payment    ─────────▶  Mobbex (checkout)
-                                   • mobbex-webhook    ◀─────────  Mobbex (IPN)
+                                   • create-payment    ─────────▶  Talo (CVU/alias)
+                                   • talo-webhook      ◀─────────  Talo (notification)
+                                   • talo-reconcile    ─────────▶  Talo (GET /payments)
                                    • admin-payment
                                    • whatsapp-webhook  ◀─────────  WhatsApp (inbound)
                                    • keep-alive
@@ -34,7 +35,7 @@ Supabase client (anon key + RLS) for auth and reads.
 | `services` | Plans/cards: name, price (ARS), duration, active |
 | `profiles` | 1:1 with `auth.users`: name, WhatsApp, `is_admin` |
 | `bookings` | Appointments: time range, status, calendar event, hold expiry |
-| `payments` | Payments: provider (`mobbex`/`manual`), status, checkout id, receipt |
+| `payments` | Payments: provider (`talo`/`manual`, legacy `mobbex`), status, Talo id + CVU/alias, receipt, `admin_flag` |
 | `whatsapp_messages` | Inbound message log + 24h window |
 | `settings` | Singleton row: working hours, days, timezone |
 
@@ -75,10 +76,12 @@ Booking lifecycle: `pending → awaiting_payment → confirmed` (or `cancelled` 
 4. Pick a slot → `create-booking` writes the `pending` booking (guarded by the
    `EXCLUDE` constraint) + a tentative Calendar event.
 5. `create-payment`:
-   - **Mobbex** → creates a checkout (`reference` = booking id), returns the pay URL.
+   - **Talo** → inserts the payment row, mints a one-time CVU/alias (`external_id` = row id)
+     and extends the booking hold to the CVU's expiry. The booking stays `pending`.
    - **Manual** → records the uploaded receipt to Storage, sets `awaiting_payment`.
 6. Confirmation:
-   - **Mobbex** → `mobbex-webhook` receives the IPN, confirms the booking, finalizes the event.
+   - **Talo** → `talo-webhook` (or the `talo-reconcile` cron) re-fetches the payment from
+     Talo, checks the amount actually received, confirms the booking, finalizes the event.
    - **Manual** → admin reviews the receipt in `/admin` and approves (`admin-payment`).
 7. Client taps **"Confirmar por WhatsApp"** (`wa.me`): by messaging first, we can
    reply free within the 24h window. See [ADR 0002](adr/0002-whatsapp-client-initiated-window.md).
@@ -89,9 +92,11 @@ Booking lifecycle: `pending → awaiting_payment → confirmed` (or `cancelled` 
 |----------|-----|------|
 | `availability` | public | Computes free slots |
 | `create-booking` | user | Race-safe hold + tentative event |
-| `create-payment` | user | Mobbex checkout / manual receipt |
-| `mobbex-webhook` | public* | IPN → confirms booking (`status.code 200` = paid) |
-| `admin-payment` | admin | Approve/reject a manual payment |
+| `create-payment` | user | Talo CVU / manual receipt (legacy Mobbex branch pending removal) |
+| `talo-webhook` | public* | Notification → re-verify with Talo → settle (`_shared/talo-settle.ts`) |
+| `talo-reconcile` | cron* | Re-checks unsettled Talo payments through the same settle path |
+| `mobbex-webhook` | public* | Legacy; to be deleted (ADR 0010) |
+| `admin-payment` | admin | Approve / reject / dismiss a payment needing a human |
 | `whatsapp-webhook` | public* | Meta verify + inbound logging |
 | `keep-alive` | public | Ping so the free project doesn't pause |
 

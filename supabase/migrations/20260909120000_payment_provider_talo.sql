@@ -1,0 +1,14 @@
+-- ============================================================================
+-- payment_provider += 'talo'  (bank transfer settled automatically by Talo)
+-- ============================================================================
+-- Talo (talo.com.ar) mints a one-time CVU/alias per payment; the client transfers
+-- from their bank app and Talo notifies us. It replaces Mobbex as THE online
+-- path, while provider 'manual' (transfer + receipt + admin approval) stays as
+-- the $0 fallback. See docs/adr/0010-payments-talo-transfers.md.
+--
+-- This migration adds NOTHING but the enum value. Postgres refuses to *use* a new
+-- enum value in the same transaction that adds it ("unsafe use of new value of
+-- enum type"), and Supabase wraps each migration file in one transaction — so
+-- every index/predicate that mentions 'talo' lives in the next file.
+-- Same split reason as 20260630140000_booking_no_show.sql.
+alter type public.payment_provider add value if not exists 'talo';
