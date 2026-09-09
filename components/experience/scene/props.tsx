@@ -56,7 +56,7 @@ const FLOOR_Y = -5;
 // the tub, and the eye read that band as the ground with the tub floating below
 // it. The depth ramp is now continuous — crate −2, bath −6, boots −10, panel −13,
 // sauna −14, shelf −17 — and every prop clears the bath's ±4.6° silhouette cone.
-const S: [number, number, number] = [-9.5, FLOOR_Y, -14]; // sauna
+const S: [number, number, number] = [-13, FLOOR_Y, -24]; // sauna tent
 const B: [number, number, number] = [6.6, FLOOR_Y, -10]; // boots + bench
 const P: [number, number, number] = [7.0, FLOOR_Y, -13]; // red-light panel
 const H: [number, number, number] = [-9.0, FLOOR_Y, -17]; // shelf
@@ -66,7 +66,7 @@ const B_YAW = 0.26;
 const P_YAW = -0.5;
 const F_YAW = 0.4;
 
-type Slot = "wood" | "metal" | "fabric" | "rubber";
+type Slot = "wood" | "metal" | "fabric" | "rubber" | "plastic";
 type Part = { geo: THREE.BufferGeometry; slot: Slot };
 
 // ─── geometry helpers ───────────────────────────────────────────────────────
@@ -100,40 +100,66 @@ const at = (parts: Part[], pos: [number, number, number], yaw = 0): Part[] =>
 
 // ─── props ──────────────────────────────────────────────────────────────────
 
-/** Sauna cabin, 5.0 × 3.4 × 4.0. Slatted wood body, metal frame and fittings. */
+/** Portable sauna tent — 1m x 1m footprint, 2m tall.
+ *
+ *  Scale is derived, not eyeballed. The bath GLB is 9.0 x 5.29 x 4.64 world
+ *  units and a cold plunge is ~1.7m long, which puts the scene at 5.29 units per
+ *  metre. The first version of this prop was 5.0 x 3.4 x 4.0 units — 0.94m wide
+ *  but only 0.64m tall, a squat shed. Hence "a whole room": the footprint was
+ *  about right and the height was 3x short, so the proportions read as a
+ *  building. A real tent is NARROW and TALL, and at 2m it legitimately stands
+ *  more than twice the height of the tub.
+ *
+ *  Construction is a soft shell on a visible frame: heavily bevelled panels so
+ *  the plastic reads as stretched skin rather than sheet, corner poles and top
+ *  rails in metal, a zip up the front, and the head opening at the top that
+ *  makes these things recognisable. */
+const TENT_W = 5.3; // 1.0m
+const TENT_H = 10.6; // 2.0m
+
 function sauna(): Part[] {
+  const halfW = TENT_W / 2;
+  const bodyH = TENT_H - 0.7; // sits on a shallow floor pan
   const parts: Part[] = [
-    { geo: place(rbox(5, 3.4, 4, 0.07), [0, 1.7, 0]), slot: "wood" },
-    { geo: place(rbox(5.7, 0.22, 4.6, 0.05), [0, 3.5, 0]), slot: "wood" },
+    // Floor pan
+    { geo: place(rbox(TENT_W, 0.35, TENT_W, 0.08), [0, 0.17, 0]), slot: "metal" },
+    // Shell. A big bevel is doing the work here — it rounds every edge the way
+    // tensioned fabric does, which is most of what separates "tent" from "box".
+    { geo: place(rbox(TENT_W - 0.3, bodyH, TENT_W - 0.3, 0.5), [0, 0.35 + bodyH / 2, 0]), slot: "plastic" },
   ];
-  // Slats across the front — the wood read at silhouette scale.
-  for (let i = 0; i < 9; i++) {
+  // Corner poles + top rails: the frame the skin is stretched over.
+  for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
     parts.push({
-      geo: place(rbox(0.42, 3.2, 0.1, 0.03), [-2.1 + i * 0.525, 1.7, 2.02]),
-      slot: "wood",
+      geo: place(cyl(0.09, TENT_H - 0.4, 8), [x * (halfW - 0.16), 0.35 + (TENT_H - 0.4) / 2, z * (halfW - 0.16)]),
+      slot: "metal",
     });
   }
-  // Door frame: four thin members around the opening, so the door reads as a
-  // door rather than as a glowing stripe painted on a wall.
-  const DX = 1.1, DW = 1.5, DH = 2.5, DY = 1.35, DZ = 2.08;
+  const railY = TENT_H - 0.15;
   parts.push(
-    { geo: place(rbox(0.09, DH, 0.1, 0.03), [DX - DW / 2, DY, DZ]), slot: "metal" },
-    { geo: place(rbox(0.09, DH, 0.1, 0.03), [DX + DW / 2, DY, DZ]), slot: "metal" },
-    { geo: place(rbox(DW, 0.09, 0.1, 0.03), [DX, DY + DH / 2, DZ]), slot: "metal" },
-    { geo: place(rbox(DW, 0.09, 0.1, 0.03), [DX, DY - DH / 2, DZ]), slot: "metal" },
-    // Handle
-    { geo: place(cyl(0.045, 0.42, 8), [DX + DW / 2 - 0.26, DY + 0.1, DZ + 0.09]), slot: "metal" },
+    { geo: place(rbox(TENT_W - 0.2, 0.1, 0.1, 0.03), [0, railY, halfW - 0.16]), slot: "metal" },
+    { geo: place(rbox(TENT_W - 0.2, 0.1, 0.1, 0.03), [0, railY, -(halfW - 0.16)]), slot: "metal" },
+    { geo: place(rbox(0.1, 0.1, TENT_W - 0.2, 0.03), [halfW - 0.16, railY, 0]), slot: "metal" },
+    { geo: place(rbox(0.1, 0.1, TENT_W - 0.2, 0.03), [-(halfW - 0.16), railY, 0]), slot: "metal" },
   );
-  // Roof vent — breaks the flat roofline, which otherwise cuts a hard rectangle
-  // against the void above the horizon.
+  // Zip up the front, and its pull.
   parts.push(
-    { geo: place(cyl(0.13, 0.85, 10), [-1.6, 4.0, -0.8]), slot: "metal" },
-    { geo: place(cyl(0.2, 0.1, 10), [-1.6, 4.45, -0.8]), slot: "metal" },
+    { geo: place(rbox(0.13, bodyH - 1.2, 0.07, 0.04), [0, 0.35 + bodyH / 2 - 0.2, halfW - 0.16]), slot: "metal" },
+    { geo: place(cyl(0.05, 0.3, 6), [0, 1.5, halfW - 0.1]), slot: "metal" },
   );
-  // Feet, so the body doesn't melt into the floor.
-  for (const [x, z] of [[-2.2, 1.7], [2.2, 1.7], [-2.2, -1.7], [2.2, -1.7]]) {
-    parts.push({ geo: place(cyl(0.1, 0.14, 8), [x, 0.07, z]), slot: "metal" });
+  // Horizontal quilt seams. Without them the shell is one flat panel and reads
+  // as a shower cubicle; segmenting it is what says "stitched fabric".
+  for (const sy of [2.4, 4.8, 7.2]) {
+    parts.push(
+      { geo: place(rbox(TENT_W - 0.34, 0.09, 0.06, 0.03), [0, sy, halfW - 0.17]), slot: "metal" },
+      { geo: place(rbox(0.06, 0.09, TENT_W - 0.34, 0.03), [halfW - 0.17, sy, 0]), slot: "metal" },
+      { geo: place(rbox(0.06, 0.09, TENT_W - 0.34, 0.03), [-(halfW - 0.17), sy, 0]), slot: "metal" },
+    );
   }
+  // Head opening at the top — the detail that makes a sauna tent legible.
+  parts.push({
+    geo: place(rbox(2.2, 0.28, 2.0, 0.13), [0, TENT_H - 0.5, 0]),
+    slot: "metal",
+  });
   return parts;
 }
 
@@ -247,11 +273,11 @@ function foreground(): Part[] {
 // rather than lighting the room.
 const PANELS = [
   {
-    pos: [-12, 4.5, -9] as const,
-    aim: [-9.5, -4.5, -15] as const,
-    size: [16, 9] as const,
+    pos: [-15, 9, -13] as const,
+    aim: [-13, 0, -24] as const,
+    size: [18, 14] as const,
     color: "#c8d6cd",
-    intensity: 7.5,
+    intensity: 5.2,
   },
   {
     pos: [10, 4.5, -7] as const,
@@ -348,12 +374,17 @@ export function RoomProps() {
       rubber: new THREE.MeshStandardMaterial({
         color: "#0e1110", roughness: 0.72, metalness: 0.06, transparent: true,
       }),
+      // Coated vinyl/plastic shell — lighter than everything else out here so the
+      // tent reads as a soft skin stretched on a frame, not another dark box.
+      plastic: new THREE.MeshStandardMaterial({
+        color: "#242a28", roughness: 0.62, metalness: 0.08, transparent: true,
+      }),
     };
 
     // Merge per material → 4 draw calls for the whole room.
     // RoundedBoxGeometry is NON-indexed while BoxGeometry/Cylinder/Lathe are
     // indexed, and mergeGeometries returns null on a mixed set — normalise first.
-    const groups = (["wood", "metal", "fabric", "rubber"] as Slot[]).map((slot) => {
+    const groups = (["wood", "metal", "fabric", "rubber", "plastic"] as Slot[]).map((slot) => {
       const geos = parts
         .filter((p) => p.slot === slot)
         .map((p) => (p.geo.index ? p.geo.toNonIndexed() : p.geo));
@@ -368,7 +399,7 @@ export function RoomProps() {
     const emissives = [
       {
         // Sauna door slit — the warm anchor of the whole left side.
-        geo: place(place(rbox(0.16, 2.3, 0.05, 0.03), [0.4, 1.35, 2.1]), S, S_YAW),
+        geo: place(place(rbox(0.09, 4.2, 0.04, 0.02), [0, 4.4, 2.47]), S, S_YAW),
         mat: emissive(PALETTE.amber),
       },
       {
@@ -381,14 +412,14 @@ export function RoomProps() {
     const glows = [
       {
         // Behind the cabin: a dim pool its silhouette can cut against.
-        pos: [-9.9, FLOOR_Y + 1.9, -17.4] as [number, number, number],
-        size: [15, 9] as [number, number],
-        mat: makeMat(GLOW_FRAG, "#8d9d94", 0.3),
+        pos: [-13.4, FLOOR_Y + 4.8, -27.5] as [number, number, number],
+        size: [19, 18] as [number, number],
+        mat: makeMat(GLOW_FRAG, "#8d9d94", 0.2),
       },
       {
         // Warm spill out of the door.
-        pos: [-8.2, FLOOR_Y + 1.5, -12.4] as [number, number, number],
-        size: [3.4, 4.2] as [number, number],
+        pos: [-12.2, FLOOR_Y + 4.4, -21.6] as [number, number, number],
+        size: [4.0, 7.5] as [number, number],
         mat: makeMat(GLOW_FRAG, "#ffb46b", 0.38),
       },
       {
@@ -416,7 +447,7 @@ export function RoomProps() {
     // around it — a shadow wider than its object erases the ground it implies.
     const contacts = (
       [
-        { pos: [S[0], FLOOR_Y + 0.03, S[2]], size: [7.5, 6] },
+        { pos: [S[0], FLOOR_Y + 0.03, S[2]], size: [7.2, 7.2] },
         { pos: [B[0], FLOOR_Y + 0.03, B[2]], size: [4.4, 2.4] },
         { pos: [P[0], FLOOR_Y + 0.03, P[2]], size: [2.2, 1.8] },
         { pos: [H[0], FLOOR_Y + 0.03, H[2]], size: [6.4, 2.4] },
