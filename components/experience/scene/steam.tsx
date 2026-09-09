@@ -9,7 +9,7 @@ import { useFrame } from "@react-three/fiber";
 import { useProgressStore } from "../progress-store";
 import { NOISE_GLSL, makeMat } from "./volumetric";
 
-// Steam rising from the sauna door. Same fake-volumetric language as
+// Steam escaping the top of the sauna tent. Same fake-volumetric language as
 // <Atmosphere/>: additive noise cards, no ray-marching.
 //
 // Rendered as CROSSED QUADS (two planes at 90°) rather than one plane — the
@@ -49,10 +49,12 @@ const BASE_OPACITY = 0.3;
 export function Steam() {
   const { mat, plumes } = useMemo(() => {
     const mat = makeMat(PLUME_FRAG, "#dcc9ad", BASE_OPACITY, 0.05);
-    // Two crossed quads at the sauna door (world −17, −30, yawed 0.35).
+    // Crossed quads at the tent's head opening. The tent is 2m tall (10.6 world
+    // units) at (−13, −24), so its top sits near y +5 — vapour leaves from up
+    // there, not from a door at floor level.
     const plumes: { pos: [number, number, number]; rotY: number }[] = [
-      { pos: [-15.7, -2.1, -28.3], rotY: 0.35 },
-      { pos: [-15.7, -2.1, -28.3], rotY: 0.35 + Math.PI / 2 },
+      { pos: [-13, 8.4, -24], rotY: 0.35 },
+      { pos: [-13, 8.4, -24], rotY: 0.35 + Math.PI / 2 },
     ];
     return { mat, plumes };
   }, []);
@@ -70,7 +72,7 @@ export function Steam() {
     <>
       {plumes.map((pl, i) => (
         <mesh key={i} position={pl.pos} rotation={[0, pl.rotY, 0]} material={mat}>
-          <planeGeometry args={[3.2, 6.4]} />
+          <planeGeometry args={[3.6, 7.0]} />
         </mesh>
       ))}
     </>
