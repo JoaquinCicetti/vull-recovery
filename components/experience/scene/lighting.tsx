@@ -218,10 +218,15 @@ export function Lighting() {
           <Atmosphere/>, which cost almost nothing. */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -5, 0]}>
         <planeGeometry args={[140, 140]} />
+        {/* Polished concrete, not matte paint. At roughness 0.55 the floor
+            returned almost no specular, so the panel lights landed as a flat grey
+            wash with no direction and the whole room read as CG. Dropping
+            roughness and lifting metalness lets those lights leave soft elongated
+            speculars, which is what tells the eye the floor is a surface. */}
         <meshStandardMaterial
-          color="#090c10"
-          roughness={0.55}
-          metalness={0.15}
+          color="#080b0e"
+          roughness={0.34}
+          metalness={0.42}
         />
       </mesh>
     </>

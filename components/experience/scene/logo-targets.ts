@@ -1,19 +1,49 @@
 import * as THREE from "three";
 import { MeshSurfaceSampler } from "three/examples/jsm/math/MeshSurfaceSampler.js";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
-import { loadLogoShapes, shapesCenter, LOGO_VIEWBOX } from "./logo-loader";
+import { loadLogoShapes, shapesCenter } from "./logo-loader";
 
 // Bake `count` target positions sampled across the mark (area-weighted), each with
-// a tint (white for the triangle/wordmark, green for the check). Spheres morph to
-// these in Phase E. World transform: scale to ~7u, flip Y, center on the mark.
-const WORLD = 4.6 / LOGO_VIEWBOX;
-const LOGO_Y = 0.55; // lift the assembled logo up so it clears the bottom captions
+// a tint (white for the triangle, green for the check). Spheres morph to these in
+// Phase E. World transform: flip Y, center on the mark.
+//
+// loadLogoShapes now returns the MARK ONLY (no wordmarks), which is 214 SVG units
+// tall instead of the full lockup's 394 — hence the larger WORLD, so the mark
+// still fills a comparable share of the frame. Every sphere now packs into the
+// mark instead of being spread across seven thin letters, so density roughly
+// doubles; that is what fixes the broken look at the 440-sphere mobile count.
+// "VULL" is set as DOM text beneath it (components/experience/wordmark.tsx).
+// The mark is measured, not guessed: it spans 253 × 214 SVG units (x 164–417,
+// y 69–283), a 1.18 aspect.
+const MARK_W = 253;
+const MARK_H = 214;
+
+// The assembly is framed by a FIXED final camera — (0,0,13.5) aimed at the
+// origin, fov 24 — so the visible world height there is a constant
+// 2 × 13.5 × tan(12°) ≈ 5.74, and the visible WIDTH is that times the viewport
+// aspect. On a phone (aspect ≈0.46) the width budget is only ~2.65 world units,
+// so a mark sized for desktop overflows and clips against both edges. Size it
+// against whichever axis is tighter.
+function markHeight(): number {
+  const aspect =
+    typeof window === "undefined" ? 16 / 9 : window.innerWidth / window.innerHeight;
+  const visibleH = 2 * 13.5 * Math.tan((12 * Math.PI) / 180);
+  const visibleW = visibleH * aspect;
+  // Occupy ~68% of the width budget, and never exceed 2.6u tall on wide screens.
+  return Math.min(2.6, (visibleW * 0.68) / (MARK_W / MARK_H));
+}
 
 export type LogoTargets = { positions: Float32Array; tints: Float32Array };
 
 export async function sampleLogoTargets(count: number): Promise<LogoTargets> {
   const { white, green } = await loadLogoShapes();
   const center = shapesCenter([...white, ...green]);
+
+  const height = markHeight();
+  const WORLD = height / MARK_H;
+  // Lift proportionally, so the mark's lower edge lands just under 58% of the
+  // viewport at every aspect and the DOM wordmark below it always clears.
+  const LOGO_Y = height * 0.33;
 
   const geos: THREE.BufferGeometry[] = [];
   const addShapes = (shapes: THREE.Shape[], color: THREE.Color) => {

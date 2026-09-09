@@ -25,9 +25,9 @@ const CAPTIONS: Caption[] = [
   {
     in: [0.8, 0.94],
     out: null,
-    eyebrow: "VULL",
+    eyebrow: "Recuperación deportiva",
     title: "Todo encuentra su lugar",
-    offsetVh: 20, // below the assembled logo, not over it
+    offsetVh: 32, // below the assembled logo AND the DOM wordmark, not over them
   },
 ];
 

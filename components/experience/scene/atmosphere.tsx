@@ -7,32 +7,14 @@
 import { useMemo } from "react";
 import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
+import { NOISE_GLSL, makeMat } from "./volumetric";
 
 // Cheap fake volumetrics (no ray-marching): additive noise cards hugging the
 // floor for the low drifting mist, plus two faint gradient quads aligned with the
 // rim lights for the light-beam read. Everything is additive over pure black, so
 // it can only ever ADD the rim tint — the room itself stays black.
-
-const NOISE_GLSL = /* glsl */ `
-  float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-  float noise(vec2 p) {
-    vec2 i = floor(p), f = fract(p);
-    vec2 u = f * f * (3.0 - 2.0 * f);
-    return mix(
-      mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x),
-      mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x),
-      u.y
-    );
-  }
-`;
-
-const VERT = /* glsl */ `
-  varying vec2 vUv;
-  void main() {
-    vUv = uv;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-  }
-`;
+// The shared noise/vertex shader and the material factory live in ./volumetric,
+// alongside <Steam/> which uses the same language.
 
 // Ground mist: 2-octave noise, fading upward (uv.y) and at the card's ends.
 const MIST_FRAG = /* glsl */ `
@@ -96,29 +78,6 @@ const BEAM_FRAG = /* glsl */ `
   }
 `;
 
-function makeMat(
-  frag: string,
-  color: string,
-  opacity: number,
-  speed = 0,
-  blending: THREE.Blending = THREE.AdditiveBlending,
-) {
-  return new THREE.ShaderMaterial({
-    uniforms: {
-      uTime: { value: 0 },
-      uOpacity: { value: opacity },
-      uSpeed: { value: speed },
-      uColor: { value: new THREE.Color(color) },
-    },
-    vertexShader: VERT,
-    fragmentShader: frag,
-    transparent: true,
-    depthWrite: false,
-    blending,
-    side: THREE.DoubleSide,
-  });
-}
-
 // Orient a plane's +Y (its uv.y axis) from the rim light along its aim direction.
 function beamTransform(from: THREE.Vector3, to: THREE.Vector3) {
   const dir = to.clone().sub(from);
@@ -141,8 +100,12 @@ export function Atmosphere() {
       makeMat(MIST_FRAG, "#93b49e", 0.05, 0.016),
     ];
     const beamMat = makeMat(BEAM_FRAG, "#b7d3c0", 0.05);
-    const poolMat = makeMat(POOL_FRAG, "#a8bfae", 0.16);
-    const shadowMat = makeMat(SHADOW_FRAG, "#000000", 0.55, 0, THREE.NormalBlending);
+    // The pool is what makes the floor READ as floor around the product; without
+    // enough of it the tub's base ends in black and looks like it is floating.
+    const poolMat = makeMat(POOL_FRAG, "#a8bfae", 0.21);
+    // Was 0.55 over an 11×7 ellipse — wider than the 9×5.3 tub, so it painted a
+    // black halo AROUND the base and erased the very ground it was meant to imply.
+    const shadowMat = makeMat(SHADOW_FRAG, "#000000", 0.34, 0, THREE.NormalBlending);
     // Shafts follow the LOWER lights (lighting.tsx): the main one rides the
     // lower-left key toward the bath; a fainter one rises from the under-glow.
     const beamL = beamTransform(
@@ -184,7 +147,12 @@ export function Atmosphere() {
         material={poolMat}
         renderOrder={1}
       >
-        <planeGeometry args={[24, 24]} />
+        {/* Widened from 24² so ONE pool covers the whole room — the foreground
+            crate at z −2 through the shelf at z −17. The old radius reached zero
+            by z ≈ 0, leaving the floor in front of the tub black while the lit
+            band sat behind it; the eye read that band as the ground and the tub's
+            base, below it, as floating. */}
+        <planeGeometry args={[44, 44]} />
       </mesh>
       <mesh
         rotation={[-Math.PI / 2, 0, 0]}
@@ -192,8 +160,9 @@ export function Atmosphere() {
         material={shadowMat}
         renderOrder={2}
       >
-        {/* Slightly larger than the bath footprint (~9 x 5.3 at scale 9). */}
-        <planeGeometry args={[11, 7]} />
+        {/* Hugs the tub's contact patch rather than exceeding it — the footprint
+            is ~9 x 5.3 at the rim but the base tapers well inside that. */}
+        <planeGeometry args={[8, 4.8]} />
       </mesh>
 
       {/* Faint beams rising from the rim lights through the haze. */}
