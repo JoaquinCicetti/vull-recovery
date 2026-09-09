@@ -87,11 +87,14 @@ export default function Scene({
         // detail is preserved rather than crushed.
         toneMappingExposure: 0.95,
       }}
-      // Long lens (~85mm equiv): compressed perspective, shallow-focus read.
+      // Long lens (~85mm equiv) on desktop: compressed perspective, shallow-focus
+      // read. fov is VERTICAL, so on a portrait phone that same 24° sees only
+      // ±5.6° sideways — the bath and nothing else. The phone gets a wider lens so
+      // the room (tent, boots, recliner, towels) is actually in the frame.
       // Initial position = the entry point the intro pushes in FROM, so there's no
       // first-frame pop before the Rig takes over.
       camera={{
-        fov: 24,
+        fov: isMobile ? 62 : 24,
         near: 0.1,
         far: 200,
         position: [INTRO_FROM.x, INTRO_FROM.y, INTRO_FROM.z],
@@ -112,19 +115,17 @@ export default function Scene({
         </Suspense>
       </SceneBoundary>
       <Atmosphere />
-      {/* Background studio: sauna, compression boots, red-light panel, shelf.
-          Desktop only — fov 24 is VERTICAL, so at a phone's aspect the horizontal
-          half-angle is 5.6° and the bath alone already spans ±4.6°: every prop is
-          off-screen there. Gated on the pre-render `isMobile` so the light and
-          material counts never change after first render (which would recompile
-          every lit material). Boundaried like <Bath/> — a bad shader degrades to
-          the bare scene instead of taking the canvas down. */}
-      {!isMobile && (
-        <SceneBoundary>
-          <RoomProps />
-          <Steam />
-        </SceneBoundary>
-      )}
+      {/* Background studio: sauna, compression boots + recliner, red-light
+          panel, towel rack. Rendered on every device now that the phone has a
+          wide enough lens to see it; the steam stays desktop-only (particle
+          cost). Both are mounted from the first render so the light and material
+          counts never change afterwards (which would recompile every lit
+          material). Boundaried like <Bath/> — a bad shader degrades to the bare
+          scene instead of taking the canvas down. */}
+      <SceneBoundary>
+        <RoomProps />
+        {!isMobile && <Steam />}
+      </SceneBoundary>
       <Spheres count={count} />
       {debugCam ? <OrbitControls makeDefault target={[0, -1, -6]} /> : <Rig />}
       <Effects dof={!isMobile} />

@@ -36,11 +36,20 @@ const PATH = new THREE.CatmullRomCurve3(
 // Aim choreography: at the hero the camera aims ABOVE the bath, dropping it
 // into the BOTTOM HALF of the frame (clear of the hero text); the aim then
 // eases down onto the bath as the ride starts, and to the logo plane at the end.
-const AIM_HERO = new THREE.Vector3(0, 2.6, -6); // lifts the room out of the bottom band
+//
+// On a phone the lens is much wider (fov 62 vs 24, see scene.tsx) and the copy
+// stacks four lines deep, so the same aim would pin the whole room up under the
+// CTA buttons with nothing below. Aiming higher there pushes the room down into
+// the empty band between the buttons and the scroll cue.
+const IS_MOBILE =
+  typeof window !== "undefined" && window.matchMedia("(max-width: 768px)").matches;
+const HERO_AIM_Y = IS_MOBILE ? 13 : 2.6;
+const AIM_HERO = new THREE.Vector3(0, HERO_AIM_Y, -6); // lifts the room out of the bottom band
 const AIM_BATH = new THREE.Vector3(0, -2, -6); // near the bath center
 const AIM_WINDOW = [0.08, 0.4] as const;
 const ORIGIN = new THREE.Vector3(0, 0, 0);
-const INTRO_AIM = new THREE.Vector3(0, INTRO_AIM_Y, -6); // eases down onto AIM_HERO
+// Eases down onto AIM_HERO; keeps the same offset above it on every device.
+const INTRO_AIM = new THREE.Vector3(0, HERO_AIM_Y + (INTRO_AIM_Y - 2.6), -6);
 const UP_Y = new THREE.Vector3(0, 1, 0);
 const UP_ZENITH = new THREE.Vector3(0, 0, -1); // stable "up" when looking straight down
 

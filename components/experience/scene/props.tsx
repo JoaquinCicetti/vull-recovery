@@ -25,10 +25,10 @@ import { makeMat } from "./volumetric";
 //   highlight, so it dies to a flat silhouette and reads as an untextured
 //   primitive. A 3-6cm bevel gives each edge a specular line and is most of the
 //   difference between "CG box" and "object".
-// * FOUR materials, not one. Wood, metal, fabric and rubber respond differently
+// * SEVERAL materials, not one. Wood, metal, fabric and rubber respond differently
 //   to the same light, and a scene where everything shares one roughness reads as
 //   a greybox no matter how well it is lit. Geometry is merged PER MATERIAL, so
-//   this costs 4 draw calls rather than 1.
+//   this costs one draw call per material rather than 1 total.
 //
 // Two constraints from the scene itself:
 //
@@ -41,9 +41,9 @@ import { makeMat } from "./volumetric";
 //   peaks at 0.2125 and can never bloom, while anything past 1.0 clips to a flat
 //   block with no rolloff. These sit just under, and the halos do the glowing.
 //
-// Desktop only: fov 24 is VERTICAL, so at a phone's aspect the horizontal
-// half-angle is 5.6° and the bath alone spans ±4.6°. Every prop here is
-// off-screen on mobile; <Scene/> gates the whole component out.
+// On a phone the lens opens up (see <Scene/>): fov 24 is VERTICAL, so at a
+// portrait aspect its horizontal half-angle is 5.6° and every prop here would
+// be off-screen. The wider mobile fov is what brings the room into frame.
 
 // Idempotent; lighting.tsx also calls it. Required before the first
 // RectAreaLight material compiles.
@@ -57,13 +57,13 @@ const FLOOR_Y = -5;
 const S: [number, number, number] = [-13, FLOOR_Y, -24]; // sauna tent
 const B: [number, number, number] = [8, FLOOR_Y, -11]; // boots + pump table
 const P: [number, number, number] = [15, FLOOR_Y, -19]; // red-light panel
-const F: [number, number, number] = [-7.5, FLOOR_Y, -1]; // foreground towel rack
+const F: [number, number, number] = [-10.5, FLOOR_Y, -1]; // foreground towel rack
 const S_YAW = 0.35;
 const B_YAW = 0.26;
 const P_YAW = -0.5;
 const F_YAW = 0.4;
 
-type Slot = "wood" | "metal" | "fabric" | "rubber" | "plastic";
+type Slot = "wood" | "metal" | "fabric" | "rubber" | "canvas" | "tape" | "nylon" | "vinyl" | "led";
 type Part = { geo: THREE.BufferGeometry; slot: Slot };
 
 // ─── geometry helpers ───────────────────────────────────────────────────────
@@ -80,13 +80,14 @@ function place(
   geo: THREE.BufferGeometry,
   [x, y, z]: [number, number, number],
   rotY = 0,
+  scale = 1,
 ) {
   const g = geo.clone();
   g.applyMatrix4(
     new THREE.Matrix4().compose(
       new THREE.Vector3(x, y, z),
       new THREE.Quaternion().setFromEuler(new THREE.Euler(0, rotY, 0)),
-      new THREE.Vector3(1, 1, 1),
+      new THREE.Vector3(scale, scale, scale),
     ),
   );
   return g;
@@ -97,139 +98,303 @@ const at = (parts: Part[], pos: [number, number, number], yaw = 0): Part[] =>
 
 // ─── props ──────────────────────────────────────────────────────────────────
 
-/** Portable sauna tent — 1m x 1m footprint, 2m tall.
+/** Portable sauna tent — the grow-tent kind: 1.2m square, 2m tall, black canvas.
  *
  *  Scale is derived, not eyeballed. The bath GLB is 9.0 x 5.29 x 4.64 world
  *  units and a cold plunge is ~1.7m long, which puts the scene at 5.29 units per
- *  metre. The first version of this prop was 5.0 x 3.4 x 4.0 units — 0.94m wide
- *  but only 0.64m tall, a squat shed. Hence "a whole room": the footprint was
- *  about right and the height was 3x short, so the proportions read as a
- *  building. A real tent is NARROW and TALL, and at 2m it legitimately stands
- *  more than twice the height of the tub.
+ *  metre.
  *
- *  Construction is a soft shell on a visible frame: heavily bevelled panels so
- *  the plastic reads as stretched skin rather than sheet, corner poles and top
- *  rails in metal, a zip up the front, and the head opening at the top that
- *  makes these things recognisable. */
-const TENT_W = 5.3; // 1.0m
+ *  What made the previous pass read as a FRIDGE: a tall narrow box in a
+ *  light-grey shell. A grow tent is the opposite on both counts — a squarer
+ *  1.2 x 1.2 footprint, and matte BLACK canvas that swallows light. On a black
+ *  canvas the only things that draw the object are the seams: lighter zip tape
+ *  outlining the big front door, the webbing at the corners where the poles push
+ *  the fabric out, the round duct ports, and the warm slit of the door. Those
+ *  are what is modelled; the box itself is meant to nearly vanish. */
+const TENT_W = 6.4; // 1.2m
 const TENT_H = 10.6; // 2.0m
 
 function sauna(): Part[] {
   const halfW = TENT_W / 2;
-  const bodyH = TENT_H - 0.7;
-  const cy = 0.35 + bodyH / 2;
-  // Bevel is DELIBERATELY tiny. A grow tent is fabric pulled taut over a square
-  // frame: flat panels, hard corners. The previous 0.5 bevel rounded it into a
-  // soft pod, which is what made it read as a shower cubicle rather than a tent.
   const parts: Part[] = [
-    { geo: place(rbox(TENT_W, 0.3, TENT_W, 0.05), [0, 0.15, 0]), slot: "metal" },
-    { geo: place(rbox(TENT_W - 0.24, bodyH, TENT_W - 0.24, 0.09), [0, cy, 0]), slot: "plastic" },
+    // The canvas: one box, tiny bevel — fabric pulled taut over a square frame.
+    { geo: place(rbox(TENT_W, TENT_H, TENT_W, 0.08), [0, TENT_H / 2, 0]), slot: "canvas" },
   ];
-  // Exposed corner poles + top and bottom rails — the frame is part of the look.
+  // Corner seams: the poles are INSIDE a grow tent; what shows is the fabric
+  // ridging over them. A slightly lighter webbing strip on each vertical edge.
   for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
     parts.push({
-      geo: place(cyl(0.1, TENT_H - 0.4, 8), [x * (halfW - 0.1), 0.35 + (TENT_H - 0.4) / 2, z * (halfW - 0.1)]),
+      geo: place(rbox(0.14, TENT_H - 0.3, 0.14, 0.04), [x * (halfW - 0.02), TENT_H / 2, z * (halfW - 0.02)]),
+      slot: "tape",
+    });
+  }
+  // Top and bottom hems, same webbing, running along the front and the visible side.
+  for (const ry of [TENT_H - 0.08, 0.08]) {
+    parts.push(
+      { geo: place(rbox(TENT_W + 0.04, 0.12, 0.12, 0.03), [0, ry, halfW]), slot: "tape" },
+      { geo: place(rbox(0.12, 0.12, TENT_W + 0.04, 0.03), [-halfW, ry, 0]), slot: "tape" },
+    );
+  }
+  // The door: a big rectangular zip flap across the front — two vertical zips
+  // and a top run, joined at the bottom, exactly like the real thing. The tape
+  // is the lightest material on the tent so the outline reads from 30 metres.
+  const dW = TENT_W - 1.6, dTop = TENT_H - 1.0, dBot = 0.6, fz = halfW + 0.03;
+  const dH = dTop - dBot, dCy = (dTop + dBot) / 2;
+  parts.push(
+    { geo: place(rbox(0.16, dH, 0.06, 0.02), [-dW / 2, dCy, fz]), slot: "tape" },
+    { geo: place(rbox(0.16, dH, 0.06, 0.02), [dW / 2, dCy, fz]), slot: "tape" },
+    { geo: place(rbox(dW, 0.16, 0.06, 0.02), [0, dTop, fz]), slot: "tape" },
+    // Zip pulls parked at the bottom of each vertical zip.
+    { geo: place(rbox(0.1, 0.32, 0.08, 0.02), [-dW / 2, dBot + 0.5, fz + 0.04]), slot: "metal" },
+    { geo: place(rbox(0.1, 0.32, 0.08, 0.02), [dW / 2, dBot + 0.5, fz + 0.04]), slot: "metal" },
+  );
+  // Two roll-up straps across the door, and the horizontal seam of the window flap.
+  for (const sy of [dBot + dH * 0.3, dBot + dH * 0.62]) {
+    parts.push({ geo: place(rbox(dW - 0.4, 0.12, 0.05, 0.03), [0, sy, fz + 0.01]), slot: "tape" });
+  }
+  // Round ducting ports on the visible side wall: a drawstring sleeve each, one
+  // high (exhaust) and one low (intake). The single most "grow tent" detail.
+  for (const [py, pr] of [[TENT_H - 1.6, 0.7], [1.7, 0.55]]) {
+    const ring = new THREE.TorusGeometry(pr, 0.11, 8, 22);
+    ring.rotateY(Math.PI / 2);
+    parts.push({ geo: place(ring, [-(halfW + 0.02), py, 0.4]), slot: "tape" });
+    // The sleeve itself, a short stub of canvas poking out.
+    const stub = cyl(pr - 0.05, 0.5, 18);
+    stub.rotateZ(Math.PI / 2);
+    parts.push({ geo: place(stub, [-(halfW + 0.2), py, 0.4]), slot: "canvas" });
+  }
+  // Small cable port, low on the front corner.
+  const cable = new THREE.TorusGeometry(0.22, 0.06, 6, 14);
+  parts.push({ geo: place(cable, [halfW - 0.8, 1.2, fz]), slot: "tape" });
+  return parts;
+}
+
+/** One pneumatic compression boot — a full-leg inflatable sleeve, ~0.95m.
+ *
+ *  Built to the modelling brief, in this priority order: (1) the long-leg
+ *  silhouette, (2) segmented inflatable chambers, (3) black padded nylon,
+ *  (4) the long zipper, (5) an enclosed rounded foot, (6) the side control
+ *  module, (7) its blue LEDs, (8) fabric irregularity.
+ *
+ *  Scale at 5.29 units/m: leg 0.95m → 5.0, thigh Ø ~32cm → r 0.85, ankle
+ *  Ø ~17cm → r 0.46, foot 27cm → 1.45.
+ *
+ *  Silhouette is an ENVELOPE — thigh wide, a soft dip at the knee, the calf
+ *  swelling again, then narrowing to the ankle — and the chambers ride on it as
+ *  rounded bands with recessed seams: large at the thigh, medium at the calf,
+ *  small and tight at the ankle. The bulge is held to ~5% so the bands read as
+ *  padding, not as a stack of tyres; a light per-chamber irregularity and a
+ *  post-pass that ovals the cross-section and ripples the surface keep it from
+ *  looking machined.
+ *
+ *  `side` mirrors the asymmetric details (zipper, module) so the pair is
+ *  left/right rather than two copies. */
+const LEG_Y0 = 0.82; // where the leg sleeve leaves the foot
+const LEG_LEN = 5.0;
+const LEG_OVAL = 1.08; // front–back depth over side–side width
+
+/** Leg radius along t ∈ [0 ankle … 1 thigh top]. */
+function envelope(t: number): number {
+  const ctrl: [number, number][] = [
+    [0, 0.46], [0.1, 0.55], [0.3, 0.71], [0.48, 0.66], [0.68, 0.78], [0.86, 0.87], [1, 0.83],
+  ];
+  for (let i = 1; i < ctrl.length; i++) {
+    if (t <= ctrl[i][0]) {
+      const [t0, r0] = ctrl[i - 1], [t1, r1] = ctrl[i];
+      const u = (t - t0) / (t1 - t0);
+      const k = u * u * (3 - 2 * u);
+      return r0 + (r1 - r0) * k;
+    }
+  }
+  return ctrl[ctrl.length - 1][1];
+}
+
+// Chamber heights as fractions of the leg: 2 ankle, 4 calf, 1 knee, 4 thigh; the
+// last 7% is the open cuff.
+const CHAMBERS = [0.055, 0.07, 0.08, 0.08, 0.08, 0.08, 0.08, 0.1, 0.1, 0.1, 0.1];
+
+/** Ovalise the cross-section and ripple the surface a little — the difference
+ *  between a lathe and a garment. Recomputes normals for smooth shading. */
+function fabricate(geo: THREE.BufferGeometry, noise = 0.012): THREE.BufferGeometry {
+  const pos = geo.attributes.position as THREE.BufferAttribute;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    const th = Math.atan2(x, z);
+    const n = 1 + noise * Math.sin(3 * th + y * 1.7) + noise * 0.6 * Math.sin(7 * th - y * 3.1);
+    pos.setXYZ(i, x * n, y, z * LEG_OVAL * n);
+  }
+  geo.computeVertexNormals();
+  return geo;
+}
+
+/** A point ON the sleeve surface at (t, θ) pushed out by `off`. θ = 0 is the
+ *  front (+z); positive θ turns toward +x. */
+function onLeg(t: number, th: number, off = 0): THREE.Vector3 {
+  const r = envelope(t) + off;
+  return new THREE.Vector3(r * Math.sin(th), LEG_Y0 + t * LEG_LEN, r * Math.cos(th) * LEG_OVAL);
+}
+
+function boot(side: 1 | -1): Part[] {
+  // ── OuterFabricShell + chambers: one lathe, radius = envelope × band ──────
+  const pts: THREE.Vector2[] = [new THREE.Vector2(0.001, LEG_Y0)];
+  let t = 0;
+  CHAMBERS.forEach((h, i) => {
+    const irregular = 0.85 + 0.3 * ((i * 0.618) % 1);
+    const SAMPLES = 7;
+    for (let k = i === 0 ? 0 : 1; k <= SAMPLES; k++) {
+      const u = k / SAMPLES;
+      const tt = t + u * h;
+      // Recessed seam at u = 0 and 1, a soft belly between. Ankle chambers
+      // (small h) pinch harder — tighter, more wrinkled.
+      const depth = (h < 0.075 ? 0.07 : 0.05) * irregular;
+      const band = 1 - depth + depth * Math.pow(Math.sin(Math.PI * u), 0.6);
+      pts.push(new THREE.Vector2(envelope(tt) * band, LEG_Y0 + tt * LEG_LEN));
+    }
+    t += h;
+  });
+  // The open cuff: a wide mouth with a rolled lip.
+  pts.push(new THREE.Vector2(envelope(1) * 0.98, LEG_Y0 + LEG_LEN));
+  pts.push(new THREE.Vector2(envelope(1) * 0.9, LEG_Y0 + LEG_LEN + 0.12));
+  pts.push(new THREE.Vector2(envelope(1) * 0.72, LEG_Y0 + LEG_LEN + 0.16));
+  pts.push(new THREE.Vector2(0.001, LEG_Y0 + LEG_LEN + 0.16));
+  const leg = fabricate(new THREE.LatheGeometry(pts, 36));
+
+  // ── Foot: one continuous padded volume — ankle → heel → forefoot → toe cap ─
+  const parts: Part[] = [
+    { geo: leg, slot: "nylon" },
+    // Ankle collar, blending the sleeve into the foot.
+    { geo: place(rbox(1.0, 0.9, 1.05, 0.38), [0, 0.7, 0.05]), slot: "nylon" },
+    // Heel + midfoot, slightly flattened underneath (a rounded box has a flat base).
+    { geo: place(rbox(1.05, 0.8, 1.5, 0.36), [0, 0.42, 0.45]), slot: "nylon" },
+  ];
+  // Forefoot widens a touch; the toe is a soft rounded cap, no toes.
+  const toe = new THREE.SphereGeometry(0.5, 18, 12);
+  toe.scale(1.12, 0.78, 1.0);
+  toe.translate(0, 0.42, 1.15);
+  parts.push({ geo: toe, slot: "nylon" });
+  // Foot chambers: two small padded bands over the instep, same recessed-seam idea.
+  for (const [z, r] of [[0.35, 0.5], [0.8, 0.46]]) {
+    const band = new THREE.TorusGeometry(r, 0.11, 8, 20);
+    band.rotateX(Math.PI / 2);
+    band.rotateZ(0.0);
+    parts.push({ geo: place(band, [0, 0.62, z]), slot: "nylon" });
+  }
+
+  // ── Zipper: tape + teeth + slider, following the sleeve's curve ───────────
+  // Runs down the front–outer quarter of the leg so the camera sees it. Grey
+  // webbing rather than the orange of the reference: at this distance a bright
+  // orange line read as a red cable, not a zip.
+  const zTh = side * 0.8;
+  const zip = new THREE.CatmullRomCurve3(
+    Array.from({ length: 14 }, (_, i) => onLeg(0.06 + (0.9 * i) / 13, zTh, 0.02)),
+  );
+  parts.push(
+    { geo: new THREE.TubeGeometry(zip, 40, 0.075, 6, false), slot: "tape" },
+    // Teeth: a thinner, darker rail riding on the tape.
+    {
+      geo: new THREE.TubeGeometry(
+        new THREE.CatmullRomCurve3(
+          Array.from({ length: 14 }, (_, i) => onLeg(0.06 + (0.9 * i) / 13, zTh, 0.07)),
+        ),
+        40, 0.032, 5, false,
+      ),
+      slot: "metal",
+    },
+  );
+  // Slider near the top of the run, oriented to the surface.
+  const sl = onLeg(0.9, zTh, 0.1);
+  parts.push({ geo: place(rbox(0.16, 0.3, 0.12, 0.03), [sl.x, sl.y, sl.z], zTh), slot: "metal" });
+
+  // ── ControlModule: housing on the outer thigh, LEDs and buttons on its face ─
+  const mTh = side * 1.35;
+  const m = onLeg(0.74, mTh, 0.06);
+  parts.push({ geo: place(rbox(0.55, 0.82, 0.2, 0.06), [m.x, m.y, m.z], mTh), slot: "rubber" });
+  const face = onLeg(0.74, mTh, 0.17);
+  for (const dy of [0.24, 0.12, 0.0, -0.12]) {
+    parts.push({ geo: place(rbox(0.07, 0.05, 0.03, 0.01), [face.x, face.y + dy, face.z], mTh), slot: "led" });
+  }
+  for (const [dx, dy] of [[-0.14, -0.28], [0.14, -0.28]]) {
+    const b = onLeg(0.74, mTh + side * dx * 0.3, 0.17);
+    parts.push({ geo: place(rbox(0.09, 0.09, 0.03, 0.02), [b.x, b.y + dy, b.z], mTh), slot: "metal" });
+  }
+
+  return parts;
+}
+
+/** A reclining lounger — the thing people actually sit in while the boots
+ *  inflate. Side-on to the camera, because the recline profile (raised leg
+ *  rest, deep seat, backrest tilted up) is the silhouette that reads as
+ *  "recovery chair" rather than "bench". Foot end toward the boots. */
+function lounger(): Part[] {
+  const L = 8.6, W = 3.8, seatY = 2.0;
+  const parts: Part[] = [];
+  // Frame: two side rails, four legs, a crossbar.
+  for (const z of [-W / 2 + 0.1, W / 2 - 0.1]) {
+    parts.push({ geo: place(rbox(L, 0.14, 0.14, 0.04), [0, seatY - 0.15, z]), slot: "metal" });
+  }
+  for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+    parts.push({
+      geo: place(cyl(0.09, seatY - 0.15, 8), [x * (L / 2 - 0.4), (seatY - 0.15) / 2, z * (W / 2 - 0.1)]),
       slot: "metal",
     });
   }
-  for (const ry of [TENT_H - 0.2, 0.5]) {
-    parts.push(
-      { geo: place(rbox(TENT_W - 0.1, 0.11, 0.11, 0.03), [0, ry, halfW - 0.1]), slot: "metal" },
-      { geo: place(rbox(TENT_W - 0.1, 0.11, 0.11, 0.03), [0, ry, -(halfW - 0.1)]), slot: "metal" },
-      { geo: place(rbox(0.11, 0.11, TENT_W - 0.1, 0.03), [halfW - 0.1, ry, 0]), slot: "metal" },
-      { geo: place(rbox(0.11, 0.11, TENT_W - 0.1, 0.03), [-(halfW - 0.1), ry, 0]), slot: "metal" },
-    );
-  }
-  // The door: a big rectangular zip outline across the front face, which is the
-  // single most recognisable thing about a grow tent.
-  const dW = TENT_W - 1.2, dTop = TENT_H - 1.3, dBot = 0.9, fz = halfW - 0.13;
-  const dH = dTop - dBot, dCy = (dTop + dBot) / 2;
-  parts.push(
-    { geo: place(rbox(0.12, dH, 0.07, 0.03), [-dW / 2, dCy, fz]), slot: "metal" },
-    { geo: place(rbox(0.12, dH, 0.07, 0.03), [dW / 2, dCy, fz]), slot: "metal" },
-    { geo: place(rbox(dW, 0.12, 0.07, 0.03), [0, dTop, fz]), slot: "metal" },
-    { geo: place(rbox(dW, 0.12, 0.07, 0.03), [0, dBot, fz]), slot: "metal" },
-    // Zip pull parked at the bottom corner of the perimeter zip.
-    { geo: place(cyl(0.05, 0.3, 6), [dW / 2 - 0.15, dBot + 0.42, fz + 0.06]), slot: "metal" },
-  );
-  // Roll-up straps across the door.
-  for (const sy of [dBot + dH * 0.34, dBot + dH * 0.68]) {
-    parts.push({ geo: place(rbox(dW - 0.5, 0.1, 0.05, 0.03), [0, sy, fz + 0.02]), slot: "fabric" });
-  }
-  // Ducting ports, high and low on the side wall.
-  for (const [py, pr] of [[TENT_H - 1.9, 0.62], [1.9, 0.5]]) {
-    const ring = new THREE.TorusGeometry(pr, 0.085, 6, 20);
-    ring.rotateY(Math.PI / 2);
-    parts.push({ geo: place(ring, [-(halfW - 0.12), py, 0]), slot: "metal" });
+  parts.push({ geo: place(rbox(0.12, 0.12, W - 0.2, 0.03), [0, seatY - 0.15, 0]), slot: "metal" });
+  // Seat cushion — deep and soft.
+  parts.push({ geo: place(rbox(3.6, 0.6, W - 0.3, 0.22), [-0.4, seatY + 0.2, 0]), slot: "vinyl" });
+  // Leg rest: raised toward the foot end.
+  const legRest = rbox(3.2, 0.5, W - 0.4, 0.2);
+  legRest.rotateZ(-0.22);
+  parts.push({ geo: place(legRest, [-3.3, seatY + 0.6, 0]), slot: "vinyl" });
+  // Backrest: tilted up ~60°, with a headrest pillow on top.
+  const back = rbox(3.8, 0.55, W - 0.3, 0.22);
+  back.rotateZ(1.05);
+  parts.push({ geo: place(back, [2.6, seatY + 1.9, 0]), slot: "vinyl" });
+  parts.push({ geo: place(rbox(0.5, 1.6, 2.2, 0.2), [3.9, seatY + 3.1, 0], 0), slot: "vinyl" });
+  // Armrests.
+  for (const z of [-W / 2 + 0.05, W / 2 - 0.05]) {
+    parts.push({ geo: place(rbox(2.6, 0.24, 0.5, 0.1), [0.9, seatY + 1.3, z]), slot: "vinyl" });
+    parts.push({ geo: place(cyl(0.07, 1.0, 8), [0.9, seatY + 0.8, z]), slot: "metal" });
   }
   return parts;
 }
 
-/** One compression boot — a full leg sleeve, ~0.85m tall.
- *
- *  The previous version was a plain 0.33m tube with ribs, and the reason it read
- *  as a stack of tyres rather than a boot is that it had NO FOOT. A boot is an
- *  L: a vertical leg and a horizontal foot at the bottom. That silhouette is the
- *  whole recognition cue — the chambers and zip are just detail on top of it. */
-function boot(): Part[] {
-  // Tapered leg: narrow at the ankle, widest at the thigh.
-  const profile = [
-    [0.30, 0.55], [0.33, 0.95], [0.365, 1.45], [0.40, 1.95],
-    [0.445, 2.5], [0.49, 3.05], [0.53, 3.6], [0.555, 4.05], [0.5, 4.2], [0, 4.22],
-  ].map(([r, y]) => new THREE.Vector2(r, y));
-  const parts: Part[] = [
-    { geo: new THREE.LatheGeometry(profile, 18), slot: "rubber" },
-    // The foot, projecting forward. Rounded because it is padded fabric.
-    { geo: place(rbox(0.66, 0.6, 1.5, 0.22), [0, 0.32, 0.42]), slot: "rubber" },
-    // Ankle joint, blending leg into foot.
-    { geo: place(rbox(0.62, 0.5, 0.62, 0.2), [0, 0.5, 0.02]), slot: "rubber" },
-  ];
-  // Five chambers — the real ones inflate in sequence up the leg.
-  for (const [y, r] of [
-    [1.0, 0.345], [1.75, 0.385], [2.5, 0.448], [3.2, 0.5], [3.9, 0.545],
-  ]) {
-    const t = new THREE.TorusGeometry(r, 0.028, 6, 18);
-    t.rotateX(Math.PI / 2);
-    t.translate(0, y, 0);
-    parts.push({ geo: t, slot: "rubber" });
-  }
-  parts.push(
-    // Zip up the outside of the leg.
-    { geo: place(rbox(0.07, 3.5, 0.06, 0.02), [0.34, 2.4, 0.28]), slot: "metal" },
-    // Hose port at the cuff.
-    { geo: place(cyl(0.09, 0.4, 8), [0.3, 4.3, 0]), slot: "metal" },
-  );
-  return parts;
-}
+/** The pair standing on the floor, the recliner to their right, the pump on a
+ *  side table to their left. */
+const BOOT_SCALE = 0.85;
 
-/** The boots standing on the floor beside a side table carrying the pump. */
 function bench(): Part[] {
   const parts: Part[] = [];
-  // Two boots, side by side, feet toward camera.
-  for (const [bx, yaw] of [[-0.75, 0.12], [0.75, -0.1]]) {
-    for (const p of boot()) {
-      parts.push({ slot: p.slot, geo: place(p.geo, [bx, 0, 0], yaw) });
+  // Left and right boots, feet toward camera, slightly splayed like a pair
+  // just stepped out of — standing right at the recliner's foot end.
+  for (const [bx, yaw, side] of [[-1.0, 0.14, -1], [1.0, -0.1, 1]] as const) {
+    for (const p of boot(side)) {
+      parts.push({ slot: p.slot, geo: place(p.geo, [bx, 0, 0], yaw, BOOT_SCALE) });
     }
   }
-  // Side table: 0.6m x 0.45m tall.
-  const tw = 3.2, th = 2.4, td = 2.1;
-  parts.push({ geo: place(rbox(tw, 0.16, td, 0.05), [2.9, th, 0]), slot: "metal" });
+  // Side table: 0.6m x 0.45m tall, on the boots' left.
+  const tw = 3.2, th = 2.4, td = 2.1, tx = -3.6;
+  parts.push({ geo: place(rbox(tw, 0.16, td, 0.05), [tx, th, 0]), slot: "metal" });
   for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
     parts.push({
-      geo: place(cyl(0.07, th, 8), [2.9 + x * (tw / 2 - 0.2), th / 2, z * (td / 2 - 0.2)]),
+      geo: place(cyl(0.07, th, 8), [tx + x * (tw / 2 - 0.2), th / 2, z * (td / 2 - 0.2)]),
       slot: "metal",
     });
   }
   // Pump unit on the table.
-  parts.push({ geo: place(rbox(1.3, 0.85, 0.9, 0.08), [2.9, th + 0.5, 0]), slot: "metal" });
+  parts.push({ geo: place(rbox(1.3, 0.85, 0.9, 0.08), [tx, th + 0.5, 0]), slot: "metal" });
   // Hoses from the pump to each cuff.
-  for (const bx of [-0.75, 0.75]) {
+  for (const bx of [-1.0, 1.0]) {
+    const top = (LEG_Y0 + LEG_LEN) * BOOT_SCALE;
     const curve = new THREE.CatmullRomCurve3([
-      new THREE.Vector3(2.35, th + 0.6, 0.3),
-      new THREE.Vector3((2.35 + bx) / 2, 4.3, 0.7),
-      new THREE.Vector3(bx + 0.3, 4.35, 0.1),
+      new THREE.Vector3(tx + 0.55, th + 0.6, 0.3),
+      new THREE.Vector3((tx + 0.55 + bx) / 2, top + 0.9, 0.7),
+      new THREE.Vector3(bx + 0.28, top + 0.35, 0.05),
     ]);
-    parts.push({ geo: new THREE.TubeGeometry(curve, 16, 0.055, 5, false), slot: "rubber" });
+    parts.push({ geo: new THREE.TubeGeometry(curve, 16, 0.05, 5, false), slot: "rubber" });
+  }
+  // The recliner, angled so its raised foot end lands just behind the boots.
+  for (const p of lounger()) {
+    parts.push({ slot: p.slot, geo: place(p.geo, [4.0, 0, -2.4], -0.45) });
   }
   return parts;
 }
@@ -247,18 +412,18 @@ function panel(): Part[] {
 
 /** Towel rack in the FOREGROUND, with the foam roller on the lower tier.
  *
- *  This started as a shelf 17 units back where the towels were an unreadable
- *  smudge. Folded towels are the one soft, light-toned thing in an otherwise
- *  hard, dark room, so they earn a place up front — and a near object is the
- *  cheapest depth cue there is, giving the long lens something to measure the
- *  room against.
+ *  Folded and rolled towels are the one soft thing in an otherwise hard room,
+ *  so they earn a place up front — and a near object is the cheapest depth cue
+ *  there is, giving the long lens something to measure the room against. They
+ *  keep the muted grey-green `fabric` material: white towels were tried and
+ *  pulled the eye off the bath.
  *
  *  It stands rather than lying flat for a framing reason: at fov 24 the camera is
  *  13 units above the ground, so anything low and this close falls to the bottom
  *  edge and clips. "Rodillo" is real VULL kit — it is in the studio photography
  *  on /planes. */
 function foreground(): Part[] {
-  const W = 4.8, H = 4.2, D = 2.1;
+  const W = 5.2, H = 4.4, D = 2.2;
   const parts: Part[] = [
     { geo: place(rbox(W, 0.16, D, 0.04), [0, H, 0]), slot: "wood" },
     { geo: place(rbox(W - 0.3, 0.14, D - 0.2, 0.04), [0, H * 0.52, 0]), slot: "wood" },
@@ -269,19 +434,26 @@ function foreground(): Part[] {
       slot: "metal",
     });
   }
-  // Folded towels on the top shelf — generous bevels, because a folded towel has
-  // no sharp edge anywhere on it.
+  // Folded stack on the left of the top shelf — generous bevels, because a
+  // folded towel has no sharp edge anywhere on it. Each one a touch offset so
+  // the pile reads as hand-stacked.
   const stack: [number, number, number][] = [
-    [-1.25, 4.32, 0], [-1.2, 4.62, 0.05], [-1.28, 4.9, -0.04],
-    [0.75, 4.32, 0.02], [0.8, 4.6, -0.03],
+    [-1.45, H + 0.26, 0.02], [-1.4, H + 0.6, -0.05], [-1.5, H + 0.94, 0.04], [-1.42, H + 1.28, -0.02],
   ];
   for (const t of stack) {
-    parts.push({ geo: place(rbox(1.7, 0.32, 1.35, 0.14), t), slot: "fabric" });
+    parts.push({ geo: place(rbox(1.9, 0.36, 1.5, 0.15), t), slot: "fabric" });
   }
-  // Foam roller on the lower tier.
+  // Rolled towels on the right of the top shelf, lying on their sides.
+  for (const [rx, ry, rz] of [[0.95, H + 0.55, -0.3], [0.95, H + 0.55, 0.6], [1.35, H + 1.3, 0.15]]) {
+    const roll = cyl(0.46, 1.6, 18);
+    roll.rotateZ(Math.PI / 2);
+    parts.push({ geo: place(roll, [rx, ry, rz], 0.5), slot: "fabric" });
+  }
+  // Foam roller on the lower tier, with one more folded towel beside it.
   const roller = cyl(0.42, 2.4, 16);
   roller.rotateZ(Math.PI / 2);
-  parts.push({ geo: place(roller, [0, H * 0.52 + 0.5, 0]), slot: "rubber" });
+  parts.push({ geo: place(roller, [-0.8, H * 0.52 + 0.5, 0]), slot: "rubber" });
+  parts.push({ geo: place(rbox(1.7, 0.34, 1.4, 0.14), [1.4, H * 0.52 + 0.25, 0]), slot: "fabric" });
   return parts;
 }
 
@@ -364,6 +536,8 @@ const PALETTE = {
   // low. Dial these toward zero if they ever fight the brand.
   amber: new THREE.Color("#ffc98f").multiplyScalar(1.1),
   green: new THREE.Color("#6ccb45").multiplyScalar(2.0),
+  // Boot control-module LEDs.
+  blue: new THREE.Color("#4aa8ff").multiplyScalar(1.6),
 };
 
 const CONTACT_BASE = 0.42;
@@ -394,37 +568,63 @@ export function RoomProps() {
       rubber: new THREE.MeshStandardMaterial({
         color: "#0e1110", roughness: 0.72, metalness: 0.06, transparent: true,
       }),
-      // Coated vinyl/plastic shell — lighter than everything else out here so the
-      // tent reads as a soft skin stretched on a frame, not another dark box.
-      plastic: new THREE.MeshStandardMaterial({
-        color: "#1e2422", roughness: 0.64, metalness: 0.08, transparent: true,
+      // Grow-tent canvas: matte, near-black, swallows the panel light. The tent
+      // is drawn by its seams, not by its shell.
+      canvas: new THREE.MeshStandardMaterial({
+        color: "#0a0c0b", roughness: 0.94, metalness: 0.0, transparent: true,
       }),
+      // Zip tape / webbing — the lightest thing on the tent and the boots, so
+      // the outlines read against black canvas.
+      tape: new THREE.MeshStandardMaterial({
+        color: "#5e6461", roughness: 0.62, metalness: 0.1, transparent: true,
+      }),
+      // Compression-boot nylon: matte black synthetic with a subtle sheen —
+      // enough that every padded chamber catches a soft highlight, never plastic.
+      nylon: new THREE.MeshStandardMaterial({
+        color: "#111413", roughness: 0.6, metalness: 0.05, transparent: true,
+      }),
+      // Recliner upholstery: dark vinyl, a step glossier than the boot nylon so
+      // the two blacks separate.
+      vinyl: new THREE.MeshStandardMaterial({
+        color: "#1c201f", roughness: 0.5, metalness: 0.04, transparent: true,
+      }),
+      // Placeholder; the "led" slot is swapped for an emissive below.
+      led: new THREE.MeshStandardMaterial({ transparent: true }),
     };
 
-    // Merge per material → 4 draw calls for the whole room.
+    // Merge per material → one draw call per material for the whole room.
     // RoundedBoxGeometry is NON-indexed while BoxGeometry/Cylinder/Lathe are
     // indexed, and mergeGeometries returns null on a mixed set — normalise first.
-    const groups = (["wood", "metal", "fabric", "rubber", "plastic"] as Slot[]).map((slot) => {
-      const geos = parts
-        .filter((p) => p.slot === slot)
-        .map((p) => (p.geo.index ? p.geo.toNonIndexed() : p.geo));
-      const merged = geos.length ? mergeGeometries(geos, false) : null;
-      if (!merged) throw new Error(`props: merge failed for ${slot}`);
-      return { geo: merged, mat: mats[slot] };
-    });
-
+    // A slot with no parts is skipped, not an error — otherwise retiring the
+    // last use of a material silently takes the whole room down via the
+    // boundary (which is exactly what happened when the towels stopped being
+    // "fabric").
     const emissive = (c: THREE.Color) =>
       new THREE.MeshBasicMaterial({ color: c, toneMapped: false, transparent: true });
+
+    const groups = (["wood", "metal", "fabric", "rubber", "canvas", "tape", "nylon", "vinyl", "led"] as Slot[])
+      .flatMap((slot) => {
+        const geos = parts
+          .filter((p) => p.slot === slot)
+          .map((p) => (p.geo.index ? p.geo.toNonIndexed() : p.geo));
+        if (!geos.length) return [];
+        const merged = mergeGeometries(geos, false);
+        if (!merged) throw new Error(`props: merge failed for ${slot}`);
+        // The boot LEDs are the one lit thing in a slot: swap in an emissive.
+        const mat: THREE.Material = slot === "led" ? emissive(PALETTE.blue) : mats[slot];
+        return [{ geo: merged, mat }];
+      });
+
 
     const emissives = [
       {
         // Sauna door slit — the warm anchor of the whole left side.
-        geo: place(place(rbox(0.09, 4.2, 0.04, 0.02), [0, 4.4, 2.47]), S, S_YAW),
+        geo: place(place(rbox(0.1, 5.6, 0.04, 0.02), [0, 4.6, TENT_W / 2 + 0.06]), S, S_YAW),
         mat: emissive(PALETTE.amber),
       },
       {
         // Pump-unit LED — the one brand-green note out here.
-        geo: place(place(rbox(0.12, 0.08, 0.04, 0.02), [2.9, 3.05, 0.47]), B, B_YAW),
+        geo: place(place(rbox(0.12, 0.08, 0.04, 0.02), [-3.6, 3.05, 0.47]), B, B_YAW),
         mat: emissive(PALETTE.green),
       },
     ];
@@ -438,8 +638,8 @@ export function RoomProps() {
       },
       {
         // Warm spill out of the door.
-        pos: [-12.2, FLOOR_Y + 4.4, -21.6] as [number, number, number],
-        size: [4.0, 7.5] as [number, number],
+        pos: [-12.0, FLOOR_Y + 4.6, -20.4] as [number, number, number],
+        size: [4.6, 8.5] as [number, number],
         mat: makeMat(GLOW_FRAG, "#ffb46b", 0.38),
       },
       {
@@ -462,8 +662,8 @@ export function RoomProps() {
     // around it — a shadow wider than its object erases the ground it implies.
     const contacts = (
       [
-        { pos: [S[0], FLOOR_Y + 0.03, S[2]], size: [7.2, 7.2] },
-        { pos: [B[0], FLOOR_Y + 0.03, B[2]], size: [6.5, 3.6] },
+        { pos: [S[0], FLOOR_Y + 0.03, S[2]], size: [8.4, 8.4] },
+        { pos: [B[0] + 1.6, FLOOR_Y + 0.03, B[2] - 0.6], size: [15.0, 6.5] },
         { pos: [P[0], FLOOR_Y + 0.03, P[2]], size: [3.0, 2.4] },
         { pos: [F[0], FLOOR_Y + 0.03, F[2]], size: [6.0, 3.2] },
       ] as { pos: [number, number, number]; size: [number, number] }[]
