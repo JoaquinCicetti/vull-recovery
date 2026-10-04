@@ -4,6 +4,7 @@
 // ignores cancelled rows). Best-effort: cancels the Google Calendar event,
 // clears any pending manual payment, and emails the client.
 import { responder, errMessage } from "../_shared/cors.ts";
+import { killLiveTaloPayments } from "../_shared/talo-settle.ts";
 import { adminClient, userClient } from "../_shared/supabase.ts";
 import { patchEventStatus } from "../_shared/google.ts";
 import { sendBookingCancellation, notifyAdmins } from "../_shared/email.ts";
@@ -74,8 +75,10 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Clear any still-pending manual payment so it leaves the admin queue.
-    // (Refunds of accredited payments are handled later, with Mobbex.)
+    // Kill any live Talo CVU FIRST, so a cancelled turno cannot keep quietly
+    // accepting the client's money; then clear the pending rows so they leave
+    // the admin queue. (An already-accredited payment is a manual refund.)
+    await killLiveTaloPayments(admin, booking.id);
     await admin
       .from("payments")
       .update({ status: "rejected" })

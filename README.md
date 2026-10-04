@@ -69,10 +69,10 @@ docs/       setup.md · architecture.md · adr/
   findings, and the sprint roadmap. Four P0s (a credit-RPC privilege hole, silent
   payment/booking desync, swallowed booking errors, missing error boundaries) were found
   and fixed; the P0-1 migration still needs `supabase db push`.
-- ⚠️ **Online payments are off.** The Mobbex account is not enabled, so
-  `NEXT_PUBLIC_MOBBEX_ENABLED` defaults to `false` and bank transfer + receipt is the only
-  payment path. See [§7 of the audit](docs/audit-2026-08.md#7-mobbex--on-hold) before
-  turning it on.
+- ⚠️ **Automatic payments are off until the Talo sandbox run passes.**
+  `NEXT_PUBLIC_TALO_ENABLED` defaults to `false`, so bank transfer + receipt is the only
+  live payment path. Talo (automatic bank transfers, [ADR 0010](docs/adr/0010-payments-talo-transfers.md))
+  replaces Mobbex; setup and the sandbox checklist are in [docs/setup.md §9](docs/setup.md).
 - Built; passes typecheck, lint, and a production build.
 - **Pending:** end-to-end validation against the local Supabase stack (needs Docker).
 - Transactional email (OTP codes + booking confirmation) via **Resend** free

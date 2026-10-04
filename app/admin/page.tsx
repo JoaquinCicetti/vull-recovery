@@ -36,7 +36,10 @@ export default async function AdminPage() {
   // empty when they shouldn't (e.g. an RLS or schema problem).
   const loadErrors: string[] = [];
 
-  // ── Pending manual payments (bounded; receipts fetched lazily on click) ─────
+  // ── Payments needing a human (bounded; receipts fetched lazily on click) ───
+  // Manual receipts waiting for approval, PLUS any Talo payment the settle path
+  // could not resolve on its own (underpaid, unverifiable, paid without a slot,
+  // reversed…). Filtering on provider='manual' here used to make those invisible.
   const {
     data: rawPayments,
     count: paymentsCount,
@@ -45,11 +48,11 @@ export default async function AdminPage() {
     .from("payments")
     .select(
       // `profiles!user_id` disambiguates bookings' two FKs to profiles.
-      "id, amount_ars, receipt_path, bookings(starts_at, services(name), profiles!user_id(full_name, whatsapp_phone))",
+      "id, amount_ars, receipt_path, provider, status, admin_flag, reversed_at, kind, services(name), bookings(starts_at, services(name), profiles!user_id(full_name, whatsapp_phone))",
       { count: "exact" },
     )
-    .eq("provider", "manual")
-    .eq("status", "pending")
+    .in("provider", ["manual", "talo"])
+    .or("status.eq.pending,admin_flag.not.is.null,reversed_at.not.is.null")
     .order("created_at", { ascending: true })
     .limit(50);
   if (paymentsError) loadErrors.push(`Pagos: ${paymentsError.message}`);
@@ -58,7 +61,13 @@ export default async function AdminPage() {
     id: p.id as string,
     amount: p.amount_ars as number,
     receiptPath: (p.receipt_path as string) ?? null,
-    service: p.bookings?.services?.name ?? "Servicio",
+    provider: (p.provider as "manual" | "talo") ?? "manual",
+    status: (p.status as "pending" | "approved" | "rejected") ?? "pending",
+    adminFlag: (p.admin_flag as string) ?? null,
+    reversed: Boolean(p.reversed_at),
+    service:
+      p.bookings?.services?.name ??
+      (p.kind === "pack" ? `Pack · ${p.services?.name ?? ""}`.trim() : "Servicio"),
     when: (p.bookings?.starts_at as string) ?? null,
     client: p.bookings?.profiles?.full_name ?? "—",
     phone: (p.bookings?.profiles?.whatsapp_phone as string) ?? null,
@@ -131,7 +140,7 @@ export default async function AdminPage() {
 
       <section>
         <h2 className="font-mono text-xs uppercase tracking-[0.18em] text-fg-faint">
-          Pagos por transferencia a verificar
+          Pagos por revisar
         </h2>
         <AdminPayments
           payments={payments}
