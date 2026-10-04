@@ -1,6 +1,6 @@
 # ADR 0003 — Payments via Mobbex, manual receipt as $0 fallback
 
-- **Status:** Accepted
+- **Status:** Superseded by [ADR 0010](0010-payments-talo-transfers.md) (2026-09-09)
 - **Date:** 2026-05-28
 
 ## Context

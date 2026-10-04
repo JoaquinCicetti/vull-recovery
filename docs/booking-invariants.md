@@ -32,13 +32,17 @@ the submitted time), so the two cannot drift.
 ## Active statuses (single source of truth)
 
 A booking "holds" a slot/day only in statuses **`pending`, `awaiting_payment`,
-`confirmed`**. The exact same set is used by every guard — keep them in sync:
+`confirmed`**. The canonical sets live in
+`supabase/functions/_shared/booking-status.ts` (`ACTIVE`, `CONFIRMABLE`,
+`PAYABLE`, `TERMINAL`) with a deliberate browser-side mirror in
+`lib/booking-status.ts`. `create-payment`, `admin-payment` and the Talo settle
+path import from there; the remaining inline copies are being migrated and must
+stay in sync meanwhile:
 
 - `bookings_no_overlap` EXCLUDE predicate (init migration)
 - `bookings_one_per_day` partial-index predicate
 - `availability` active-bookings query and `create-booking` per-day pre-check
 - `cancel-booking` `CANCELLABLE`
-- `create-payment` payable check
 
 Cancelling or expiring a booking drops it out of these predicates, freeing both
 the slot and the day automatically.
@@ -52,10 +56,16 @@ default is currently `20` — set the env var in production to match. The
 server-authoritative countdown UI reads `hold_expires_at` directly, so it always
 agrees with the DB regardless of the constant.
 
-**Caveat:** `awaiting_payment` holds (a started Mobbex checkout or an uploaded
-manual receipt) currently never auto-expire, so they hold their slot and day
-until paid, cancelled, or admin-resolved. An expiry/SLA for unverified
-`awaiting_payment` is tracked in `docs/audit-and-roadmap.md`.
+A **Talo transfer** does not change this: `create-payment` keeps the booking
+`pending` and extends `hold_expires_at` to the CVU's expiry
+(`TALO_PAYMENT_MINUTES`, capped an hour before the turno), so an abandoned CVU is
+swept exactly like a lapsed hold. The booking moves to `awaiting_payment` only
+once Talo records a transaction on its way (ADR 0010).
+
+**Caveat:** `awaiting_payment` holds from an uploaded **manual receipt** still
+never auto-expire, so they hold their slot and day until approved, rejected, or
+cancelled. An expiry/SLA for unverified receipts is tracked in
+`docs/audit-and-roadmap.md`.
 
 ## Timezone assumption (UTC-3, no DST)
 

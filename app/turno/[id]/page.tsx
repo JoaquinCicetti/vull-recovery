@@ -10,6 +10,8 @@ import { CancelBooking } from "@/components/cancel-booking";
 import { PageShell } from "@/components/ui/page-shell";
 import { Button } from "@/components/ui/button";
 import type { Booking } from "@/lib/types";
+import { isActiveStatus } from "@/lib/booking-status";
+import type { TaloTransfer } from "@/components/talo-transfer-panel";
 
 type BookingWithService = Booking & {
   services: { name: string; price_ars: number; duration_minutes: number } | null;
@@ -34,6 +36,29 @@ export default async function TurnoPage({
   const booking = data as BookingWithService | null;
   if (!booking) notFound();
 
+  // A CVU already minted for this booking (Talo, still open). Lets a reload —
+  // or the return trip from the bank app — show the same alias again instead of
+  // minting a second one. Readable through payments_select_own via the booking.
+  const { data: taloRow } = await supabase
+    .from("payments")
+    .select("talo_cvu, talo_alias, talo_expires_at, amount_ars")
+    .eq("booking_id", id)
+    .eq("provider", "talo")
+    .eq("status", "pending")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const talo: TaloTransfer | null =
+    taloRow && (taloRow.talo_cvu || taloRow.talo_alias)
+      ? {
+          cvu: (taloRow.talo_cvu as string) ?? null,
+          alias: (taloRow.talo_alias as string) ?? null,
+          amount: (taloRow.amount_ars as number) ?? 0,
+          expiresAt: (taloRow.talo_expires_at as string) ?? null,
+          paymentUrl: null,
+        }
+      : null;
+
   const svcName = booking.services?.name ?? "Servicio";
   const price = booking.services?.price_ars ?? 0;
   const when = fmtDateTime(booking.starts_at);
@@ -45,16 +70,18 @@ export default async function TurnoPage({
   const needsPayment =
     booking.status === "pending" || booking.status === "awaiting_payment";
   // The slot is held server-side until hold_expires_at; show the live countdown
-  // only in the pre-payment `pending` window (once a receipt is uploaded the
-  // status flips to awaiting_payment and the hold is kept until verification).
+  // only in the `pending` window. That window covers a Talo transfer too: the
+  // booking stays `pending` (with the hold extended to the CVU's expiry) until
+  // Talo sees money, so an abandoned CVU is swept like any lapsed hold. Once a
+  // receipt is uploaded the status flips to awaiting_payment and the hold is
+  // kept until verification.
   const showHold =
     booking.status === "pending" && Boolean(booking.hold_expires_at);
   // Read the clock once, outside the render expression: calling Date.now() inline
   // is an impure render (react-hooks/purity) and can disagree between renders.
   const nowMs = new Date(nowISO).getTime();
   const cancellable =
-    new Date(booking.starts_at).getTime() > nowMs &&
-    ["pending", "awaiting_payment", "confirmed"].includes(booking.status);
+    new Date(booking.starts_at).getTime() > nowMs && isActiveStatus(booking.status);
 
   return (
     <PageShell eyebrow="Tu turno" title={svcName}>
@@ -85,6 +112,7 @@ export default async function TurnoPage({
           bookingId={booking.id}
           amount={price}
           status={booking.status}
+          talo={talo}
         />
       )}
 
