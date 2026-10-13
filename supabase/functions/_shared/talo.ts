@@ -267,7 +267,6 @@ export async function createTaloPayment(opts: {
     redirect_url: opts.redirectUrl,
     motive: opts.motive,
   };
-  if (opts.expiresAt) payload.expiration_timestamp = opts.expiresAt;
   if (Object.keys(client_data).length) payload.client_data = client_data;
 
   // The docs disagree on whether this endpoint is authenticated. Sending the
@@ -290,14 +289,26 @@ export async function createTaloPayment(opts: {
   const id = d?.id;
   if (typeof id !== "string" || !id) return { ok: false, reason: "no_id" };
   const quote = Array.isArray(d?.quotes) ? d.quotes[0] : null;
+  // Sandbox returns the CVU as `address` (the GET shape), not `cvu`.
+  const cvu = quote?.cvu ?? quote?.address;
+  let expiresAt = d?.expiration_timestamp ? String(d.expiration_timestamp) : null;
+
+  // Create takes no expiry field — Talo applies its own default (5 days in
+  // sandbox). Shorten it with the dedicated endpoint; if that fails, report
+  // Talo's real expiry and let the caller keep its own slot hold.
+  if (opts.expiresAt) {
+    const set = await setTaloExpiration(id, opts.expiresAt);
+    if (set.ok) expiresAt = opts.expiresAt;
+  }
+
   return {
     ok: true,
     data: {
       id,
       paymentUrl: d?.payment_url ? String(d.payment_url) : null,
-      cvu: quote?.cvu ? String(quote.cvu) : null,
+      cvu: cvu ? String(cvu) : null,
       alias: quote?.alias ? String(quote.alias) : null,
-      expiresAt: d?.expiration_timestamp ? String(d.expiration_timestamp) : null,
+      expiresAt,
     },
   };
 }
@@ -363,6 +374,31 @@ export async function setTaloPrice(
   return { ok: true, data: true };
 }
 
-/** Talo payment ids look like "VAR-<uuid>-<suffix>". Validated before any DB or
- *  network work so a forged webhook flood costs nothing. */
-export const TALO_PAYMENT_ID_RE = /^VAR-[A-Za-z0-9._-]{1,64}$/;
+/** SANDBOX ONLY: have Talo's faucet send `amount` pesos to a CVU, as if the
+ *  client had transferred. Talo then fires the real webhook, so the whole
+ *  settle path runs. The faucet doesn't exist in production; refuse up front. */
+export async function taloFaucet(
+  cvu: string,
+  amount: number,
+): Promise<TaloResult<true>> {
+  if (taloBase() !== SANDBOX) return { ok: false, reason: "not_sandbox" };
+  if (!taloConfigured()) return { ok: false, reason: "unconfigured" };
+  const res = await withAuth((token) =>
+    fetch(`${taloBase()}/cvu/${encodeURIComponent(cvu)}/faucet`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ amount }),
+    })
+  );
+  if (!res) return { ok: false, reason: "unreachable" };
+  if (!res.ok) return { ok: false, reason: `http_${res.status}` };
+  return { ok: true, data: true };
+}
+
+/** Talo payment ids look like "VAR-<user uuid>-<external_id>" — 77 chars with
+ *  our uuid external_ids. Validated before any DB or network work so a forged
+ *  webhook flood costs nothing. */
+export const TALO_PAYMENT_ID_RE = /^VAR-[A-Za-z0-9._-]{1,160}$/;

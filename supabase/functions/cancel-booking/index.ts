@@ -77,7 +77,7 @@ Deno.serve(async (req) => {
 
     // Kill any live Talo CVU FIRST, so a cancelled turno cannot keep quietly
     // accepting the client's money; then clear the pending rows so they leave
-    // the admin queue. (An already-accredited payment is a manual refund.)
+    // the admin queue. (An approved payment becomes a credit below.)
     await killLiveTaloPayments(admin, booking.id);
     await admin
       .from("payments")
@@ -85,16 +85,20 @@ Deno.serve(async (req) => {
       .eq("booking_id", booking.id)
       .eq("status", "pending");
 
-    // Return the credit if this booking was funded by a pack credit. No-op (and
-    // idempotent) for normal paid/pending bookings that never consumed one.
-    await admin.rpc("refund_booking_credit", { p_booking_id: booking.id });
+    // A paid turno (pack credit or approved payment) comes back as one credit:
+    // always when an admin cancels, with >= 24h notice when the client does.
+    // Idempotent; the rule lives in the RPC so every cancel path shares it.
+    const { data: credit } = await admin.rpc("return_cancelled_booking", {
+      p_booking_id: booking.id,
+      p_by_admin: isAdmin,
+    });
 
     // Notify the client (best-effort; no-ops if email unset).
-    await sendBookingCancellation(admin, booking.id, { byAdmin: isAdmin });
+    await sendBookingCancellation(admin, booking.id, { byAdmin: isAdmin, credit });
     // Alert the owner when a client cancels (not when the admin does it).
     if (!isAdmin) await notifyAdmins(admin, "booking_cancelled_by_client", booking.id);
 
-    return json({ ok: true });
+    return json({ ok: true, credit });
   } catch (e) {
     return json({ error: errMessage(e) }, 500);
   }

@@ -299,7 +299,8 @@ export async function sendBookingConfirmation(
 export async function sendBookingCancellation(
   admin: SupabaseClient,
   bookingId: string,
-  opts: { byAdmin: boolean },
+  /** `credit` is the return_cancelled_booking outcome ('credited' | 'late' | …). */
+  opts: { byAdmin: boolean; credit?: string | null },
 ): Promise<void> {
   try {
     const c = await loadBookingCtx(admin, bookingId);
@@ -307,6 +308,11 @@ export async function sendBookingCancellation(
     const lead = opts.byAdmin
       ? `Hola ${c.firstName}, cancelamos tu turno. Si tenés dudas, escribinos por WhatsApp.`
       : `Hola ${c.firstName}, tu turno quedó cancelado.`;
+    const note = opts.credit === "credited"
+      ? "Te devolvimos la sesión como crédito: la próxima vez que reserves este servicio la podés usar sin pagar de nuevo."
+      : opts.credit === "late"
+      ? "Como cancelaste con menos de 24 h de anticipación, la sesión no se devuelve. Si tuviste un imprevisto, escribinos por WhatsApp."
+      : "Si fue un error o querés otro horario, podés reservar de nuevo cuando quieras.";
     const html = shell({
       heading: "Turno cancelado",
       accent: "#e5484d",
@@ -316,7 +322,7 @@ export async function sendBookingCancellation(
         { label: "Fecha y hora", value: c.when },
         { label: "Reserva", value: c.ref, mono: true },
       ],
-      note: "Si fue un error o querés otro horario, podés reservar de nuevo cuando quieras.",
+      note,
       cta: c.appUrl ? { label: "Reservar de nuevo", url: c.appUrl } : undefined,
     });
     await fanOutToUser(admin, c.userId, {

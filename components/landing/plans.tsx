@@ -1,9 +1,11 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { motion, type Variants } from "framer-motion";
 import { formatARS, waLink } from "@/lib/site";
 import { isPack, type Service } from "@/lib/types";
+import { createClient } from "@/lib/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -28,16 +30,43 @@ const card: Variants = {
   },
 };
 
+// `initialServices` is the build-time snapshot the static page ships with; the
+// live list (an admin may have changed prices since the deploy) and the signed-in
+// user's credit balances are fetched here in the browser, which is what lets the
+// pages that render this stay static.
+//
 // `balances` maps service id -> live credits the signed-in user holds for it
 // (empty when signed out). The call to action follows the BALANCE, not the shape
 // of the plan: holding credits means the next step is booking, not buying again.
-export function Plans({
-  services,
-  balances = {},
-}: {
-  services: Service[];
-  balances?: Record<string, number>;
-}) {
+export function Plans({ initialServices }: { initialServices: Service[] }) {
+  const [services, setServices] = useState(initialServices);
+  const [balances, setBalances] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    const supabase = createClient();
+    let alive = true;
+    supabase
+      .from("services")
+      .select("*")
+      .eq("active", true)
+      .order("sort_order", { ascending: true })
+      .then(({ data }) => {
+        if (alive && data) setServices(data as Service[]);
+      });
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!session) return;
+      const { data } = await supabase.rpc("my_credit_balances");
+      const out: Record<string, number> = {};
+      for (const row of (data ?? []) as { service_id: string; balance: number }[]) {
+        out[row.service_id] = row.balance;
+      }
+      if (alive) setBalances(out);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   return (
     <section
       id="planes"

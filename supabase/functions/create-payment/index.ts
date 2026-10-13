@@ -326,11 +326,15 @@ async function startTalo(admin: SupabaseClient, opts: {
       continue;
     }
 
-    // Talo's expiration is authoritative once set; keep the slot hold in step.
+    // Keep the slot hold in step with the CVU, but never longer than our own
+    // window: if Talo kept its multi-day default, a late transfer is flagged at
+    // settle time instead of the slot being held for days.
     if (opts.bookingId) {
+      const talo = created.data.expiresAt;
+      const hold = talo && new Date(talo) < new Date(expiresAt) ? talo : expiresAt;
       await admin
         .from("bookings")
-        .update({ hold_expires_at: created.data.expiresAt ?? expiresAt })
+        .update({ hold_expires_at: hold })
         .eq("id", opts.bookingId)
         .in("status", PAYABLE_LIST);
     }

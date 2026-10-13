@@ -50,3 +50,7 @@ next-env.d.ts
 
 .claude
 .vscode
+# cloudflare (opennext / wrangler)
+.open-next
+.wrangler
+.dev.vars*

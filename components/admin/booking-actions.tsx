@@ -42,7 +42,7 @@ const META: Record<
   },
   cancel: {
     label: "Cancelar",
-    prompt: "¿Cancelar el turno de este cliente?",
+    prompt: "¿Cancelar el turno de este cliente? Si ya pagó, recibe la sesión como crédito.",
     confirmLabel: "Sí, cancelar",
     busy: "Cancelando…",
     destructive: true,

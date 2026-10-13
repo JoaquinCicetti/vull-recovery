@@ -32,6 +32,11 @@ export const TRANSFER_ALIAS = process.env.NEXT_PUBLIC_TRANSFER_ALIAS ?? "";
 // TALO_TEST=true). See docs/adr/0010-payments-talo-transfers.md.
 export const TALO_ENABLED = process.env.NEXT_PUBLIC_TALO_ENABLED === "true";
 
+// Dev mode: shows a "DEV" badge and a "Simular pago" button on Talo transfers
+// (calls the dev-fake-payment function, which itself requires the DEV_MODE
+// edge secret + Talo sandbox). Must be false in production.
+export const DEV_MODE = process.env.NEXT_PUBLIC_DEV_MODE === "true";
+
 // Legacy Mobbex switch. Never enabled in production; Talo replaced it. Kept
 // only until the Mobbex code is deleted.
 export const MOBBEX_ENABLED = process.env.NEXT_PUBLIC_MOBBEX_ENABLED === "true";

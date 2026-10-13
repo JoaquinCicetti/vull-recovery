@@ -1,0 +1,20 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // Production: www.vull.com.ar. The apex never reaches this Worker: a proxied
+  // placeholder record + a zone redirect rule send vull.com.ar/* → www (301).
+  // Deploy with `pnpm deploy` (prod mode) or `pnpm deploy:dev` (dev mode: Talo
+  // sandbox + fake payments + DEV badge) — same site, see scripts/deploy.sh.
+  "name": "app",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
+  "services": [{ "binding": "WORKER_SELF_REFERENCE", "service": "app" }],
+  // next/image → Cloudflare Images (free plan: 5,000 unique transformations/month).
+  "images": { "binding": "IMAGES" },
+  // Run the worker close to Supabase (us-west-2) instead of near the visitor:
+  "placement": { "mode": "smart" },
+  "routes": [{ "pattern": "www.vull.com.ar", "custom_domain": true }],
+  "workers_dev": false,
+  "observability": { "enabled": true }
+}

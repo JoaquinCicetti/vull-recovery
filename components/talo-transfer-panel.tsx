@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { CheckIcon, CopyIcon, ExternalLinkIcon } from "lucide-react";
-import { formatARS } from "@/lib/site";
+import { DEV_MODE, formatARS } from "@/lib/site";
+import { DevFakePayment } from "@/components/dev-fake-payment";
 import { fmtTime } from "@/lib/format";
 
 export type TaloTransfer = {
@@ -123,6 +124,8 @@ export function TaloTransferPanel({
           Abrir en Talo <ExternalLinkIcon size={12} />
         </a>
       )}
+
+      {DEV_MODE && cvu && <DevFakePayment cvu={cvu} />}
     </div>
   );
 }

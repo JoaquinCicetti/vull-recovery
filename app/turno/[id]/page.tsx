@@ -82,6 +82,15 @@ export default async function TurnoPage({
   const nowMs = new Date(nowISO).getTime();
   const cancellable =
     new Date(booking.starts_at).getTime() > nowMs && isActiveStatus(booking.status);
+  // Mirrors return_cancelled_booking: a confirmed (paid) turno comes back as a
+  // credit only with >= 24h notice. Unconfirmed turnos have nothing to return.
+  const lateCancel =
+    new Date(booking.starts_at).getTime() - nowMs < 24 * 60 * 60_000;
+  const cancelPrompt = !isConfirmed
+    ? undefined
+    : lateCancel
+    ? "Faltan menos de 24 h: si cancelás, la sesión no se devuelve. ¿Cancelar igual?"
+    : "¿Cancelar este turno? Te devolvemos la sesión como crédito para reservar otro día.";
 
   return (
     <PageShell eyebrow="Tu turno" title={svcName}>
@@ -145,7 +154,7 @@ export default async function TurnoPage({
 
       {cancellable && (
         <div className="mt-8 flex justify-center border-t border-border pt-6">
-          <CancelBooking bookingId={booking.id} />
+          <CancelBooking bookingId={booking.id} confirmPrompt={cancelPrompt} />
         </div>
       )}
     </PageShell>

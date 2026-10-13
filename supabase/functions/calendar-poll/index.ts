@@ -86,8 +86,12 @@ Deno.serve(async (req) => {
           .update({ status: "rejected" })
           .eq("booking_id", booking.id)
           .eq("status", "pending");
-        await admin.rpc("refund_booking_credit", { p_booking_id: booking.id });
-        await sendBookingCancellation(admin, booking.id, { byAdmin: true });
+        // Cancelled by the centre → a paid turno always comes back as a credit.
+        const { data: credit } = await admin.rpc("return_cancelled_booking", {
+          p_booking_id: booking.id,
+          p_by_admin: true,
+        });
+        await sendBookingCancellation(admin, booking.id, { byAdmin: true, credit });
         cancelled++;
       } else {
         const evStart = ev.start?.dateTime
