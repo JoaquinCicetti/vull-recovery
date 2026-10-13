@@ -44,7 +44,33 @@ function b64url(data: ArrayBuffer | string): string {
   return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
+// ── Token cache ─────────────────────────────────────────────────────────────
+// Minting a token means an RSA signature + a round trip to Google (~300–500 ms).
+// create-booking used to do it twice per request and availability once per grid
+// load. Tokens live 1 h; cache per isolate (module state, single-threaded, reused
+// across requests — see _shared/talo.ts for the same pattern) and refresh a minute
+// early. A failed mint is never cached, so we can't fail open on a bad token.
+type CachedToken = { token: string; expiresAtMs: number };
+let cachedToken: CachedToken | null = null;
+let inFlight: Promise<CachedToken> | null = null;
+const TOKEN_SKEW_MS = 60_000;
+
 async function getAccessToken(sa: ServiceAccount): Promise<string> {
+  const now = Date.now();
+  if (cachedToken && cachedToken.expiresAtMs - TOKEN_SKEW_MS > now) {
+    return cachedToken.token;
+  }
+  if (!inFlight) {
+    inFlight = mintAccessToken(sa).finally(() => {
+      inFlight = null;
+    });
+  }
+  const fresh = await inFlight;
+  cachedToken = fresh;
+  return fresh.token;
+}
+
+async function mintAccessToken(sa: ServiceAccount): Promise<CachedToken> {
   const now = Math.floor(Date.now() / 1000);
   const header = b64url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
   const claim = b64url(
@@ -81,7 +107,8 @@ async function getAccessToken(sa: ServiceAccount): Promise<string> {
   });
   if (!res.ok) throw new Error(`Google token error ${res.status}: ${await res.text()}`);
   const data = await res.json();
-  return data.access_token as string;
+  const ttlSec = typeof data.expires_in === "number" ? data.expires_in : 3600;
+  return { token: data.access_token as string, expiresAtMs: Date.now() + ttlSec * 1000 };
 }
 
 export async function getBusy(
