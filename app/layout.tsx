@@ -4,7 +4,8 @@ import "./globals.css";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { AmbientBackground } from "@/components/ui/ambient-background";
-import { SITE_NAME, SITE_TAGLINE } from "@/lib/site";
+import { DEV_MODE, SITE_NAME, SITE_TAGLINE } from "@/lib/site";
+import { DevModeBadge } from "@/components/dev-fake-payment";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -37,6 +38,7 @@ export default function RootLayout({
         <SiteHeader />
         <main className="relative z-0 flex-1">{children}</main>
         <SiteFooter />
+        {DEV_MODE && <DevModeBadge />}
       </body>
     </html>
   );

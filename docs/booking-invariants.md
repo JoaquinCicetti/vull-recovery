@@ -47,6 +47,20 @@ stay in sync meanwhile:
 Cancelling or expiring a booking drops it out of these predicates, freeing both
 the slot and the day automatically.
 
+## Cancelling a paid turno
+
+A paid turno — funded by a pack credit or an approved, non-reversed booking
+payment — comes back as **one credit for the same service**, never as money:
+
+- client cancels **≥ 24 h** before `starts_at` → credit
+- client cancels later → nothing (the admin can still `adjust_credit` by hand)
+- admin cancel or Google Calendar cancel → always credit
+
+The rule lives only in `return_cancelled_booking` (SQL), called by
+`cancel-booking` and `calendar-poll`; at most one return per booking is enforced
+by `credit_ledger_return_uniq`. The turno page and the cancellation email mirror
+the 24 h window for copy only.
+
 ## Holds
 
 A new booking is `pending` with `hold_expires_at`. Expired **pending** holds are

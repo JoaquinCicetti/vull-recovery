@@ -1,9 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
 
-// Next 16 "proxy" convention (formerly middleware): refresh the Supabase
-// session and keep auth cookies in sync on every matched request.
-export async function proxy(request: NextRequest) {
+// Refresh the Supabase session and keep auth cookies in sync on every matched
+// request. Deliberately the (deprecated) `middleware.ts` edge convention, not
+// Next 16's Node-only `proxy.ts`: on Cloudflare, OpenNext supports edge
+// middleware officially, while Node middleware is experimental and bundles a
+// second copy of the Next server (~0.7 MB gzip of a 3 MB free-plan budget).
+export async function middleware(request: NextRequest) {
   // Resilience: Supabase can land the auth `code` (OAuth / magic link) on a
   // non-callback path — e.g. the Site URL root `https://…/?code=…` — where
   // nothing exchanges it, so the user ends up logged out. Forward any stray
