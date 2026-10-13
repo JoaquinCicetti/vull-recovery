@@ -230,6 +230,9 @@ export async function sendBookingReceived(
   admin: SupabaseClient,
   bookingId: string,
 ): Promise<void> {
+  // Email-only ack: with Resend unconfigured, loadBookingCtx + fanOutToUser would
+  // still spend 5 DB/Auth reads before sendMail no-ops. Skip the whole thing.
+  if (!Deno.env.get("RESEND_API_KEY") || !Deno.env.get("EMAIL_FROM")) return;
   try {
     const c = await loadBookingCtx(admin, bookingId);
     if (!c) return;

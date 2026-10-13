@@ -23,31 +23,36 @@ export default async function TurnoPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const { profile } = await requireUser(`/turno/${id}`);
   const nowISO = new Date().toISOString();
 
+  // This page is the landing after "Reservar", so its render time is part of how
+  // long booking feels. The three reads are independent (RLS scopes the selects
+  // by the cookie session, they don't need `user` first), so issue them together:
+  // 4 sequential round trips → 1. requireUser still redirects when signed out.
   const supabase = await createClient();
-  const { data } = await supabase
-    .from("bookings")
-    .select("*, services(name, price_ars, duration_minutes)")
-    .eq("id", id)
-    .single();
+  const [{ profile }, { data }, { data: taloRow }] = await Promise.all([
+    requireUser(`/turno/${id}`),
+    supabase
+      .from("bookings")
+      .select("*, services(name, price_ars, duration_minutes)")
+      .eq("id", id)
+      .single(),
+    // A CVU already minted for this booking (Talo, still open). Lets a reload —
+    // or the return trip from the bank app — show the same alias again instead of
+    // minting a second one. Readable through payments_select_own via the booking.
+    supabase
+      .from("payments")
+      .select("talo_cvu, talo_alias, talo_expires_at, amount_ars")
+      .eq("booking_id", id)
+      .eq("provider", "talo")
+      .eq("status", "pending")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
 
   const booking = data as BookingWithService | null;
   if (!booking) notFound();
-
-  // A CVU already minted for this booking (Talo, still open). Lets a reload —
-  // or the return trip from the bank app — show the same alias again instead of
-  // minting a second one. Readable through payments_select_own via the booking.
-  const { data: taloRow } = await supabase
-    .from("payments")
-    .select("talo_cvu, talo_alias, talo_expires_at, amount_ars")
-    .eq("booking_id", id)
-    .eq("provider", "talo")
-    .eq("status", "pending")
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
   const talo: TaloTransfer | null =
     taloRow && (taloRow.talo_cvu || taloRow.talo_alias)
       ? {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { addDays, format, isAfter, isBefore, parse } from "date-fns";
@@ -84,6 +84,12 @@ export function BookingFlow({
   const [selected, setSelected] = useState<Slot | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  // Covers the navigation to /turno after a successful booking. Without it the
+  // button flipped back to "Reservar HH:MM" (and was clickable) while the turno
+  // page was still rendering — it read as "nothing happened", so people tapped
+  // again. `pending` is true from the tap until the turno skeleton is on screen.
+  const [navigating, startNavigation] = useTransition();
+  const pending = submitting || navigating;
   const [error, setError] = useState<string | null>(null);
 
   // Contact details, captured at confirm time when missing on the profile.
@@ -186,8 +192,8 @@ export function BookingFlow({
         use_credit: credits > 0,
       },
     });
-    setSubmitting(false);
     if (error) {
+      setSubmitting(false);
       setError(await readError(error));
       // Refresh the grid (the slot may be gone) but keep the message on screen.
       reload({ keepError: true });
@@ -197,11 +203,16 @@ export function BookingFlow({
     if (!bookingId) {
       // 200 with an unexpected shape: without this the button just re-enabled and
       // nothing happened, so the client tapped again and double-booked.
+      setSubmitting(false);
       setError("No pudimos crear la reserva. Probá de nuevo.");
       reload({ keepError: true });
       return;
     }
-    router.push(`/turno/${bookingId}`);
+    // Success: keep `submitting` on — this component unmounts with the navigation,
+    // and the transition keeps the button pending until /turno has rendered.
+    startNavigation(() => {
+      router.push(`/turno/${bookingId}`);
+    });
   }
 
   const day = days?.find((d) => d.date === activeDay);
@@ -395,10 +406,10 @@ export function BookingFlow({
             <Button
               size="lg"
               onClick={confirm}
-              disabled={!selected || submitting}
+              disabled={!selected || pending}
               className="w-full"
             >
-              {submitting
+              {pending
                 ? "Reservando…"
                 : !isAuthed
                   ? "Ingresar y reservar"
