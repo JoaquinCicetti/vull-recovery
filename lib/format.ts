@@ -62,3 +62,13 @@ export const STATUS_STYLE: Record<BookingStatus, string> = {
   expired: "bg-surface-2 text-fg-faint",
   no_show: "bg-danger/10 text-danger",
 };
+
+// Short calendar date of an instant ("12 oct 2026"), for admin tables.
+export function fmtDate(iso: string, tz: string = DEFAULT_TZ) {
+  return new Intl.DateTimeFormat("es-AR", {
+    timeZone: tz,
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(new Date(iso));
+}

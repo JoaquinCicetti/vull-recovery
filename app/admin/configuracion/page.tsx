@@ -1,7 +1,7 @@
-import Link from "next/link";
 import { requireAdmin } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { SettingsForm } from "./settings-form";
+import { AdminTabs } from "@/components/admin/admin-tabs";
 import { PageShell } from "@/components/ui/page-shell";
 import type { Settings } from "@/lib/types";
 
@@ -23,19 +23,15 @@ export default async function ConfiguracionPage() {
 
   return (
     <PageShell
-      nav={
-        <Link
-          href="/admin"
-          className="text-sm text-fg-faint transition-colors hover:text-fg"
-        >
-          ← Volver al panel
-        </Link>
-      }
+      size="wide"
+      nav={<AdminTabs />}
       eyebrow="Panel"
       title="Disponibilidad"
       description="Definí el horario y los días en que se pueden reservar turnos. Esto controla la disponibilidad que ven los clientes."
     >
-      <SettingsForm initial={data ?? DEFAULTS} />
+      <div className="max-w-2xl">
+        <SettingsForm initial={data ?? DEFAULTS} />
+      </div>
     </PageShell>
   );
 }
