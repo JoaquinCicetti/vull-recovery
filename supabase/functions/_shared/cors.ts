@@ -27,7 +27,8 @@ function allowList(): string[] {
   return out;
 }
 
-const ALLOW_HEADERS = "authorization, x-client-info, apikey, content-type";
+// x-region: the browser pins functions to the DB region (lib/supabase/client.ts).
+const ALLOW_HEADERS = "authorization, x-client-info, apikey, content-type, x-region";
 const ALLOW_METHODS = "POST, GET, OPTIONS";
 
 export function corsHeaders(req: Request): Record<string, string> {
