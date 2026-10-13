@@ -1,11 +1,13 @@
+import { AdminTabs } from "@/components/admin/admin-tabs";
 import { PageShell } from "@/components/ui/page-shell";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function Loading() {
   return (
-    <PageShell size="wide" eyebrow="Panel" title="Administración">
+    <PageShell size="wide" nav={<AdminTabs />} eyebrow="Panel">
       <div aria-hidden="true">
-        <Skeleton className="h-3 w-56" />
+        <Skeleton className="h-9 w-64" />
+        <Skeleton className="mt-8 h-3 w-56" />
         <div className="mt-4 flex flex-col gap-3">
           {Array.from({ length: 2 }).map((_, i) => (
             <Skeleton key={i} className="h-28 w-full rounded-lg" />
