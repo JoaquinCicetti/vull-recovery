@@ -72,3 +72,30 @@ export function fmtDate(iso: string, tz: string = DEFAULT_TZ) {
     year: "numeric",
   }).format(new Date(iso));
 }
+
+// The pieces of a turno's date, for the "date tile" (big day number, short
+// month and weekday) used across the account area.
+export function fmtDateParts(iso: string, tz: string = DEFAULT_TZ) {
+  const d = new Date(iso);
+  const part = (opts: Intl.DateTimeFormatOptions) =>
+    new Intl.DateTimeFormat("es-AR", { timeZone: tz, ...opts })
+      .format(d)
+      .replace(".", "");
+  return {
+    day: part({ day: "numeric" }),
+    month: part({ month: "short" }),
+    weekday: part({ weekday: "long" }),
+    time: fmtTime(iso, tz),
+  };
+}
+
+// "hoy" / "mañana" / "en 5 días" / "hace 3 días", by LOCAL calendar day (so a
+// turno at 9:00 tomorrow is "mañana" even when it is less than 24 h away).
+export function fmtRelativeDay(iso: string, nowISO: string, tz: string = DEFAULT_TZ) {
+  const day = (s: string) => Date.parse(`${localDate(s, tz)}T00:00:00Z`);
+  const diff = Math.round((day(iso) - day(nowISO)) / 86400000);
+  if (diff === 0) return "hoy";
+  if (diff === 1) return "mañana";
+  if (diff === -1) return "ayer";
+  return diff > 0 ? `en ${diff} días` : `hace ${-diff} días`;
+}
