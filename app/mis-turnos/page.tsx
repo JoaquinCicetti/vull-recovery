@@ -1,64 +1,70 @@
-import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { getMyCredits } from "@/lib/credits";
-import { CreditsSection } from "@/components/credits-section";
-import { fmtDateTime } from "@/lib/format";
-import { StatusBadge } from "@/components/status-badge";
+import { isActiveStatus } from "@/lib/booking-status";
+import { AccountTabs } from "@/components/account/account-tabs";
+import type { AccountBooking } from "@/components/account/booking-row";
+import { TurnosView } from "@/components/account/turnos-view";
 import { PageShell } from "@/components/ui/page-shell";
-import type { Booking } from "@/lib/types";
+import type { BookingStatus } from "@/lib/types";
 
-type Row = Booking & { services: { name: string } | null };
+type Row = {
+  id: string;
+  starts_at: string;
+  status: BookingStatus;
+  hold_expires_at: string | null;
+  services: { name: string } | null;
+};
 
-export default async function MisTurnosPage() {
-  await requireUser("/mis-turnos");
+export default async function MisTurnosPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const { user } = await requireUser("/mis-turnos");
+  const showAll = (await searchParams).historial === "todo";
 
   const supabase = await createClient();
-  const { data } = await supabase
-    .from("bookings")
-    .select("*, services(name)")
-    .order("starts_at", { ascending: true });
+  const [{ data }, credits] = await Promise.all([
+    supabase
+      .from("bookings")
+      .select("id, starts_at, status, hold_expires_at, services(name)")
+      // Explicit: RLS lets an admin read EVERY booking, and this page is "mine".
+      .eq("user_id", user!.id)
+      .order("starts_at", { ascending: true }),
+    getMyCredits(),
+  ]);
 
-  const bookings = (data ?? []) as Row[];
+  // eslint-disable-next-line react-hooks/purity -- server component: renders once
+  const now = Date.now();
+  const nowISO = new Date(now).toISOString();
 
-  const credits = await getMyCredits();
+  const all: AccountBooking[] = ((data ?? []) as unknown as Row[]).map((b) => ({
+    id: b.id,
+    startsAt: b.starts_at,
+    status: b.status,
+    service: b.services?.name ?? "Servicio",
+    holdExpiresAt: b.hold_expires_at,
+  }));
+
+  // Upcoming = still holds a slot and has not started. Everything else (past,
+  // cancelled, expired) is history, newest first.
+  const upcoming = all.filter(
+    (b) => isActiveStatus(b.status) && new Date(b.startsAt).getTime() >= now,
+  );
+  const history = all.filter((b) => !upcoming.includes(b)).reverse();
+  const totalCredits = credits.reduce((n, c) => n + c.remaining, 0);
 
   return (
-    <PageShell eyebrow="Tus reservas" title="Mis turnos">
-      <CreditsSection credits={credits} />
-      {bookings.length === 0 ? (
-        <div className="surface-card animate-fade-up border-dashed p-10 text-center text-fg-muted">
-          Todavía no tenés turnos.{" "}
-          <Link
-            href="/"
-            className="font-medium text-accent underline underline-offset-4"
-          >
-            Reservá uno
-          </Link>
-          .
-        </div>
-      ) : (
-        <ul className="stagger-children flex flex-col gap-3">
-          {bookings.map((b) => (
-            <li key={b.id}>
-              <Link
-                href={`/turno/${b.id}`}
-                className="surface-card surface-lift flex items-center justify-between gap-4 p-5 transition-colors duration-150 hover:border-border-strong"
-              >
-                <div>
-                  <p className="font-semibold text-fg">
-                    {b.services?.name ?? "Servicio"}
-                  </p>
-                  <p className="mt-0.5 text-sm capitalize text-fg-muted">
-                    {fmtDateTime(b.starts_at)}
-                  </p>
-                </div>
-                <StatusBadge status={b.status} />
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
+    <PageShell nav={<AccountTabs />} eyebrow="Tu cuenta" title="Mis turnos">
+      <TurnosView
+        upcoming={upcoming}
+        history={history}
+        showAll={showAll}
+        totalCredits={totalCredits}
+        creditServiceId={credits[0]?.serviceId ?? null}
+        nowISO={nowISO}
+      />
     </PageShell>
   );
 }
