@@ -4,13 +4,7 @@ import { ProfileForm, SignOutButton } from "./profile-form";
 import { AccountTabs } from "@/components/account/account-tabs";
 import { Section } from "@/components/account/section";
 import { PageShell } from "@/components/ui/page-shell";
-
-function initials(name: string | null, email: string | null): string {
-  const words = (name ?? "").trim().split(/\s+/).filter(Boolean);
-  if (words.length >= 2) return (words[0][0] + words[words.length - 1][0]).toUpperCase();
-  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
-  return (email ?? "?").slice(0, 2).toUpperCase();
-}
+import { UserAvatar } from "@/components/ui/user-avatar";
 
 export default async function CuentaPage() {
   const { user, profile } = await requireUser("/cuenta");
@@ -20,12 +14,7 @@ export default async function CuentaPage() {
   return (
     <PageShell nav={<AccountTabs />} eyebrow="Tu cuenta" title="Perfil">
       <div className="surface-card surface-lift animate-fade-up flex items-center gap-4 p-5">
-        <div
-          aria-hidden
-          className="flex size-14 shrink-0 items-center justify-center rounded-md border border-border bg-surface-2 font-mono text-lg font-bold text-accent"
-        >
-          {initials(name, email)}
-        </div>
+        <UserAvatar seed={user!.id} size={56} />
         <div className="min-w-0">
           <p className="truncate text-lg font-semibold text-fg">{name || "Sin nombre"}</p>
           <p className="truncate font-mono text-sm text-fg-muted">{email}</p>

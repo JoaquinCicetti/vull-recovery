@@ -13,6 +13,7 @@ import { CreditAdjustForm } from "@/components/admin/credit-adjust-form";
 import { LoadErrors } from "@/components/admin/load-errors";
 import { SectionTitle, Stat } from "@/components/admin/stat";
 import { PageShell } from "@/components/ui/page-shell";
+import { UserAvatar } from "@/components/ui/user-avatar";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -158,7 +159,12 @@ export default async function ClientePage({
       size="wide"
       nav={<AdminTabs />}
       eyebrow="Cliente"
-      title={profile.full_name || "Sin nombre"}
+      title={
+        <span className="flex items-center gap-3">
+          <UserAvatar seed={profile.id} size={44} />
+          <span className="min-w-0 truncate">{profile.full_name || "Sin nombre"}</span>
+        </span>
+      }
       description={
         <>
           {profile.email ?? "Sin email"}

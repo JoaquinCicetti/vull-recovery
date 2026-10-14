@@ -8,6 +8,7 @@ import { Pager } from "@/components/admin/pager";
 import { FIELD } from "@/components/admin/stat";
 import { PageShell } from "@/components/ui/page-shell";
 import { Button } from "@/components/ui/button";
+import { UserAvatar } from "@/components/ui/user-avatar";
 
 const PAGE = 25;
 const SORTS = {
@@ -120,22 +121,25 @@ export default async function ClientesPage({
                 href={`/admin/clientes/${c.id}`}
                 className="surface-card surface-lift flex flex-wrap items-center justify-between gap-4 p-5"
               >
-                <div className="min-w-0">
-                  <p className="font-semibold text-fg">
-                    {c.full_name || "Sin nombre"}
-                    {c.is_admin && (
-                      <span className="ml-2 rounded-md bg-secondary px-1.5 py-0.5 font-mono text-[11px] uppercase tracking-wide text-fg-muted">
-                        Admin
-                      </span>
-                    )}
-                  </p>
-                  <p className="mt-0.5 truncate font-mono text-xs text-fg-faint">
-                    {[c.email, c.whatsapp_phone].filter(Boolean).join(" · ") || "Sin contacto"}
-                  </p>
-                  <p className="mt-1 text-xs text-fg-faint">
-                    Alta {fmtDate(c.created_at)}
-                    {c.last_booking_at && ` · último turno ${fmtDate(c.last_booking_at)}`}
-                  </p>
+                <div className="flex min-w-0 items-center gap-3">
+                  <UserAvatar seed={c.id} size={40} />
+                  <div className="min-w-0">
+                    <p className="font-semibold text-fg">
+                      {c.full_name || "Sin nombre"}
+                      {c.is_admin && (
+                        <span className="ml-2 rounded-md bg-secondary px-1.5 py-0.5 font-mono text-[11px] uppercase tracking-wide text-fg-muted">
+                          Admin
+                        </span>
+                      )}
+                    </p>
+                    <p className="mt-0.5 truncate font-mono text-xs text-fg-faint">
+                      {[c.email, c.whatsapp_phone].filter(Boolean).join(" · ") || "Sin contacto"}
+                    </p>
+                    <p className="mt-1 text-xs text-fg-faint">
+                      Alta {fmtDate(c.created_at)}
+                      {c.last_booking_at && ` · último turno ${fmtDate(c.last_booking_at)}`}
+                    </p>
+                  </div>
                 </div>
                 <dl className="flex shrink-0 gap-6 text-right">
                   <div>
