@@ -13,6 +13,7 @@
     "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"
   },
   "dependencies": {
+    "@blobatar/react": "^2.7.0",
     "@opennextjs/cloudflare": "^1.20.8",
     "@radix-ui/react-use-controllable-state": "^1.2.3",
     "@react-three/drei": "^10.7.7",
@@ -20,7 +21,7 @@
     "@react-three/postprocessing": "^3.0.4",
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.106.2",
-    "boring-avatars": "^2.0.4",
+    "blobatar": "^2.7.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",
