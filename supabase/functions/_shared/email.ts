@@ -314,7 +314,7 @@ export async function sendBookingCancellation(
     const note = opts.credit === "credited"
       ? "Te devolvimos la sesión como crédito: la próxima vez que reserves este servicio la podés usar sin pagar de nuevo."
       : opts.credit === "late"
-      ? "Como cancelaste con menos de 24 h de anticipación, la sesión no se devuelve. Si tuviste un imprevisto, escribinos por WhatsApp."
+      ? "Como cancelaste fuera del plazo de aviso, la sesión no se devuelve. Si tuviste un imprevisto, escribinos por WhatsApp."
       : "Si fue un error o querés otro horario, podés reservar de nuevo cuando quieras.";
     const html = shell({
       heading: "Turno cancelado",

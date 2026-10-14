@@ -3,15 +3,31 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import type { Service } from "@/lib/types";
+import type { Sector, Service } from "@/lib/types";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
-export function ServicesManager({ initial }: { initial: Service[] }) {
+// A plan belongs to one sector for good: its turnos are filed under it, so the
+// sector is chosen on creation and not editable afterwards.
+export function ServicesManager({
+  initial,
+  sectors,
+}: {
+  initial: Service[];
+  sectors: Sector[];
+}) {
   const router = useRouter();
   const supabase = createClient();
   const [error, setError] = useState<string | null>(null);
@@ -22,6 +38,7 @@ export function ServicesManager({ initial }: { initial: Service[] }) {
   const [dur, setDur] = useState("60");
   const [desc, setDesc] = useState("");
   const [sessions, setSessions] = useState("1"); // >1 = pack
+  const [sectorId, setSectorId] = useState(sectors[0]?.id ?? "");
 
   async function addService(e: React.FormEvent) {
     e.preventDefault();
@@ -35,6 +52,7 @@ export function ServicesManager({ initial }: { initial: Service[] }) {
       description: desc || null,
       sort_order: initial.length,
       sessions_included: n,
+      sector_id: sectorId,
     });
     setBusy(false);
     if (error) {
@@ -60,6 +78,21 @@ export function ServicesManager({ initial }: { initial: Service[] }) {
               Nuevo plan
             </h2>
             <div className="mt-4 flex flex-col gap-3">
+              {sectors.length > 1 && (
+                <Select value={sectorId} onValueChange={setSectorId}>
+                  <SelectTrigger className="w-full sm:w-fit" aria-label="Sector">
+                    <SelectValue placeholder="Sector" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sectors.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.name}
+                        {!s.active && " (oculto)"}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
               <Input
                 placeholder="Nombre (ej. Sesión individual)"
                 value={name}
@@ -120,7 +153,11 @@ export function ServicesManager({ initial }: { initial: Service[] }) {
 
       <div className="flex flex-col gap-3">
         {initial.map((s) => (
-          <ServiceRow key={s.id} service={s} />
+          <ServiceRow
+            key={s.id}
+            service={s}
+            sector={sectors.length > 1 ? sectors.find((x) => x.id === s.sector_id) : undefined}
+          />
         ))}
       </div>
 
@@ -129,7 +166,7 @@ export function ServicesManager({ initial }: { initial: Service[] }) {
   );
 }
 
-function ServiceRow({ service }: { service: Service }) {
+function ServiceRow({ service, sector }: { service: Service; sector?: Sector }) {
   const router = useRouter();
   const supabase = createClient();
   const [name, setName] = useState(service.name);
@@ -179,10 +216,20 @@ function ServiceRow({ service }: { service: Service }) {
     <Card className="[--card-spacing:--spacing(5)]">
       <CardContent>
         <div className="flex flex-col gap-3">
-          {isPack && (
-            <p className="font-mono text-xs uppercase tracking-wider text-accent">
-              Pack · {sessions} sesiones
-            </p>
+          {(sector || isPack) && (
+            <div className="flex flex-wrap items-center gap-2">
+              {sector && (
+                <Badge variant="outline" className="font-mono text-xs text-fg-muted">
+                  {sector.name}
+                  {!sector.active && " · oculto"}
+                </Badge>
+              )}
+              {isPack && (
+                <p className="font-mono text-xs uppercase tracking-wider text-accent">
+                  Pack · {sessions} sesiones
+                </p>
+              )}
+            </div>
           )}
           <Input value={name} onChange={(e) => setName(e.target.value)} />
           <div className="flex gap-3">
@@ -208,7 +255,9 @@ function ServiceRow({ service }: { service: Service }) {
           </div>
           <Label className="gap-2.5 text-fg-muted">
             <Switch checked={active} onCheckedChange={setActive} />
-            Activo (visible en la web)
+            {sector && !sector.active
+              ? "Activo (visible solo para admins hasta lanzar el sector)"
+              : "Activo (visible en la web)"}
           </Label>
           <div className="flex gap-2">
             <Button onClick={save} disabled={busy}>

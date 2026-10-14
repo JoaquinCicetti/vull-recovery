@@ -20,8 +20,9 @@ export default async function ReservarPage({
 
   const { user, profile } = await getUserAndProfile();
 
-  // Days the user already has an active turno on — one turno per day is enforced
-  // server-side; surfacing it here disables those days before the round-trip.
+  // Days the user already has an active turno on IN THIS SECTOR — one turno per
+  // day per sector is enforced server-side; surfacing it here disables those days
+  // before the round-trip.
   let bookedDays: string[] = [];
   let credits = 0;
   if (user) {
@@ -30,6 +31,7 @@ export default async function ReservarPage({
       .from("bookings")
       .select("starts_at")
       .eq("user_id", user.id)
+      .eq("sector_id", service.sector_id)
       .in("status", ["pending", "awaiting_payment", "confirmed"])
       .gte("starts_at", new Date().toISOString());
     bookedDays = (data ?? []).map((b) => localDate(b.starts_at));

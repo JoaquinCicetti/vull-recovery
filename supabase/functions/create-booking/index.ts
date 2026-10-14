@@ -1,7 +1,8 @@
 // Authenticated Edge Function: holds a slot for the signed-in user.
-// Inserts a `pending` booking; the DB EXCLUDE constraint rejects overlaps and a
-// partial UNIQUE index rejects a second active booking on the same local day
-// (both race-safe). Re-validates the client-supplied time against the same rules
+// Inserts a `pending` booking; the DB gives it the first free resource of the
+// plan's sector (bed), the EXCLUDE constraint rejects overlaps per resource and a
+// partial UNIQUE index rejects a second active booking in the sector on the same
+// local day (all race-safe). A hidden (inactive) sector is bookable by admins only. Re-validates the client-supplied time against the same rules
 // `availability` uses, so a crafted/stale request can't book outside the rules.
 // Creates a tentative Google Calendar event (best-effort).
 //
@@ -15,9 +16,14 @@ import { createEvent, getBusy } from "../_shared/google.ts";
 import { sendBookingReceived, sendBookingConfirmation, notifyAdmins } from "../_shared/email.ts";
 import { defer } from "../_shared/background.ts";
 import { localYMD, zonedToUtc } from "../_shared/time.ts";
-import { type Busy, type Settings, validateSlot } from "../_shared/booking-rules.ts";
+import { type Busy, validateSlot } from "../_shared/booking-rules.ts";
+import {
+  canUseSector,
+  loadServiceWithSector,
+  sectorCalendarId,
+  sectorSettings,
+} from "../_shared/sector.ts";
 
-const HOLD_MINUTES = Number(Deno.env.get("BOOKING_HOLD_MINUTES") ?? "20");
 const MAX_ACTIVE_HOLDS = Number(Deno.env.get("MAX_ACTIVE_HOLDS") ?? "3");
 const THROTTLE_MS = Number(Deno.env.get("BOOKING_THROTTLE_SECONDS") ?? "5") * 1000;
 const ACTIVE = ["pending", "awaiting_payment", "confirmed"];
@@ -50,8 +56,7 @@ Deno.serve(async (req) => {
         data: { user },
       },
       _swept,
-      { data: service },
-      { data: row },
+      service,
     ] = await Promise.all([
       userClient(req).auth.getUser(),
       admin
@@ -59,13 +64,17 @@ Deno.serve(async (req) => {
         .update({ status: "expired" })
         .eq("status", "pending")
         .lt("hold_expires_at", new Date().toISOString()),
-      admin.from("services").select("*").eq("id", service_id).single(),
-      admin.from("settings").select("*").eq("id", true).single(),
+      loadServiceWithSector(admin, service_id),
     ]);
     if (!user) return json({ error: "No autenticado" }, 401);
     if (!service || !service.active) {
       return json({ error: "Servicio no disponible" }, 404);
     }
+    const sector = service.sectors;
+    if (!(await canUseSector(admin, sector, user))) {
+      return json({ error: "Servicio no disponible" }, 404);
+    }
+    const calendar = sectorCalendarId(sector);
 
     // A pack's price_ars is the price of the WHOLE pack. Booking one without
     // spending a credit would fall through to the ordinary paid path below and
@@ -78,12 +87,7 @@ Deno.serve(async (req) => {
     const durationMs = service.duration_minutes * 60000;
     const end = new Date(start.getTime() + durationMs);
 
-    const settings: Settings = {
-      working_hours_start: row?.working_hours_start ?? "09:00",
-      working_hours_end: row?.working_hours_end ?? "18:00",
-      working_days: row?.working_days ?? [1, 2, 3, 4, 5],
-      timezone: row?.timezone ?? "America/Argentina/Buenos_Aires",
-    };
+    const settings = sectorSettings(sector);
     const tz = settings.timezone;
     const { y, m, d } = localYMD(tz, start);
     const dayStart = zonedToUtc(y, m, d, 0, 0, tz).toISOString();
@@ -101,15 +105,17 @@ Deno.serve(async (req) => {
         .in("status", ["pending", "awaiting_payment"])
         .order("created_at", { ascending: false }),
       // Friendly pre-check (the partial UNIQUE index is the race-safe backstop).
+      // One per day PER SECTOR: recovery and pilates on the same day is fine.
       admin
         .from("bookings")
         .select("id")
         .eq("user_id", user.id)
+        .eq("sector_id", sector.id)
         .in("status", ACTIVE)
         .gte("starts_at", dayStart)
         .lt("starts_at", dayEnd)
         .limit(1),
-      getBusy(start.toISOString(), end.toISOString()).catch(() => []),
+      getBusy(start.toISOString(), end.toISOString(), calendar).catch(() => []),
     ]);
 
     if ((activeHolds?.length ?? 0) >= MAX_ACTIVE_HOLDS) {
@@ -157,6 +163,7 @@ Deno.serve(async (req) => {
           start: start.toISOString(),
           end: end.toISOString(),
           status,
+          calendar,
         });
         if (eventId) {
           await admin.from("bookings").update({ google_event_id: eventId }).eq("id", bookingId);
@@ -191,7 +198,7 @@ Deno.serve(async (req) => {
       return json({ booking });
     }
 
-    const holdExpires = new Date(Date.now() + HOLD_MINUTES * 60000).toISOString();
+    const holdExpires = new Date(Date.now() + sector.hold_minutes * 60000).toISOString();
 
     const { data: booking, error } = await admin
       .from("bookings")

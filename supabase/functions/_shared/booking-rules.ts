@@ -9,14 +9,16 @@
 // unavailable) — see docs/booking-invariants.md.
 import { localYMD, parseHM, zonedToUtc } from "./time.ts";
 
-export const LEAD_MINUTES = 60; // earliest bookable time from now
 export const DAYS_AHEAD = 14;
 
+// A sector's agenda (see _shared/sector.ts). `lead_minutes` is the earliest
+// bookable time from now.
 export type Settings = {
   working_hours_start: string;
   working_hours_end: string;
   working_days: number[];
   timezone: string;
+  lead_minutes: number;
 };
 
 export type Busy = { start: number; end: number }; // epoch ms
@@ -40,6 +42,14 @@ export function workingWindow(
   };
 }
 
+function leadError(minutes: number): string {
+  if (minutes === 60) return "Necesitás reservar con al menos una hora de anticipación.";
+  if (minutes % 60 === 0) {
+    return `Necesitás reservar con al menos ${minutes / 60} horas de anticipación.`;
+  }
+  return `Necesitás reservar con al menos ${minutes} minutos de anticipación.`;
+}
+
 export type SlotCheck = { ok: true } | { ok: false; error: string };
 
 // Validate a single candidate slot. `busy` should include any Google freeBusy
@@ -55,11 +65,8 @@ export function validateSlot(opts: {
   const now = opts.now ?? Date.now();
   const endMs = startMs + durationMs;
 
-  if (startMs < now + LEAD_MINUTES * 60000) {
-    return {
-      ok: false,
-      error: "Necesitás reservar con al menos una hora de anticipación.",
-    };
+  if (startMs < now + settings.lead_minutes * 60000) {
+    return { ok: false, error: leadError(settings.lead_minutes) };
   }
   const win = workingWindow(startMs, settings);
   if (!win) {

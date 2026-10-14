@@ -7,7 +7,7 @@ import type { BookingStatus } from "@/lib/types";
 // proxy, not the string.
 // The `profiles!user_id` embed disambiguates bookings' two FKs to profiles.
 export const BOOKINGS_SELECT =
-  "id, starts_at, status, service_id, user_id, services(name, price_ars), profiles!user_id(full_name, whatsapp_phone, email)";
+  "id, starts_at, status, service_id, user_id, services(name, price_ars), sectors(slug, name), resources(name), profiles!user_id(full_name, whatsapp_phone, email)";
 
 // Same rows, but only bookings whose client matches a filter on `profiles`
 // (an inner join; the plain embed would keep the booking and null the client).
@@ -24,6 +24,8 @@ export type AdminBookingRow = {
   userId: string;
   service: string;
   price: number | null;
+  // "Pilates · Cama 2" — null for recovery, whose single room says nothing.
+  place: string | null;
   client: string;
   phone: string | null;
   email: string | null;
@@ -39,6 +41,10 @@ export function mapBooking(b: any): AdminBookingRow {
     userId: b.user_id as string,
     service: b.services?.name ?? "Servicio",
     price: (b.services?.price_ars as number) ?? null,
+    place:
+      b.sectors && b.sectors.slug !== "recovery"
+        ? [b.sectors.name, b.resources?.name].filter(Boolean).join(" · ")
+        : null,
     client: b.profiles?.full_name ?? "—",
     phone: (b.profiles?.whatsapp_phone as string) ?? null,
     email: (b.profiles?.email as string) ?? null,
