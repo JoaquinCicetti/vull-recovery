@@ -8,8 +8,38 @@ export type Profile = {
   notify_push: boolean;
 };
 
+// An area of the business with its own agenda and policies (recovery, pilates…).
+// `active = false` is the launch flag: RLS shows the sector, its plans and its
+// agenda to admins only until it goes live.
+export type Sector = {
+  id: string;
+  slug: string;
+  name: string;
+  active: boolean;
+  sort_order: number;
+  timezone: string;
+  working_hours_start: string; // "HH:MM:SS"
+  working_hours_end: string;
+  working_days: number[]; // 0=Sun … 6=Sat
+  lead_minutes: number;
+  hold_minutes: number;
+  cancel_notice_hours: number;
+  change_notice_hours: number;
+};
+
+// What a turno occupies inside a sector: recovery's room, a pilates bed. The
+// server assigns the first free one; clients only ever pick a time.
+export type Resource = {
+  id: string;
+  sector_id: string;
+  name: string;
+  active: boolean;
+  sort_order: number;
+};
+
 export type Service = {
   id: string;
+  sector_id: string;
   name: string;
   description: string | null;
   price_ars: number;
@@ -48,6 +78,8 @@ export type Booking = {
   id: string;
   user_id: string;
   service_id: string;
+  sector_id: string;
+  resource_id: string;
   starts_at: string;
   ends_at: string;
   status: BookingStatus;
@@ -63,12 +95,4 @@ export type Booking = {
 export type Slot = {
   starts_at: string; // ISO
   ends_at: string; // ISO
-};
-
-// Center configuration (singleton row, id = true). Drives availability.
-export type Settings = {
-  working_hours_start: string; // "HH:MM" / "HH:MM:SS"
-  working_hours_end: string; // "HH:MM" / "HH:MM:SS"
-  working_days: number[]; // JS weekday numbers: 0=Sun … 6=Sat
-  timezone: string; // IANA tz, e.g. "America/Argentina/Buenos_Aires"
 };

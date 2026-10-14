@@ -18,7 +18,7 @@ function loadSA(): ServiceAccount | null {
   };
 }
 
-function calendarId(): string | null {
+export function calendarId(): string | null {
   return Deno.env.get("GOOGLE_CALENDAR_ID") ?? null;
 }
 
@@ -111,12 +111,14 @@ async function mintAccessToken(sa: ServiceAccount): Promise<CachedToken> {
   return { token: data.access_token as string, expiresAtMs: Date.now() + ttlSec * 1000 };
 }
 
+// `cal` is the sector's calendar (see sectorCalendarId); null = the sector has
+// none, so there is nothing busy outside the DB.
 export async function getBusy(
   timeMin: string,
   timeMax: string,
+  cal: string | null = calendarId(),
 ): Promise<{ start: string; end: string }[]> {
   const sa = loadSA();
-  const cal = calendarId();
   if (!sa || !cal) return [];
   const token = await getAccessToken(sa);
   const res = await fetch("https://www.googleapis.com/calendar/v3/freeBusy", {
@@ -178,9 +180,11 @@ export async function createEvent(opts: {
   start: string;
   end: string;
   status?: "tentative" | "confirmed";
+  /** The sector's calendar; null = none (no event). Defaults to the env one. */
+  calendar?: string | null;
 }): Promise<string | null> {
   const sa = loadSA();
-  const cal = calendarId();
+  const cal = opts.calendar === undefined ? calendarId() : opts.calendar;
   if (!sa || !cal) return null;
   const token = await getAccessToken(sa);
   const res = await fetch(

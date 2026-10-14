@@ -55,6 +55,7 @@ function Row({ b, past }: { b: AdminBookingRow; past?: boolean }) {
               </span>
             )}
           </p>
+          {b.place && <p className="text-xs text-fg-muted">{b.place}</p>}
           <p className="mt-1 text-sm">
             <Link
               href={`/admin/clientes/${b.userId}`}

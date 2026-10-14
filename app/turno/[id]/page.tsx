@@ -15,6 +15,7 @@ import type { TaloTransfer } from "@/components/talo-transfer-panel";
 
 type BookingWithService = Booking & {
   services: { name: string; price_ars: number; duration_minutes: number } | null;
+  sectors: { cancel_notice_hours: number } | null;
 };
 
 export default async function TurnoPage({
@@ -34,7 +35,7 @@ export default async function TurnoPage({
     requireUser(`/turno/${id}`),
     supabase
       .from("bookings")
-      .select("*, services(name, price_ars, duration_minutes)")
+      .select("*, services(name, price_ars, duration_minutes), sectors(cancel_notice_hours)")
       .eq("id", id)
       .single(),
     // A CVU already minted for this booking (Talo, still open). Lets a reload —
@@ -88,13 +89,15 @@ export default async function TurnoPage({
   const cancellable =
     new Date(booking.starts_at).getTime() > nowMs && isActiveStatus(booking.status);
   // Mirrors return_cancelled_booking: a confirmed (paid) turno comes back as a
-  // credit only with >= 24h notice. Unconfirmed turnos have nothing to return.
+  // credit only with the sector's notice (cancel_notice_hours). Unconfirmed
+  // turnos have nothing to return.
+  const noticeHours = booking.sectors?.cancel_notice_hours ?? 24;
   const lateCancel =
-    new Date(booking.starts_at).getTime() - nowMs < 24 * 60 * 60_000;
+    new Date(booking.starts_at).getTime() - nowMs < noticeHours * 60 * 60_000;
   const cancelPrompt = !isConfirmed
     ? undefined
     : lateCancel
-    ? "Faltan menos de 24 h: si cancelás, la sesión no se devuelve. ¿Cancelar igual?"
+    ? `Faltan menos de ${noticeHours} h: si cancelás, la sesión no se devuelve. ¿Cancelar igual?`
     : "¿Cancelar este turno? Te devolvemos la sesión como crédito para reservar otro día.";
 
   return (

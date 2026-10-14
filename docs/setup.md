@@ -89,7 +89,6 @@ MOBBEX_TEST=true
 MOBBEX_WEBHOOK_SECRET=some-random-string
 APP_URL=http://localhost:3000
 WHATSAPP_VERIFY_TOKEN=
-BOOKING_HOLD_MINUTES=10
 ```
 
 ```bash
@@ -220,7 +219,6 @@ so the free project doesn't pause.
 | `WHATSAPP_TOKEN` / `WHATSAPP_PHONE_NUMBER_ID` | Edge Function | Meta Cloud API (optional, fase 2) |
 | `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | Frontend | Web Push public key (`npx web-push generate-vapid-keys`) |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` | Edge Function | Web Push VAPID keys + `mailto:` subject (admin push) |
-| `BOOKING_HOLD_MINUTES` | Edge Function | minutes a pending booking holds a slot (default 10) |
 | `MAX_ACTIVE_HOLDS` | Edge Function | max concurrent unconfirmed holds per user (default 3) |
 | `BOOKING_THROTTLE_SECONDS` | Edge Function | min seconds between a user's bookings (default 5) |
 | `CORS_EXTRA_ORIGINS` | Edge Function | extra browser origins allowed to call functions (comma-separated) |

@@ -12,13 +12,17 @@ The decision behind the two headline rules is recorded in
 [ADR 0009](adr/0009-booking-invariants-enforcement.md) (one-per-day + server-side
 re-validation).
 
+Every rule is **per sector** (recovery, pilates, …): each sector has its own
+agenda and policies on its `sectors` row, and its own resources (recovery's room,
+pilates' beds). See [Sectors](#sectors-and-resources) below.
+
 | Invariant | DB layer | Edge layer (`create-booking`) | Client UX | PG code | Message (es) |
 |-----------|----------|-------------------------------|-----------|---------|--------------|
-| **No time overlap** (HARD) | `bookings_no_overlap` EXCLUDE gist on `during` | `23P01` → 409 | `availability` hides taken slots | `23P01` | "Ese horario ya fue reservado. Elegí otro." |
-| **Max 1 turno per local day per user** (HARD) | `bookings_one_per_day` partial UNIQUE on `(user_id, booking_local_date(starts_at))` | pre-check query + `23505` → 409 | booked days disabled in the calendar | `23505` | "Ya tenés un turno reservado para ese día. Cancelalo si querés elegir otro horario." |
+| **No time overlap per resource** (HARD) | `bookings_no_overlap` EXCLUDE gist on `(resource_id, during)`; the insert trigger raises the same code when no resource is free | `23P01` → 409 | `availability` hides taken slots | `23P01` | "Ese horario ya fue reservado. Elegí otro." |
+| **Max 1 turno per local day per user per sector** (HARD) | `bookings_one_per_day` partial UNIQUE on `(user_id, sector_id, booking_local_date(starts_at))` | pre-check query + `23505` → 409 | booked days disabled in the calendar | `23505` | "Ya tenés un turno reservado para ese día. Cancelalo si querés elegir otro horario." |
 | `ends_at > starts_at` (HARD) | `bookings_time_valid` CHECK | (n/a) | (n/a) | `23514` | — |
 | No past slot | — | `start < now` → 400 | past days not shown | — | "Ese horario ya pasó" |
-| Lead time ≥ 60 min | — | `validateSlot` | earliest filter | — | "Necesitás reservar con al menos una hora de anticipación." |
+| Lead time ≥ `sectors.lead_minutes` | — | `validateSlot` | earliest filter | — | "Necesitás reservar con al menos una hora de anticipación." |
 | Within working days | — | `validateSlot` | non-working days disabled | — | "Ese día no está disponible para reservar." |
 | Within working hours | — | `validateSlot` | only in-hours slots shown | — | "Ese horario está fuera del horario de atención." |
 | Slot-grid aligned | — | `validateSlot` | only grid slots shown | — | "Ese horario no está disponible." |
@@ -52,23 +56,23 @@ the slot and the day automatically.
 A paid turno — funded by a pack credit or an approved, non-reversed booking
 payment — comes back as **one credit for the same service**, never as money:
 
-- client cancels **≥ 24 h** before `starts_at` → credit
+- client cancels **≥ `sectors.cancel_notice_hours`** (24 h by default) before
+  `starts_at` → credit
 - client cancels later → nothing (the admin can still `adjust_credit` by hand)
 - admin cancel or Google Calendar cancel → always credit
 
 The rule lives only in `return_cancelled_booking` (SQL), called by
 `cancel-booking` and `calendar-poll`; at most one return per booking is enforced
-by `credit_ledger_return_uniq`. The turno page and the cancellation email mirror
-the 24 h window for copy only.
+by `credit_ledger_return_uniq`. The turno page mirrors the sector's window for
+copy only.
 
 ## Holds
 
 A new booking is `pending` with `hold_expires_at`. Expired **pending** holds are
 freed **lazily** (no cron) at the start of `availability` and `create-booking`.
-Canonical hold duration is **10 minutes** (`BOOKING_HOLD_MINUTES`); the code
-default is currently `20` — set the env var in production to match. The
-server-authoritative countdown UI reads `hold_expires_at` directly, so it always
-agrees with the DB regardless of the constant.
+The hold lasts the sector's `hold_minutes` (10 by default; it replaced the
+`BOOKING_HOLD_MINUTES` env var). The server-authoritative countdown UI reads
+`hold_expires_at` directly, so it always agrees with the DB.
 
 A **Talo transfer** does not change this: `create-payment` keeps the booking
 `pending` and extends `hold_expires_at` to the CVU's expiry
@@ -92,3 +96,24 @@ DST-correct for any zone, and they coincide with the constant-offset helper for
 Argentina. **If `settings.timezone` is ever changed to a DST-observing zone, the
 per-day index helper must be revisited** (per-slot offset, or a trigger keyed on
 the live tz).
+
+## Sectors and resources
+
+A **sector** (`sectors`) is an area with its own agenda (`working_*`, `timezone`)
+and policies (`lead_minutes`, `hold_minutes`, `cancel_notice_hours`). A plan
+belongs to one sector; a turno occupies one **resource** (`resources`) of it.
+
+- **Bed assignment.** Clients pick a time, never a resource. `availability` shows
+  a slot while any active resource is free; on insert the `bookings_set_sector`
+  trigger gives the turno the first free active resource, serialized per sector
+  by an advisory lock so concurrent bookings don't race for the same bed. No free
+  bed → `23P01`, same as a taken slot. A reschedule clears `resource_id` so the
+  trigger picks a bed free at the new time.
+- **Launch flag.** `sectors.active = false` hides a sector from everyone but
+  admins: RLS hides the sector row and its plans (`services_read`), and
+  `availability`, `create-booking` and `create-payment` (packs) check the same
+  rule via `_shared/sector.ts`, since they run with the service role. Pilates
+  ships this way; it launches from Admin → Disponibilidad → "Visible para
+  clientes". Recovery can't be hidden from the UI.
+- **Google Calendar** stays recovery-only: recovery uses `GOOGLE_CALENDAR_ID`
+  until its row's `google_calendar_id` is set, other sectors have no calendar.

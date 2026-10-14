@@ -11,7 +11,8 @@ import { responder, errMessage } from "../_shared/cors.ts";
 import { adminClient, userClient } from "../_shared/supabase.ts";
 import { getBusy, patchEventStatus, patchEventTime } from "../_shared/google.ts";
 import { sendBookingConfirmation } from "../_shared/email.ts";
-import { type Busy, type Settings, validateSlot } from "../_shared/booking-rules.ts";
+import { type Busy, validateSlot } from "../_shared/booking-rules.ts";
+import { loadServiceWithSector, sectorCalendarId, sectorSettings } from "../_shared/sector.ts";
 
 const ACTIONS = ["confirm", "no_show", "reschedule"];
 const ACTIVE = ["pending", "awaiting_payment", "confirmed"];
@@ -123,23 +124,17 @@ Deno.serve(async (req) => {
       return json({ error: "Ese horario ya pasó." }, 400);
     }
 
-    const [{ data: service }, { data: row }] = await Promise.all([
-      admin.from("services").select("duration_minutes").eq("id", booking.service_id).single(),
-      admin.from("settings").select("*").eq("id", true).single(),
-    ]);
+    const service = await loadServiceWithSector(admin, booking.service_id);
     if (!service) return json({ error: "Servicio no disponible" }, 404);
     const durationMs = service.duration_minutes * 60000;
     const end = new Date(start.getTime() + durationMs);
 
-    const settings: Settings = {
-      working_hours_start: row?.working_hours_start ?? "09:00",
-      working_hours_end: row?.working_hours_end ?? "18:00",
-      working_days: row?.working_days ?? [1, 2, 3, 4, 5],
-      timezone: row?.timezone ?? "America/Argentina/Buenos_Aires",
-    };
-    const googleBusy = await getBusy(start.toISOString(), end.toISOString()).catch(
-      () => [],
-    );
+    const settings = sectorSettings(service.sectors);
+    const googleBusy = await getBusy(
+      start.toISOString(),
+      end.toISOString(),
+      sectorCalendarId(service.sectors),
+    ).catch(() => []);
     const busy: Busy[] = googleBusy.map((b) => ({
       start: new Date(b.start).getTime(),
       end: new Date(b.end).getTime(),
@@ -148,10 +143,11 @@ Deno.serve(async (req) => {
     if (!check.ok) return json({ error: check.error }, 409);
 
     // Update the SAME row; the EXCLUDE / one-per-day constraints re-check on update
-    // (a row never conflicts with itself).
+    // (a row never conflicts with itself). resource_id = null makes the DB give it
+    // a bed that is free at the new time (its current one may not be).
     const { error: updErr } = await admin
       .from("bookings")
-      .update({ starts_at: start.toISOString(), ends_at: end.toISOString() })
+      .update({ starts_at: start.toISOString(), ends_at: end.toISOString(), resource_id: null })
       .eq("id", booking.id);
     if (updErr) {
       if (updErr.code === "23P01") {

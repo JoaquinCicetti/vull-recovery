@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { motion, type Variants } from "framer-motion";
 import { formatARS, waLink } from "@/lib/site";
-import { isPack, type Service } from "@/lib/types";
+import { isPack, type Sector, type Service } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -38,8 +38,14 @@ const card: Variants = {
 // `balances` maps service id -> live credits the signed-in user holds for it
 // (empty when signed out). The call to action follows the BALANCE, not the shape
 // of the plan: holding credits means the next step is booking, not buying again.
+//
+// Plans are grouped by sector. RLS only returns the plans of active sectors to
+// the public (and the static snapshot is fetched as anon), so a visitor sees one
+// group without a heading, exactly as before sectors existed; an admin also gets
+// the hidden sectors' plans, under a heading marked "Solo admin".
 export function Plans({ initialServices }: { initialServices: Service[] }) {
   const [services, setServices] = useState(initialServices);
+  const [sectors, setSectors] = useState<Pick<Sector, "id" | "name" | "active">[]>([]);
   const [balances, setBalances] = useState<Record<string, number>>({});
 
   useEffect(() => {
@@ -52,6 +58,13 @@ export function Plans({ initialServices }: { initialServices: Service[] }) {
       .order("sort_order", { ascending: true })
       .then(({ data }) => {
         if (alive && data) setServices(data as Service[]);
+      });
+    supabase
+      .from("sectors")
+      .select("id, name, active")
+      .order("sort_order", { ascending: true })
+      .then(({ data }) => {
+        if (alive && data) setSectors(data);
       });
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (!session) return;
@@ -102,69 +115,110 @@ export function Plans({ initialServices }: { initialServices: Service[] }) {
             .
           </div>
         ) : (
-          <motion.div
-            variants={grid}
-            initial="hidden"
-            whileInView="show"
-            viewport={{ once: true, margin: "-10%" }}
-            className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-3"
-          >
-            {services.map((s) => {
-              const credits = balances[s.id] ?? 0;
-              return (
-              <motion.div key={s.id} variants={card} className="h-full">
-                <Card className="surface-lift group relative flex h-full flex-col rounded-2xl ring-0 transition-all duration-300 [--card-spacing:--spacing(6)] hover:-translate-y-1.5 hover:border-accent/50 hover:shadow-[0_28px_70px_-28px_rgba(97,179,59,0.65)] has-data-[slot=card-footer]:pb-(--card-spacing)">
-                  {/* hover glow */}
-                  <div className="pointer-events-none absolute -right-12 -top-12 h-44 w-44 rounded-full bg-accent/15 opacity-0 blur-2xl transition-opacity duration-300 group-hover:opacity-100" />
-                  <CardHeader className="relative gap-0">
-                    <CardTitle className="text-xl font-semibold text-fg">
-                      {s.name}
-                    </CardTitle>
-                    {s.description && (
-                      <CardDescription className="mt-2 leading-relaxed text-fg-muted">
-                        {s.description}
-                      </CardDescription>
+          <div className="mt-12 flex flex-col gap-14">
+            {groupBySector(services, sectors).map((g) => (
+              <div key={g.key}>
+                {g.heading && (
+                  <div className="mb-5 flex items-center gap-3">
+                    <h3 className="text-2xl font-bold tracking-tight">{g.heading}</h3>
+                    {g.hidden && (
+                      <Badge variant="outline" className="font-mono text-xs text-fg-muted">
+                        Solo admin
+                      </Badge>
                     )}
-                  </CardHeader>
-                  <CardContent className="relative mt-auto flex items-end justify-between">
-                    {/* Already paid for: show what's left, not what it costs. */}
-                    <span className="font-mono text-3xl font-semibold tracking-tight text-fg">
-                      {credits > 0 ? (
-                        <span className="text-accent">
-                          {credits}{" "}
-                          <span className="text-base font-medium">
-                            {credits === 1 ? "sesión" : "sesiones"}
-                          </span>
-                        </span>
-                      ) : (
-                        formatARS(s.price_ars)
-                      )}
-                    </span>
-                    <Badge
-                      variant="secondary"
-                      className="h-auto rounded-md px-2.5 py-1 font-mono font-medium text-fg-muted"
-                    >
-                      {isPack(s)
-                        ? `${s.sessions_included} sesiones`
-                        : `${s.duration_minutes} min`}
-                    </Badge>
-                  </CardContent>
-                  <CardFooter className="relative border-t-0 bg-transparent p-0 px-(--card-spacing)">
-                    <Button asChild size="lg" className="w-full">
-                      {isPack(s) && credits === 0 ? (
-                        <Link href={`/comprar/${s.id}`}>Comprar pack</Link>
-                      ) : (
-                        <Link href={`/reservar/${s.id}`}>Reservar</Link>
-                      )}
-                    </Button>
-                  </CardFooter>
-                </Card>
-              </motion.div>
-              );
-            })}
-          </motion.div>
+                  </div>
+                )}
+                <motion.div
+                  variants={grid}
+                  initial="hidden"
+                  whileInView="show"
+                  viewport={{ once: true, margin: "-10%" }}
+                  className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3"
+                >
+                  {g.services.map((s) => (
+                    <PlanCard key={s.id} service={s} credits={balances[s.id] ?? 0} />
+                  ))}
+                </motion.div>
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </section>
+  );
+}
+
+type PlanGroup = { key: string; heading: string | null; hidden: boolean; services: Service[] };
+
+// Sector order, then each plan's own order. One group → no heading.
+function groupBySector(
+  services: Service[],
+  sectors: Pick<Sector, "id" | "name" | "active">[],
+): PlanGroup[] {
+  const groups: PlanGroup[] = [];
+  for (const sector of sectors) {
+    const own = services.filter((s) => s.sector_id === sector.id);
+    if (own.length) {
+      groups.push({ key: sector.id, heading: sector.name, hidden: !sector.active, services: own });
+    }
+  }
+  // Plans whose sector isn't loaded yet (the static snapshot, before hydration).
+  const known = new Set(sectors.map((s) => s.id));
+  const rest = services.filter((s) => !known.has(s.sector_id));
+  if (rest.length) groups.push({ key: "rest", heading: null, hidden: false, services: rest });
+  if (groups.length === 1) groups[0].heading = null;
+  return groups;
+}
+
+function PlanCard({ service: s, credits }: { service: Service; credits: number }) {
+  return (
+    <motion.div variants={card} className="h-full">
+      <Card className="surface-lift group relative flex h-full flex-col rounded-2xl ring-0 transition-all duration-300 [--card-spacing:--spacing(6)] hover:-translate-y-1.5 hover:border-accent/50 hover:shadow-[0_28px_70px_-28px_rgba(97,179,59,0.65)] has-data-[slot=card-footer]:pb-(--card-spacing)">
+        {/* hover glow */}
+        <div className="pointer-events-none absolute -right-12 -top-12 h-44 w-44 rounded-full bg-accent/15 opacity-0 blur-2xl transition-opacity duration-300 group-hover:opacity-100" />
+        <CardHeader className="relative gap-0">
+          <CardTitle className="text-xl font-semibold text-fg">
+            {s.name}
+          </CardTitle>
+          {s.description && (
+            <CardDescription className="mt-2 leading-relaxed text-fg-muted">
+              {s.description}
+            </CardDescription>
+          )}
+        </CardHeader>
+        <CardContent className="relative mt-auto flex items-end justify-between">
+          {/* Already paid for: show what's left, not what it costs. */}
+          <span className="font-mono text-3xl font-semibold tracking-tight text-fg">
+            {credits > 0 ? (
+              <span className="text-accent">
+                {credits}{" "}
+                <span className="text-base font-medium">
+                  {credits === 1 ? "sesión" : "sesiones"}
+                </span>
+              </span>
+            ) : (
+              formatARS(s.price_ars)
+            )}
+          </span>
+          <Badge
+            variant="secondary"
+            className="h-auto rounded-md px-2.5 py-1 font-mono font-medium text-fg-muted"
+          >
+            {isPack(s)
+              ? `${s.sessions_included} sesiones`
+              : `${s.duration_minutes} min`}
+          </Badge>
+        </CardContent>
+        <CardFooter className="relative border-t-0 bg-transparent p-0 px-(--card-spacing)">
+          <Button asChild size="lg" className="w-full">
+            {isPack(s) && credits === 0 ? (
+              <Link href={`/comprar/${s.id}`}>Comprar pack</Link>
+            ) : (
+              <Link href={`/reservar/${s.id}`}>Reservar</Link>
+            )}
+          </Button>
+        </CardFooter>
+      </Card>
+    </motion.div>
   );
 }

@@ -14,6 +14,7 @@ import { responder, errMessage } from "../_shared/cors.ts";
 import { adminClient, userClient } from "../_shared/supabase.ts";
 import { notifyAdmins, notifyAdminsPackToVerify } from "../_shared/email.ts";
 import { PAYABLE_LIST } from "../_shared/booking-status.ts";
+import { canUseSector, type Sector } from "../_shared/sector.ts";
 import {
   createTaloPayment,
   getTaloPayment,
@@ -417,10 +418,14 @@ Deno.serve(async (req) => {
     if (pack_service_id) {
       const { data: pack } = await admin
         .from("services")
-        .select("id, name, price_ars, active, sessions_included")
+        .select("id, name, price_ars, active, sessions_included, sectors(*)")
         .eq("id", pack_service_id)
         .single();
-      if (!pack || !pack.active || pack.sessions_included <= 1) {
+      if (
+        !pack || !pack.active || pack.sessions_included <= 1 ||
+        // A hidden sector's packs are for admins only (the feature flag).
+        !(await canUseSector(admin, pack.sectors as unknown as Sector, user))
+      ) {
         return json({ error: "Pack no disponible" }, 404);
       }
       const amount: number = pack.price_ars ?? 0;
