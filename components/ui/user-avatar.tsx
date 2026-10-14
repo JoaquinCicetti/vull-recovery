@@ -1,10 +1,12 @@
-import Avatar from "boring-avatars";
+import { Blobatar } from "@blobatar/react";
+import "blobatar/motion.css";
 import { cn } from "@/lib/utils";
 
-// Generated avatar: the same seed always draws the same picture. Seeded by the
+// Generated avatar: the same seed always draws the same creature. Seeded by the
 // user id, not the name, so editing your name doesn't hand you a new face.
-// Palette = the VULL greens over the matte blacks (globals.css).
-const PALETTE = ["#61b33b", "#2f5e1c", "#a6e07f", "#161616", "#f4f4f4"];
+// The backdrop is pinned to a dark surface; the stock one is near-white and
+// glares on the matte-black theme.
+const PALETTE = { bg: "#1f1f1f" };
 
 export function UserAvatar({
   seed,
@@ -16,12 +18,8 @@ export function UserAvatar({
   className?: string;
 }) {
   return (
-    <span
-      aria-hidden
-      className={cn("inline-flex shrink-0 overflow-hidden rounded-full ring-1 ring-border", className)}
-      style={{ width: size, height: size }}
-    >
-      <Avatar name={seed} variant="beam" colors={PALETTE} size={size} />
+    <span aria-hidden className={cn("inline-flex shrink-0", className)}>
+      <Blobatar name={seed} size={size} background="circle" palette={PALETTE} animate="hover" />
     </span>
   );
 }
