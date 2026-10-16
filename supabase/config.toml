@@ -475,3 +475,19 @@ s3_secret_key = "env(S3_SECRET_KEY)"
 # declarative_schema_path = "./database"
 # JSON string passed through to pg-delta SQL formatting.
 # format_options = "{\"keywordCase\":\"upper\",\"indent\":2,\"maxWidth\":80,\"commaStyle\":\"trailing\"}"
+
+[functions.membership-availability]
+verify_jwt = false
+
+[functions.membership]
+verify_jwt = true
+
+[functions.admin-membership]
+verify_jwt = true
+
+[functions.swap-booking]
+verify_jwt = true
+
+# Cron: authenticated by ?token=MEMBERSHIP_CYCLE_TOKEN, fails closed.
+[functions.membership-cycle]
+verify_jwt = false

@@ -16,3 +16,4 @@ consequences, and the alternatives we rejected. Format is lightweight
 | [0008](0008-resend-email-provider.md) | Resend as the email provider (own domain) | Accepted |
 | [0009](0009-booking-invariants-enforcement.md) | One-per-day at the DB; re-validate booking rules at the edge | Accepted |
 | [0010](0010-payments-talo-transfers.md) | Payments via Talo automatic bank transfers, manual receipt as $0 fallback | Accepted |
+| [0011](0011-memberships-as-materialized-bookings.md) | Monthly plans (abonos) as materialized bookings | Accepted |

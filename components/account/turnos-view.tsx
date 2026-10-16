@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, Ticket } from "lucide-react";
+import { ArrowLeftRight, ArrowRight, Ticket } from "lucide-react";
 import { fmtDateParts, fmtRelativeDay, fmtTime } from "@/lib/format";
 import { BookingRow, type AccountBooking } from "@/components/account/booking-row";
 import { Section } from "@/components/account/section";
@@ -17,6 +17,7 @@ export function TurnosView({
   totalCredits,
   creditServiceId,
   nowISO,
+  swapIncoming = 0,
 }: {
   upcoming: AccountBooking[];
   history: AccountBooking[];
@@ -25,11 +26,26 @@ export function TurnosView({
   /** A plan the client holds sessions for, to send "Reservar" straight there. */
   creditServiceId: string | null;
   nowISO: string;
+  /** Pending swap offers other members sent this client. */
+  swapIncoming?: number;
 }) {
   const [next, ...later] = upcoming;
   const shownHistory = showAll ? history : history.slice(0, HISTORY_PREVIEW);
   return (
     <>
+      {swapIncoming > 0 && (
+        <Link
+          href="/cuenta/plan#intercambios"
+          className="surface-card group mb-3 flex items-center gap-3 border-accent/30 px-4 py-3 text-sm transition-colors duration-150 hover:border-accent/60"
+        >
+          <ArrowLeftRight className="size-4 shrink-0 text-accent" aria-hidden />
+          <span className="flex-1 text-fg">
+            Tenés {swapIncoming} {swapIncoming === 1 ? "propuesta" : "propuestas"} de intercambio
+          </span>
+          <span className="text-fg-faint transition-colors group-hover:text-fg">Ver</span>
+          <ArrowRight className="size-4 text-fg-faint" aria-hidden />
+        </Link>
+      )}
       {next ? (
         <NextBooking b={next} nowISO={nowISO} />
       ) : (
@@ -102,6 +118,8 @@ export function TurnosView({
 function NextBooking({ b, nowISO }: { b: AccountBooking; nowISO: string }) {
   const { day, month, weekday, time } = fmtDateParts(b.startsAt);
   const unpaid = b.status === "pending";
+  // An abono class is paid with the month's cuota, from Mi plan.
+  const href = unpaid && b.membership ? "/cuenta/plan" : `/turno/${b.id}`;
   return (
     <div className="surface-card surface-lift animate-fade-up overflow-hidden">
       <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-3">
@@ -121,13 +139,18 @@ function NextBooking({ b, nowISO }: { b: AccountBooking; nowISO: string }) {
           <p className="mt-3 text-fg">
             <span className="capitalize">{weekday}</span> {day} de {month}
           </p>
-          <p className="mt-0.5 truncate text-sm text-fg-muted">{b.service}</p>
+          <p className="mt-0.5 truncate text-sm text-fg-muted">
+            {b.service}
+            {b.place && <span className="text-fg-faint"> · {b.place}</span>}
+          </p>
         </div>
         <Button asChild variant={unpaid ? "default" : "outline"}>
-          <Link href={`/turno/${b.id}`}>{unpaid ? "Pagar ahora" : "Ver turno"}</Link>
+          <Link href={href}>
+            {unpaid ? (b.membership ? "Pagar la cuota" : "Pagar ahora") : b.membership ? "Ver clase" : "Ver turno"}
+          </Link>
         </Button>
       </div>
-      {unpaid && b.holdExpiresAt && (
+      {unpaid && b.holdExpiresAt && !b.membership && (
         <p className="border-t border-border bg-amber-400/5 px-5 py-2.5 text-xs text-amber-300">
           Reservado hasta las{" "}
           <span className="font-mono tabular-nums">{fmtTime(b.holdExpiresAt)}</span>. Si no

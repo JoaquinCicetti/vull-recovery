@@ -22,6 +22,7 @@ import {
   sendBookingConfirmation,
   sendPackConfirmation,
 } from "./email.ts";
+import { sendMembershipConfirmation } from "./membership-email.ts";
 import {
   getTaloPayment,
   setTaloExpiration,
@@ -44,6 +45,7 @@ type PaymentRow = {
   booking_id: string | null;
   service_id: string | null;
   user_id: string | null;
+  membership_period_id: string | null;
   amount_ars: number;
   external_reference: string | null;
   talo_payment_id: string | null;
@@ -53,7 +55,7 @@ type PaymentRow = {
 };
 
 const ROW_COLS =
-  "id, status, provider, kind, booking_id, service_id, user_id, amount_ars, external_reference, talo_payment_id, reversed_at, admin_flag, updated_at";
+  "id, status, provider, kind, booking_id, service_id, user_id, membership_period_id, amount_ars, external_reference, talo_payment_id, reversed_at, admin_flag, updated_at";
 
 // Re-verifying an already-approved row on every duplicate webhook would turn a
 // webhook storm into a Talo-API storm. 30s is long enough to absorb one.
@@ -308,6 +310,10 @@ export async function settleTaloPayment(
       .eq("id", pay.booking_id)
       .eq("status", "pending");
   }
+  // Same for an abono signup: its whole schedule leaves the sweep window.
+  if (moneyMoved && next !== "approved" && pay.membership_period_id) {
+    await holdMembershipForMoney(admin, pay.membership_period_id);
+  }
 
   if (next !== "approved") {
     await write(admin, pay, next, adminFlag, v);
@@ -318,6 +324,8 @@ export async function settleTaloPayment(
   // ── Approve ────────────────────────────────────────────────────────────────
   const outcome = pay.kind === "pack"
     ? await approvePack(admin, pay, adminFlag, v)
+    : pay.kind === "membership"
+    ? await approveMembershipPeriod(admin, pay, adminFlag, v)
     : await approveBooking(admin, pay, adminFlag, v);
 
   if (alert) await notifyAdminsSimple(admin, alert.heading, alert.body);
@@ -359,6 +367,82 @@ async function approvePack(
   // nothing and must not email the client a second time.
   if (granted) await sendPackConfirmation(admin, pay.id);
   return { status: 200, result: "approved_pack" };
+}
+
+/** Money is on its way for a pending abono: stop its hold from lapsing. */
+export async function holdMembershipForMoney(admin: SupabaseClient, periodId: string) {
+  const { data: per } = await admin
+    .from("membership_periods")
+    .select("membership_id")
+    .eq("id", periodId)
+    .single();
+  if (!per) return;
+  await Promise.all([
+    admin
+      .from("memberships")
+      .update({ hold_expires_at: null })
+      .eq("id", per.membership_id)
+      .eq("status", "pending"),
+    admin
+      .from("bookings")
+      .update({ status: "awaiting_payment", hold_expires_at: null })
+      .eq("membership_id", per.membership_id)
+      .eq("status", "pending"),
+  ]);
+}
+
+// A cuota settles like a booking: confirm the classes first (inside
+// approve_membership_period), then record the money. When the abono is gone
+// (signup lapsed, released) the pesos still arrived: record them truthfully and
+// alert a human, exactly like paid_no_slot for a booking.
+async function approveMembershipPeriod(
+  admin: SupabaseClient,
+  pay: PaymentRow,
+  adminFlag: string | null,
+  v: TaloPayment,
+): Promise<SettleResult> {
+  if (!pay.membership_period_id) {
+    await write(admin, pay, "approved", adminFlag ?? "orphan_payment", v);
+    return { status: 200, result: "approved_orphan" };
+  }
+  const { data: res, error } = await admin.rpc("approve_membership_period", {
+    p_period: pay.membership_period_id,
+    p_payment: pay.id,
+  });
+  if (error) {
+    // Could not decide: leave the row for the next webhook / reconcile run.
+    return { status: 503, result: `approve_failed:${error.code ?? "?"}` };
+  }
+  if (res === "no_slot" || res === "not_found") {
+    await write(admin, pay, "approved", "paid_no_slot", v);
+    await notifyAdminsSimple(
+      admin,
+      "⚠️ Cuota cobrada sin abono",
+      `Entró la plata del pago ${pay.id} (${pay.amount_ars}) pero el abono ya no está activo (venció la reserva o se liberó). Hay que volver a armarle el horario o devolver el dinero.`,
+    );
+    return { status: 200, result: "paid_no_slot" };
+  }
+  if (res === "already") {
+    // Paid before by ANOTHER payment (cash at the desk, an approved receipt):
+    // this transfer is a second payment of the same cuota.
+    const { data: per } = await admin
+      .from("membership_periods")
+      .select("payment_id")
+      .eq("id", pay.membership_period_id)
+      .single();
+    if (per?.payment_id && per.payment_id !== pay.id) {
+      await write(admin, pay, "approved", "duplicate_payment", v);
+      await notifyAdminsSimple(
+        admin,
+        "⚠️ Cuota pagada dos veces",
+        `El pago ${pay.id} (${pay.amount_ars}) entró para una cuota que ya estaba paga. Hay que devolverlo o tomarlo a cuenta del mes siguiente.`,
+      );
+      return { status: 200, result: "duplicate_payment" };
+    }
+  }
+  await write(admin, pay, "approved", adminFlag, v);
+  if (res === "ok") await sendMembershipConfirmation(admin, pay.membership_period_id);
+  return { status: 200, result: res === "ok" ? "approved_membership" : "already_paid" };
 }
 
 async function approveBooking(

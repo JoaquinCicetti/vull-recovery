@@ -3,7 +3,7 @@ import { getService } from "@/lib/services";
 import { getUserAndProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { getMyBalances } from "@/lib/credits";
-import { isPack } from "@/lib/types";
+import { isMonthly, isPack } from "@/lib/types";
 import { formatARS } from "@/lib/site";
 import { localDate } from "@/lib/format";
 import { PageShell } from "@/components/ui/page-shell";
@@ -17,6 +17,8 @@ export default async function ReservarPage({
   const { serviceId } = await params;
   const service = await getService(serviceId);
   if (!service || !service.active) notFound();
+  // A monthly plan is a weekly schedule, not a single turno.
+  if (isMonthly(service)) redirect(`/abono/${service.id}`);
 
   const { user, profile } = await getUserAndProfile();
 

@@ -6,7 +6,9 @@
 // here. That is the feature flag: pilates stays inactive until it launches.
 import type { SupabaseClient, User } from "jsr:@supabase/supabase-js@2";
 import { calendarId } from "./google.ts";
-import type { Settings } from "./booking-rules.ts";
+import type { OpenRange, Settings } from "./booking-rules.ts";
+
+export type SectorHour = OpenRange & { id?: string; sector_id?: string };
 
 export type Sector = {
   id: string;
@@ -14,15 +16,22 @@ export type Sector = {
   name: string;
   active: boolean;
   timezone: string;
-  working_hours_start: string;
-  working_hours_end: string;
-  working_days: number[];
+  // Open ranges per weekday (table sector_hours), embedded on every load.
+  sector_hours: SectorHour[];
   google_calendar_id: string | null;
   lead_minutes: number;
   hold_minutes: number;
   cancel_notice_hours: number;
   change_notice_hours: number;
+  // Monthly plans: pay before due_day, late_fee_pct after it, admins may free
+  // the slot from release_day.
+  due_day: number;
+  late_fee_pct: number;
+  release_day: number;
 };
+
+// The sector columns every function needs, with its hours embedded.
+export const SECTOR_SELECT = "*, sector_hours(weekday, opens, closes)";
 
 // deno-lint-ignore no-explicit-any
 export type ServiceWithSector = Record<string, any> & {
@@ -40,10 +49,23 @@ export async function loadServiceWithSector(
 ): Promise<ServiceWithSector | null> {
   const { data } = await admin
     .from("services")
-    .select("*, sectors(*)")
+    .select(`*, sectors(${SECTOR_SELECT})`)
     .eq("id", serviceId)
     .single();
   return data?.sectors ? (data as ServiceWithSector) : null;
+}
+
+// A sector with its hours, or null.
+export async function loadSector(
+  admin: SupabaseClient,
+  sectorId: string,
+): Promise<Sector | null> {
+  const { data } = await admin
+    .from("sectors")
+    .select(SECTOR_SELECT)
+    .eq("id", sectorId)
+    .maybeSingle();
+  return (data as Sector | null) ?? null;
 }
 
 export async function isAdminUser(admin: SupabaseClient, user: User | null) {
@@ -68,11 +90,13 @@ export async function canUseSector(
 
 export function sectorSettings(sector: Sector): Settings {
   return {
-    working_hours_start: sector.working_hours_start,
-    working_hours_end: sector.working_hours_end,
-    working_days: sector.working_days,
     timezone: sector.timezone,
     lead_minutes: sector.lead_minutes,
+    hours: (sector.sector_hours ?? []).map((h) => ({
+      weekday: h.weekday,
+      opens: h.opens,
+      closes: h.closes,
+    })),
   };
 }
 

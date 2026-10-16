@@ -14,6 +14,7 @@ import { patchEventStatus } from "../_shared/google.ts";
 import { sendBookingConfirmation, sendPackConfirmation } from "../_shared/email.ts";
 import { CONFIRMABLE_LIST } from "../_shared/booking-status.ts";
 import { getTaloPayment, setTaloExpiration } from "../_shared/talo.ts";
+import { sendMembershipConfirmation } from "../_shared/membership-email.ts";
 
 Deno.serve(async (req) => {
   const { json, options } = responder(req);
@@ -40,7 +41,7 @@ Deno.serve(async (req) => {
     const { data: pay } = await admin
       .from("payments")
       .select(
-        "id, booking_id, kind, service_id, user_id, status, provider, talo_payment_id, reversed_at",
+        "id, booking_id, kind, service_id, user_id, membership_period_id, status, provider, talo_payment_id, reversed_at",
       )
       .eq("id", payment_id)
       .single();
@@ -96,6 +97,11 @@ Deno.serve(async (req) => {
         .from("payments")
         .update({ status: "rejected", admin_flag: null })
         .eq("id", payment_id);
+      // A rejected receipt for an unpaid abono signup: give the schedule a fresh
+      // hold so it frees itself if the client doesn't pay another way.
+      if (pay.kind === "membership" && pay.membership_period_id) {
+        await reopenSignupHold(admin, pay.membership_period_id);
+      }
       return json({ ok: true });
     }
 
@@ -111,6 +117,8 @@ Deno.serve(async (req) => {
         .eq("status", "approved");
       q = pay.kind === "pack"
         ? q.eq("kind", "pack").eq("service_id", pay.service_id).eq("user_id", pay.user_id)
+        : pay.kind === "membership"
+        ? q.eq("membership_period_id", pay.membership_period_id)
         : q.eq("booking_id", pay.booking_id);
       const { data: twin } = await q.limit(1).maybeSingle();
       if (twin) {
@@ -119,6 +127,37 @@ Deno.serve(async (req) => {
           409,
         );
       }
+    }
+
+    // Abono cuota: confirm the classes first (approve_membership_period), then
+    // settle — the same order as a booking.
+    if (pay.kind === "membership") {
+      const { data: res, error } = await admin.rpc("approve_membership_period", {
+        p_period: pay.membership_period_id,
+        p_payment: pay.id,
+      });
+      if (error) return json({ error: "No se pudo aprobar la cuota." }, 500);
+      if (res === "no_slot" || res === "not_found") {
+        return json(
+          {
+            error:
+              "El abono ya no está activo (venció la reserva o se liberó). Rechazá el comprobante y devolvé el dinero, o armale el horario de nuevo.",
+          },
+          409,
+        );
+      }
+      if (res === "already") {
+        return json(
+          { error: "Esa cuota ya está paga por otro medio. Rechazá este comprobante." },
+          409,
+        );
+      }
+      await admin
+        .from("payments")
+        .update({ status: "approved", admin_flag: null })
+        .eq("id", payment_id);
+      await sendMembershipConfirmation(admin, pay.membership_period_id);
+      return json({ ok: true });
     }
 
     // Pack purchase: settle FIRST, then grant — grant_pack_credits refuses unless
@@ -209,3 +248,27 @@ Deno.serve(async (req) => {
     return json({ error: errMessage(e) }, 500);
   }
 });
+
+// deno-lint-ignore no-explicit-any
+async function reopenSignupHold(admin: any, periodId: string) {
+  const { data: per } = await admin
+    .from("membership_periods")
+    .select("membership_id, memberships(status, sectors(hold_minutes))")
+    .eq("id", periodId)
+    .single();
+  if (!per || per.memberships?.status !== "pending") return;
+  const minutes = per.memberships?.sectors?.hold_minutes ?? 10;
+  const hold = new Date(Date.now() + minutes * 60_000).toISOString();
+  await Promise.all([
+    admin
+      .from("memberships")
+      .update({ hold_expires_at: hold })
+      .eq("id", per.membership_id)
+      .eq("status", "pending"),
+    admin
+      .from("bookings")
+      .update({ status: "pending", hold_expires_at: hold })
+      .eq("membership_id", per.membership_id)
+      .eq("status", "awaiting_payment"),
+  ]);
+}

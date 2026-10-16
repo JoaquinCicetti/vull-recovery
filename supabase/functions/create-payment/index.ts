@@ -1,5 +1,8 @@
-// Authenticated Edge Function. Pays either a booking or a pack purchase:
-//   { booking_id }      → pay for a booking; { pack_service_id } → buy a pack.
+// Authenticated Edge Function. Pays a booking, a pack purchase or a cuota:
+//   { booking_id }           → pay for a booking
+//   { pack_service_id }      → buy a pack
+//   { membership_period_id } → pay one month of an abono (surcharge included
+//                              when late, computed by membership_periods_v)
 //
 // method "talo"   → mints a one-time CVU/alias the client transfers to; Talo
 //                   settles it automatically (talo-webhook / talo-reconcile).
@@ -13,6 +16,7 @@ import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { responder, errMessage } from "../_shared/cors.ts";
 import { adminClient, userClient } from "../_shared/supabase.ts";
 import { notifyAdmins, notifyAdminsPackToVerify } from "../_shared/email.ts";
+import { notifyAdminsMembershipToVerify } from "../_shared/membership-email.ts";
 import { PAYABLE_LIST } from "../_shared/booking-status.ts";
 import { canUseSector, type Sector } from "../_shared/sector.ts";
 import {
@@ -62,11 +66,12 @@ function taloWindow(startsAt?: string | null): string {
   return new Date(Math.max(end, now + 10 * 60_000)).toISOString();
 }
 
-type Target = { bookingId?: string; serviceId?: string; userId?: string };
+type Target = { bookingId?: string; serviceId?: string; userId?: string; periodId?: string };
 
-/** A booking payment and a pack payment are found by different columns.
+/** Booking, pack and cuota payments are found by different columns.
  *  Returned as a `.match()` object so it composes with any builder. */
 function targetMatch(target: Target): Record<string, string> {
+  if (target.periodId) return { membership_period_id: target.periodId };
   return target.bookingId
     ? { booking_id: target.bookingId }
     : { kind: "pack", service_id: target.serviceId!, user_id: target.userId! };
@@ -182,9 +187,12 @@ async function startTalo(admin: SupabaseClient, opts: {
   userId: string;
   email?: string;
   firstName?: string;
-  kind: "booking" | "pack";
+  kind: "booking" | "pack" | "membership";
   bookingId?: string;
   serviceId?: string;
+  periodId?: string;
+  /** A pending abono whose hold must follow the CVU (see below). */
+  membershipId?: string;
   amount: number;
   motive: string;
   startsAt?: string | null;
@@ -201,6 +209,7 @@ async function startTalo(admin: SupabaseClient, opts: {
     bookingId: opts.bookingId,
     serviceId: opts.serviceId,
     userId: opts.userId,
+    periodId: opts.periodId,
   };
 
   const rival = await rivalPayment(admin, "manual", target);
@@ -214,7 +223,16 @@ async function startTalo(admin: SupabaseClient, opts: {
     };
   }
 
-  const insertRow: Record<string, unknown> = opts.bookingId
+  const insertRow: Record<string, unknown> = opts.periodId
+    ? {
+      kind: "membership",
+      membership_period_id: opts.periodId,
+      user_id: opts.userId,
+      provider: "talo",
+      amount_ars: opts.amount,
+      status: "pending",
+    }
+    : opts.bookingId
     ? {
       booking_id: opts.bookingId,
       provider: "talo",
@@ -330,14 +348,32 @@ async function startTalo(admin: SupabaseClient, opts: {
     // Keep the slot hold in step with the CVU, but never longer than our own
     // window: if Talo kept its multi-day default, a late transfer is flagged at
     // settle time instead of the slot being held for days.
+    const talo = created.data.expiresAt;
+    const hold = talo && new Date(talo) < new Date(expiresAt) ? talo : expiresAt;
     if (opts.bookingId) {
-      const talo = created.data.expiresAt;
-      const hold = talo && new Date(talo) < new Date(expiresAt) ? talo : expiresAt;
       await admin
         .from("bookings")
         .update({ hold_expires_at: hold })
         .eq("id", opts.bookingId)
         .in("status", PAYABLE_LIST);
+    }
+    // An unpaid abono signup holds its whole schedule on the same clock: the
+    // membership and every one of its pending classes.
+    if (opts.membershipId) {
+      await Promise.all([
+        admin
+          .from("memberships")
+          .update({ hold_expires_at: hold })
+          .eq("id", opts.membershipId)
+          .eq("status", "pending")
+          .not("hold_expires_at", "is", null),
+        admin
+          .from("bookings")
+          .update({ hold_expires_at: hold })
+          .eq("membership_id", opts.membershipId)
+          .eq("status", "pending")
+          .not("hold_expires_at", "is", null),
+      ]);
     }
 
     return shape(patched as PayRow, created.data.paymentUrl);
@@ -390,10 +426,10 @@ Deno.serve(async (req) => {
   const { json, options } = responder(req);
   if (req.method === "OPTIONS") return options();
   try {
-    const { booking_id, pack_service_id, method = "talo", receipt_path } =
+    const { booking_id, pack_service_id, membership_period_id, method = "talo", receipt_path } =
       await req.json();
-    if (!booking_id && !pack_service_id) {
-      return json({ error: "Falta booking_id o pack_service_id" }, 400);
+    if (!booking_id && !pack_service_id && !membership_period_id) {
+      return json({ error: "Falta booking_id, pack_service_id o membership_period_id" }, 400);
     }
     if (!["talo", "manual", "mobbex"].includes(method)) {
       return json({ error: "Método de pago inválido" }, 400);
@@ -516,6 +552,103 @@ Deno.serve(async (req) => {
       return json({ url: co.url, checkout_id: co.id });
     }
 
+    // ══ ABONO CUOTA ══════════════════════════════════════════════════════════
+    if (membership_period_id) {
+      if (method === "mobbex") return json({ error: "Método de pago inválido" }, 400);
+      const { data: per } = await admin
+        .from("membership_periods_v")
+        .select("id, membership_id, user_id, period, status, amount_due_ars, membership_status")
+        .eq("id", membership_period_id)
+        .maybeSingle();
+      if (!per) return json({ error: "Cuota no encontrada" }, 404);
+      if (per.user_id !== user.id) return json({ error: "No autorizado" }, 403);
+      if (per.status === "paid") return json({ error: "Esa cuota ya está pagada." }, 409);
+      if (per.status !== "pending" || !["pending", "active"].includes(per.membership_status)) {
+        return json({ error: "El abono ya no está activo." }, 409);
+      }
+      const { data: mem } = await admin
+        .from("memberships")
+        .select("id, status, hold_expires_at, services(name)")
+        .eq("id", per.membership_id)
+        .single();
+      // A lapsed signup is about to be swept: never mint a CVU for beds that are
+      // being handed to somebody else.
+      if (
+        mem?.status === "pending" && mem.hold_expires_at &&
+        new Date(mem.hold_expires_at).getTime() <= Date.now()
+      ) {
+        return json({ error: "Se venció la reserva del horario. Elegí de nuevo." }, 409);
+      }
+      const amount: number = per.amount_due_ars;
+      const target = { periodId: per.id };
+
+      if (method === "manual") {
+        if (!validReceipt(receipt_path, user.id)) {
+          return json({ error: "Comprobante inválido" }, 400);
+        }
+        const live = await rivalPayment(admin, "talo", target);
+        if (live) {
+          if (live.status === "approved") return json({ error: "Esa cuota ya está pagada." }, 409);
+          await retire(admin, live);
+        }
+        const { data: pay, error: insErr } = await admin
+          .from("payments")
+          .insert({
+            kind: "membership",
+            membership_period_id: per.id,
+            user_id: user.id,
+            provider: "manual",
+            amount_ars: amount,
+            status: "pending",
+            receipt_path,
+            external_reference: per.id,
+          })
+          .select("id")
+          .single();
+        if (insErr || !pay) return json({ error: "No se pudo registrar el comprobante" }, 500);
+        // A receipt waits for a human: the signup must not lapse meanwhile.
+        if (mem?.status === "pending") {
+          await Promise.all([
+            admin.from("memberships").update({ hold_expires_at: null }).eq("id", mem.id),
+            admin
+              .from("bookings")
+              .update({ status: "awaiting_payment", hold_expires_at: null })
+              .eq("membership_id", mem.id)
+              .eq("status", "pending"),
+          ]);
+        }
+        await notifyAdminsMembershipToVerify(admin, pay.id);
+        return json({ ok: true });
+      }
+
+      // deno-lint-ignore no-explicit-any
+      const planName = (mem?.services as any)?.name ?? "Abono";
+      const { data: first } = await admin
+        .from("bookings")
+        .select("starts_at")
+        .eq("membership_id", per.membership_id)
+        .in("status", PAYABLE_LIST)
+        .gt("starts_at", new Date().toISOString())
+        .order("starts_at")
+        .limit(1)
+        .maybeSingle();
+      const out = await startTalo(admin, {
+        userId: user.id,
+        email: user.email,
+        firstName,
+        kind: "membership",
+        periodId: per.id,
+        membershipId: mem?.status === "pending" ? mem.id : undefined,
+        amount,
+        motive: `${planName} · ${String(per.period).slice(0, 7)} · VULL`,
+        // Only a pending signup has a class clock to respect.
+        startsAt: mem?.status === "pending" ? first?.starts_at ?? null : null,
+        redirectFor: () => `${appUrl}/cuenta/plan/pagar/${per.id}?pago=talo`,
+      });
+      if (!out.ok) return json({ error: out.error }, out.status);
+      return json(out.data);
+    }
+
     // ══ BOOKING PAYMENT ══════════════════════════════════════════════════════
     const { data: booking } = await admin
       .from("bookings")
@@ -525,6 +658,12 @@ Deno.serve(async (req) => {
 
     if (!booking) return json({ error: "Reserva no encontrada" }, 404);
     if (booking.user_id !== user.id) return json({ error: "No autorizado" }, 403);
+    if (booking.membership_id) {
+      return json(
+        { error: "Esta clase es parte de tu abono. Pagá la cuota desde Mi plan." },
+        409,
+      );
+    }
     if (!PAYABLE_LIST.includes(booking.status)) {
       return json({ error: "La reserva no admite pago" }, 409);
     }

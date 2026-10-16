@@ -20,7 +20,9 @@ import {
 } from "@/components/ui/select";
 
 // A plan belongs to one sector for good: its turnos are filed under it, so the
-// sector is chosen on creation and not editable afterwards.
+// sector is chosen on creation and not editable afterwards. The same goes for
+// how it is billed: per session (single or pack) or monthly (an abono of N
+// fixed classes a week) — members' schedules are built on it.
 export function ServicesManager({
   initial,
   sectors,
@@ -38,13 +40,18 @@ export function ServicesManager({
   const [dur, setDur] = useState("60");
   const [desc, setDesc] = useState("");
   const [sessions, setSessions] = useState("1"); // >1 = pack
+  const [validity, setValidity] = useState(""); // pack: days, empty = never
+  const [billing, setBilling] = useState<"session" | "monthly">("session");
+  const [perWeek, setPerWeek] = useState("2");
   const [sectorId, setSectorId] = useState(sectors[0]?.id ?? "");
 
   async function addService(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
-    const n = Math.max(1, Number(sessions) || 1);
+    const monthly = billing === "monthly";
+    const n = monthly ? 1 : Math.max(1, Number(sessions) || 1);
+    const weekly = Math.min(7, Math.max(1, Number(perWeek) || 1));
     const { error } = await supabase.from("services").insert({
       name,
       price_ars: Number(price) || 0,
@@ -52,6 +59,9 @@ export function ServicesManager({
       description: desc || null,
       sort_order: initial.length,
       sessions_included: n,
+      validity_days: !monthly && n > 1 && Number(validity) > 0 ? Number(validity) : null,
+      billing,
+      classes_per_week: monthly ? weekly : null,
       sector_id: sectorId,
     });
     setBusy(false);
@@ -64,10 +74,12 @@ export function ServicesManager({
     setDur("60");
     setDesc("");
     setSessions("1");
+    setValidity("");
     router.refresh();
   }
 
-  const packForm = Number(sessions) > 1;
+  const monthlyForm = billing === "monthly";
+  const packForm = !monthlyForm && Number(sessions) > 1;
 
   return (
     <div className="flex flex-col gap-8">
@@ -93,8 +105,20 @@ export function ServicesManager({
                   </SelectContent>
                 </Select>
               )}
+              <Select
+                value={billing}
+                onValueChange={(v) => setBilling(v as "session" | "monthly")}
+              >
+                <SelectTrigger className="w-full sm:w-fit" aria-label="Cobro">
+                  <SelectValue placeholder="Cobro" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="session">Por sesión (individual o pack)</SelectItem>
+                  <SelectItem value="monthly">Mensual (abono)</SelectItem>
+                </SelectContent>
+              </Select>
               <Input
-                placeholder="Nombre (ej. Sesión individual)"
+                placeholder={monthlyForm ? "Nombre (ej. Pilates 2 veces por semana)" : "Nombre (ej. Sesión individual)"}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
@@ -108,7 +132,11 @@ export function ServicesManager({
               <div className="flex gap-3">
                 <div className="flex-1">
                   <Label className="text-xs text-fg-muted">
-                    {packForm ? "Precio del pack (ARS)" : "Precio (ARS)"}
+                    {monthlyForm
+                      ? "Precio por mes (ARS)"
+                      : packForm
+                        ? "Precio del pack (ARS)"
+                        : "Precio (ARS)"}
                   </Label>
                   <Input
                     className="mt-1.5 font-mono"
@@ -128,20 +156,47 @@ export function ServicesManager({
                     required
                   />
                 </div>
-                <div className="w-24">
-                  <Label className="text-xs text-fg-muted">Sesiones</Label>
+                {monthlyForm ? (
+                  <div className="w-28">
+                    <Label className="text-xs text-fg-muted">Clases por semana</Label>
+                    <Input
+                      className="mt-1.5 font-mono"
+                      inputMode="numeric"
+                      value={perWeek}
+                      onChange={(e) => setPerWeek(e.target.value.replace(/\D/g, ""))}
+                      required
+                    />
+                  </div>
+                ) : (
+                  <div className="w-24">
+                    <Label className="text-xs text-fg-muted">Sesiones</Label>
+                    <Input
+                      className="mt-1.5 font-mono"
+                      inputMode="numeric"
+                      value={sessions}
+                      onChange={(e) => setSessions(e.target.value.replace(/\D/g, ""))}
+                    />
+                  </div>
+                )}
+              </div>
+              {packForm && (
+                <div className="w-40">
+                  <Label className="text-xs text-fg-muted">Vence a los (días)</Label>
                   <Input
                     className="mt-1.5 font-mono"
                     inputMode="numeric"
-                    value={sessions}
-                    onChange={(e) => setSessions(e.target.value.replace(/\D/g, ""))}
+                    placeholder="Sin vencimiento"
+                    value={validity}
+                    onChange={(e) => setValidity(e.target.value.replace(/\D/g, ""))}
                   />
                 </div>
-              </div>
+              )}
               <p className="text-xs text-fg-faint">
-                {packForm
-                  ? "Pack: se compra una vez y el cliente agenda cada sesión con un crédito."
-                  : "1 sesión = plan individual. Poné más de 1 para crear un pack."}
+                {monthlyForm
+                  ? "Abono: el cliente elige días, horario y cama fijos y paga cada mes. Si empieza a mitad de mes paga proporcional."
+                  : packForm
+                    ? "Pack: se compra una vez y el cliente agenda cada sesión con un crédito."
+                    : "1 sesión = plan individual. Poné más de 1 para crear un pack."}
               </p>
               <Button className="self-start" disabled={busy}>
                 Agregar
@@ -173,11 +228,13 @@ function ServiceRow({ service, sector }: { service: Service; sector?: Sector }) 
   const [price, setPrice] = useState(String(service.price_ars));
   const [dur, setDur] = useState(String(service.duration_minutes));
   const [sessions, setSessions] = useState(String(service.sessions_included));
+  const [validity, setValidity] = useState(service.validity_days ? String(service.validity_days) : "");
   const [active, setActive] = useState(service.active);
+  const monthly = service.billing === "monthly";
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const isPack = Number(sessions) > 1;
+  const isPack = !monthly && Number(sessions) > 1;
 
   async function save() {
     setBusy(true);
@@ -188,7 +245,8 @@ function ServiceRow({ service, sector }: { service: Service; sector?: Sector }) 
         name,
         price_ars: Number(price) || 0,
         duration_minutes: Number(dur) || 60,
-        sessions_included: Math.max(1, Number(sessions) || 1),
+        sessions_included: monthly ? 1 : Math.max(1, Number(sessions) || 1),
+        validity_days: isPack && Number(validity) > 0 ? Number(validity) : null,
         active,
       })
       .eq("id", service.id);
@@ -216,7 +274,7 @@ function ServiceRow({ service, sector }: { service: Service; sector?: Sector }) 
     <Card className="[--card-spacing:--spacing(5)]">
       <CardContent>
         <div className="flex flex-col gap-3">
-          {(sector || isPack) && (
+          {(sector || isPack || monthly) && (
             <div className="flex flex-wrap items-center gap-2">
               {sector && (
                 <Badge variant="outline" className="font-mono text-xs text-fg-muted">
@@ -227,6 +285,11 @@ function ServiceRow({ service, sector }: { service: Service; sector?: Sector }) 
               {isPack && (
                 <p className="font-mono text-xs uppercase tracking-wider text-accent">
                   Pack · {sessions} sesiones
+                </p>
+              )}
+              {monthly && (
+                <p className="font-mono text-xs uppercase tracking-wider text-accent">
+                  Mensual · {service.classes_per_week} {service.classes_per_week === 1 ? "clase" : "clases"}/sem
                 </p>
               )}
             </div>
@@ -245,14 +308,37 @@ function ServiceRow({ service, sector }: { service: Service; sector?: Sector }) 
               value={dur}
               onChange={(e) => setDur(e.target.value.replace(/\D/g, ""))}
             />
-            <Input
-              className="w-24 font-mono"
-              inputMode="numeric"
-              value={sessions}
-              onChange={(e) => setSessions(e.target.value.replace(/\D/g, ""))}
-              aria-label="Sesiones"
-            />
+            {!monthly && (
+              <Input
+                className="w-24 font-mono"
+                inputMode="numeric"
+                value={sessions}
+                onChange={(e) => setSessions(e.target.value.replace(/\D/g, ""))}
+                aria-label="Sesiones"
+              />
+            )}
           </div>
+          {isPack && (
+            <div className="flex items-center gap-2">
+              <Label htmlFor={`${service.id}-validity`} className="text-xs text-fg-muted">
+                Vence a los (días)
+              </Label>
+              <Input
+                id={`${service.id}-validity`}
+                className="w-28 font-mono"
+                inputMode="numeric"
+                placeholder="Nunca"
+                value={validity}
+                onChange={(e) => setValidity(e.target.value.replace(/\D/g, ""))}
+              />
+            </div>
+          )}
+          {monthly && (
+            <p className="text-xs text-fg-faint">
+              El precio nuevo rige para las cuotas que se generen desde ahora. Para cambiar las
+              clases por semana, creá otro plan.
+            </p>
+          )}
           <Label className="gap-2.5 text-fg-muted">
             <Switch checked={active} onCheckedChange={setActive} />
             {sector && !sector.active

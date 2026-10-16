@@ -15,19 +15,11 @@ import {
 } from "@/components/kibo-ui/dropzone";
 import { TaloTransferPanel, type TaloTransfer } from "@/components/talo-transfer-panel";
 import { SettlementPoller } from "@/components/settlement-poller";
+import { readError } from "@/lib/read-error";
 
-async function readError(error: unknown, fallback: string): Promise<string> {
-  try {
-    const ctx = (error as { context?: Response }).context;
-    if (ctx && typeof ctx.json === "function") {
-      const body = await ctx.json();
-      if (body?.error) return body.error as string;
-    }
-  } catch {
-    /* ignore */
-  }
-  return fallback;
-}
+// What is being paid: one turno, or one month (cuota) of an abono.
+export type PaymentTarget = { booking_id: string } | { membership_period_id: string };
+
 
 // Two ways to pay, never both on screen at once: the automatic transfer (Talo
 // mints a one-time CVU and settles it) and the manual receipt (transfer to the
@@ -36,16 +28,23 @@ async function readError(error: unknown, fallback: string): Promise<string> {
 type Mode = "choose" | "talo" | "receipt";
 
 export function PaymentPanel({
-  bookingId,
+  target,
+  receiptPrefix,
   amount,
-  status,
+  awaiting,
   talo,
+  what = "el turno",
 }: {
-  bookingId: string;
+  target: PaymentTarget;
+  /** Storage folder segment for the receipt (under the user's own folder). */
+  receiptPrefix: string;
   amount: number;
-  status: string;
-  /** A CVU already minted for this booking (survives a reload). */
+  /** A receipt (or a detected transfer) is waiting for confirmation. */
+  awaiting: boolean;
+  /** A CVU already minted for this target (survives a reload). */
   talo: TaloTransfer | null;
+  /** What gets confirmed, for the copy: "el turno", "tu abono". */
+  what?: string;
 }) {
   const router = useRouter();
   const supabase = createClient();
@@ -58,13 +57,12 @@ export function PaymentPanel({
     talo ? "talo" : TALO_ENABLED ? "choose" : "receipt",
   );
 
-  const awaiting = status === "awaiting_payment";
 
   async function payWithTalo() {
     setLoading(true);
     setError(null);
     const { data, error } = await supabase.functions.invoke("create-payment", {
-      body: { booking_id: bookingId, method: "talo" },
+      body: { ...target, method: "talo" },
     });
     setLoading(false);
     if (error || !data || (!data.cvu && !data.alias && !data.payment_url)) {
@@ -92,7 +90,7 @@ export function PaymentPanel({
     setError(null);
     const res = await uploadReceiptToStorage(supabase, {
       file,
-      pathPrefix: bookingId,
+      pathPrefix: receiptPrefix,
     });
     if (!res.ok) {
       setUploading(false);
@@ -100,7 +98,7 @@ export function PaymentPanel({
       return;
     }
     const { error: fnErr } = await supabase.functions.invoke("create-payment", {
-      body: { booking_id: bookingId, method: "manual", receipt_path: res.path },
+      body: { ...target, method: "manual", receipt_path: res.path },
     });
     setUploading(false);
     if (fnErr) {
@@ -139,7 +137,7 @@ export function PaymentPanel({
               {loading ? "Generando la transferencia…" : "Pagar por transferencia (se acredita solo)"}
             </Button>
             <p className="mt-2 text-center text-xs text-fg-faint">
-              Te damos un alias para transferir. El turno se confirma solo, en
+              Te damos un alias para transferir. Se confirma {what} solo, en
               general en menos de un minuto.
             </p>
             <button
@@ -181,7 +179,7 @@ export function PaymentPanel({
               </p>
             )}
             <p className="mt-1 text-xs text-fg-faint">
-              Subí el comprobante y lo verificamos a mano. Te confirmamos el turno en
+              Subí el comprobante y lo verificamos a mano. Te confirmamos {what} en
               cuanto lo revisemos.
               {transfer && " Al subirlo, el alias automático deja de estar activo."}
             </p>
@@ -247,7 +245,11 @@ export function PaymentPanel({
           </>
         )}
 
-        {error && <p className="mt-4 text-sm text-danger">{error}</p>}
+        {error && (
+          <p role="alert" className="mt-4 text-sm text-danger">
+            {error}
+          </p>
+        )}
       </CardContent>
     </Card>
   );

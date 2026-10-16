@@ -43,11 +43,12 @@ const FLAG_LABEL: Record<string, string> = {
   unverified: "no se pudo verificar con Talo",
   unverified_amount: "monto no verificable",
   expired_with_funds: "plata en un CVU vencido",
-  paid_no_slot: "cobrado sin turno — reprogramar o devolver",
+  paid_no_slot: "cobrado sin turno/abono — reprogramar o devolver",
   reversed: "el dinero volvió al cliente",
   currency_mismatch: "moneda inesperada",
   unknown_status: "estado desconocido en Talo",
   orphan_payment: "pago sin turno asociado",
+  duplicate_payment: "cuota pagada dos veces — devolver o tomar a cuenta",
 };
 
 function Tag({ children, tone }: { children: React.ReactNode; tone: "warn" | "info" }) {

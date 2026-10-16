@@ -34,7 +34,7 @@ Deno.serve(async (req) => {
 
     const { data: booking } = await admin
       .from("bookings")
-      .select("id, user_id, status, starts_at, google_event_id")
+      .select("id, user_id, status, starts_at, google_event_id, membership_id")
       .eq("id", booking_id)
       .single();
     if (!booking) return json({ error: "Turno no encontrado" }, 404);
@@ -52,6 +52,33 @@ Deno.serve(async (req) => {
     // the schedule).
     if (!isAdmin && new Date(booking.starts_at).getTime() < Date.now()) {
       return json({ error: "Ese turno ya pasó." }, 409);
+    }
+
+    // An abono class: cancelling only frees the bed (nothing comes back; the
+    // remedy is moving it). While the first cuota is unpaid the schedule is one
+    // thing: the client drops the whole signup from Mi plan instead.
+    if (booking.membership_id) {
+      if (!isAdmin && booking.status !== "confirmed") {
+        return json(
+          { error: "Tu abono todavía no está pago. Si no lo querés, cancelalo desde Mi plan." },
+          409,
+        );
+      }
+      const { error: updErr } = await admin
+        .from("bookings")
+        .update({
+          status: "cancelled",
+          cancelled_at: new Date().toISOString(),
+          cancelled_by: user.id,
+          cancellation_reason: typeof reason === "string" ? reason : null,
+          hold_expires_at: null,
+        })
+        .eq("id", booking.id)
+        .in("status", CANCELLABLE);
+      if (updErr) return json({ error: updErr.message }, 400);
+      await sendBookingCancellation(admin, booking.id, { byAdmin: isAdmin, credit: "membership" });
+      if (!isAdmin) await notifyAdmins(admin, "booking_cancelled_by_client", booking.id);
+      return json({ ok: true, credit: "membership" });
     }
 
     const { error: updErr } = await admin

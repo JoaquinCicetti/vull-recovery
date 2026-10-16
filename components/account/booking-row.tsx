@@ -11,6 +11,10 @@ export type AccountBooking = {
   status: BookingStatus;
   service: string;
   holdExpiresAt: string | null;
+  /** A class of an abono (paid with the month, moved instead of cancelled). */
+  membership?: boolean;
+  /** Sector and bed, e.g. "Pilates · Cama 2". */
+  place?: string | null;
 };
 
 // The date as an instrument readout: big day number over a short month.
@@ -42,13 +46,19 @@ export function BookingRow({ b, dim }: { b: AccountBooking; dim?: boolean }) {
     >
       <DateTile iso={b.startsAt} dim={dim} />
       <div className="min-w-0 flex-1">
-        <p className={cn("font-semibold leading-snug", dim ? "text-fg-muted" : "text-fg")}>
-          {b.service}
+        <p className={cn("flex items-center gap-2 font-semibold leading-snug", dim ? "text-fg-muted" : "text-fg")}>
+          <span className="truncate">{b.service}</span>
+          {b.membership && (
+            <span className="shrink-0 rounded border border-border px-1 font-mono text-[10px] font-normal uppercase tracking-wider text-fg-faint">
+              Abono
+            </span>
+          )}
         </p>
         <p className="mt-0.5 text-sm text-fg-muted">
           <span className="capitalize">{weekday}</span>
           {" · "}
           <span className="font-mono tabular-nums">{time}</span>
+          {b.place && <span className="text-fg-faint"> · {b.place}</span>}
         </p>
         {/* On a phone the badge sits under the text so the plan name keeps the row. */}
         <StatusBadge status={b.status} className="mt-2 sm:hidden" />

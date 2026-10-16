@@ -13,7 +13,10 @@ type Row = {
   starts_at: string;
   status: BookingStatus;
   hold_expires_at: string | null;
+  membership_id: string | null;
   services: { name: string } | null;
+  sectors: { slug: string; name: string } | null;
+  resources: { name: string } | null;
 };
 
 export default async function MisTurnosPage({
@@ -25,15 +28,21 @@ export default async function MisTurnosPage({
   const showAll = (await searchParams).historial === "todo";
 
   const supabase = await createClient();
-  const [{ data }, credits] = await Promise.all([
+  const [{ data }, credits, { data: swaps }] = await Promise.all([
     supabase
       .from("bookings")
-      .select("id, starts_at, status, hold_expires_at, services(name)")
+      .select(
+        "id, starts_at, status, hold_expires_at, membership_id, services(name), sectors(slug, name), resources(name)",
+      )
       // Explicit: RLS lets an admin read EVERY booking, and this page is "mine".
       .eq("user_id", user!.id)
       .order("starts_at", { ascending: true }),
     getMyCredits(),
+    supabase.rpc("my_swap_requests"),
   ]);
+  const swapIncoming = ((swaps ?? []) as { direction: string; status: string }[]).filter(
+    (s) => s.direction === "in" && s.status === "pending",
+  ).length;
 
   // eslint-disable-next-line react-hooks/purity -- server component: renders once
   const now = Date.now();
@@ -45,6 +54,12 @@ export default async function MisTurnosPage({
     status: b.status,
     service: b.services?.name ?? "Servicio",
     holdExpiresAt: b.hold_expires_at,
+    membership: Boolean(b.membership_id),
+    // "Pilates · Cama 2"; recovery has a single room, nothing to say.
+    place:
+      b.sectors && b.sectors.slug !== "recovery"
+        ? `${b.sectors.name}${b.resources?.name ? ` · ${b.resources.name}` : ""}`
+        : null,
   }));
 
   // Upcoming = still holds a slot and has not started. Everything else (past,
@@ -64,6 +79,7 @@ export default async function MisTurnosPage({
         totalCredits={totalCredits}
         creditServiceId={credits[0]?.serviceId ?? null}
         nowISO={nowISO}
+        swapIncoming={swapIncoming}
       />
     </PageShell>
   );

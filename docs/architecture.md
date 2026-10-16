@@ -37,7 +37,11 @@ Supabase client (anon key + RLS) for auth and reads.
 | `bookings` | Appointments: time range, status, calendar event, hold expiry |
 | `payments` | Payments: provider (`talo`/`manual`, legacy `mobbex`), status, Talo id + CVU/alias, receipt, `admin_flag` |
 | `whatsapp_messages` | Inbound message log + 24h window |
-| `settings` | Singleton row: working hours, days, timezone |
+| `settings` | Legacy singleton (timezone read by metrics/email); agenda moved to `sectors` |
+| `sectors` / `resources` | Areas (recovery, pilates) with their policies; beds/rooms a turno occupies |
+| `sector_hours` | Open ranges per sector and weekday (several per day allowed) |
+| `memberships` / `membership_slots` / `membership_periods` | Monthly plans (abonos): the client's weekly pattern, and one cuota per month. Each class is a `bookings` row with `membership_id` (ADR 0011) |
+| `swap_requests` | Offers to swap a class between two members (propose → accept) |
 
 Booking lifecycle: `pending → awaiting_payment → confirmed` (or `cancelled` / `expired`).
 
@@ -99,5 +103,10 @@ Booking lifecycle: `pending → awaiting_payment → confirmed` (or `cancelled` 
 | `admin-payment` | admin | Approve / reject / dismiss a payment needing a human |
 | `whatsapp-webhook` | public* | Meta verify + inbound logging |
 | `keep-alive` | public | Ping so the free project doesn't pause |
+| `membership-availability` | public | Free beds per weekday/time across a whole month (abono picker) |
+| `membership` | user | Create an abono, lock/unlock renewal, drop an unpaid signup |
+| `admin-membership` | admin | Desk sale (creates the client's account if needed), cash cuota, release, lock |
+| `swap-booking` | user | Move an abono class to a free slot; propose/accept/decline/cancel swaps |
+| `membership-cycle` | cron* | Daily roll of recurring members + roll-error alert |
 
 \* Webhooks authenticate via their own secret/token, not a Supabase JWT.

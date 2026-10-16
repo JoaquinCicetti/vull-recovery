@@ -23,14 +23,18 @@ function fmt(ms: number) {
 export function HoldCountdown({
   expiresAt,
   startedAt,
-  serviceId,
+  expiredHref,
+  expiredLabel = "Elegir un horario",
+  hint = "Completá el pago antes de que termine el tiempo para asegurar el turno.",
 }: {
-  /** bookings.hold_expires_at (ISO) */
+  /** hold_expires_at (ISO) of the booking or abono */
   expiresAt: string;
-  /** bookings.created_at (ISO) — used to size the progress bar */
+  /** created_at (ISO): sizes the progress bar */
   startedAt: string;
-  /** to offer a precise "pick another time" link once it lapses */
-  serviceId: string;
+  /** where to pick again once it lapses */
+  expiredHref: string;
+  expiredLabel?: string;
+  hint?: string;
 }) {
   const router = useRouter();
   const end = new Date(expiresAt).getTime();
@@ -65,10 +69,10 @@ export function HoldCountdown({
           elegir otro turno, sigue disponible si nadie lo tomó.
         </p>
         <Link
-          href={`/reservar/${serviceId}`}
+          href={expiredHref}
           className="mt-3 inline-block text-sm font-medium text-accent underline underline-offset-4"
         >
-          Elegir un horario
+          {expiredLabel}
         </Link>
       </div>
     );
@@ -105,7 +109,7 @@ export function HoldCountdown({
         />
       </div>
       <p className="mt-2.5 text-xs text-fg-faint">
-        Completá el pago antes de que termine el tiempo para asegurar el turno.
+        {hint}
       </p>
     </div>
   );
