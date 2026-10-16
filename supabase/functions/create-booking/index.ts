@@ -15,6 +15,7 @@ import { adminClient, userClient } from "../_shared/supabase.ts";
 import { createEvent, getBusy } from "../_shared/google.ts";
 import { sendBookingReceived, sendBookingConfirmation, notifyAdmins } from "../_shared/email.ts";
 import { defer } from "../_shared/background.ts";
+import { housekeeping } from "../_shared/membership.ts";
 import { localYMD, zonedToUtc } from "../_shared/time.ts";
 import { type Busy, validateSlot } from "../_shared/booking-rules.ts";
 import {
@@ -48,7 +49,7 @@ Deno.serve(async (req) => {
 
     const admin = adminClient();
 
-    // ── Phase A (parallel): who is asking, free lapsed holds, load config ────
+    // ── Phase A (parallel): who is asking, lazy maintenance, load config ─────
     // The sweep must land before the per-user queries in phase B so the user's
     // own expired hold doesn't count against them.
     const [
@@ -59,11 +60,7 @@ Deno.serve(async (req) => {
       service,
     ] = await Promise.all([
       userClient(req).auth.getUser(),
-      admin
-        .from("bookings")
-        .update({ status: "expired" })
-        .eq("status", "pending")
-        .lt("hold_expires_at", new Date().toISOString()),
+      housekeeping(admin),
       loadServiceWithSector(admin, service_id),
     ]);
     if (!user) return json({ error: "No autenticado" }, 401);
@@ -80,6 +77,13 @@ Deno.serve(async (req) => {
     // spending a credit would fall through to the ordinary paid path below and
     // bill that full price for a single session, so packs are credit-only. The
     // UI redirects to /comprar before this, but the invariant belongs here.
+    // An abono's classes are created by create_membership, never one by one.
+    if (service.billing === "monthly") {
+      return json(
+        { error: "Este plan se contrata por mes. Elegí tu horario fijo desde el plan." },
+        400,
+      );
+    }
     if (service.sessions_included > 1 && !use_credit) {
       return json({ error: "Comprá el pack para reservar estas sesiones." }, 400);
     }
@@ -103,6 +107,8 @@ Deno.serve(async (req) => {
         .select("created_at")
         .eq("user_id", user.id)
         .in("status", ["pending", "awaiting_payment"])
+        // An unpaid abono is a dozen pending classes: one hold, not twelve.
+        .is("membership_id", null)
         .order("created_at", { ascending: false }),
       // Friendly pre-check (the partial UNIQUE index is the race-safe backstop).
       // One per day PER SECTOR: recovery and pilates on the same day is fine.

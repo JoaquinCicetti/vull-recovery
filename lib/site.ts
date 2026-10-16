@@ -49,6 +49,15 @@ export function waLink(message?: string) {
   return message ? `${url}?text=${encodeURIComponent(message)}` : url;
 }
 
+// A wa.me link to a CLIENT's number (admin → client), or null when the number
+// is unusable. Unlike waLink, this opens a chat with them, not with us.
+export function clientWaLink(phone: string | null | undefined, message?: string) {
+  const digits = (phone ?? "").replace(/\D/g, "");
+  if (digits.length < 8) return null;
+  const url = `https://wa.me/${digits}`;
+  return message ? `${url}?text=${encodeURIComponent(message)}` : url;
+}
+
 export function formatARS(amount: number) {
   return new Intl.NumberFormat("es-AR", {
     style: "currency",

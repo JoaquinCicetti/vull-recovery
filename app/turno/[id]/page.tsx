@@ -2,9 +2,12 @@ import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { formatARS, waLink } from "@/lib/site";
-import { fmtDateTime } from "@/lib/format";
-import { PaymentPanel } from "./payment-panel";
-import { HoldCountdown } from "./hold-countdown";
+import { fmtDateTime, localDate } from "@/lib/format";
+import Link from "next/link";
+import { PaymentPanel } from "@/components/payment/payment-panel";
+import { HoldCountdown } from "@/components/hold-countdown";
+import { ClassActions } from "@/components/membership/class-actions";
+import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/status-badge";
 import { CancelBooking } from "@/components/cancel-booking";
 import { PageShell } from "@/components/ui/page-shell";
@@ -15,7 +18,14 @@ import type { TaloTransfer } from "@/components/talo-transfer-panel";
 
 type BookingWithService = Booking & {
   services: { name: string; price_ars: number; duration_minutes: number } | null;
-  sectors: { cancel_notice_hours: number } | null;
+  sectors: {
+    slug: string;
+    name: string;
+    timezone: string;
+    cancel_notice_hours: number;
+    change_notice_hours: number;
+  } | null;
+  resources: { name: string } | null;
 };
 
 export default async function TurnoPage({
@@ -35,7 +45,9 @@ export default async function TurnoPage({
     requireUser(`/turno/${id}`),
     supabase
       .from("bookings")
-      .select("*, services(name, price_ars, duration_minutes), sectors(cancel_notice_hours)")
+      .select(
+        "*, services(name, price_ars, duration_minutes), sectors(slug, name, timezone, cancel_notice_hours, change_notice_hours), resources(name)",
+      )
       .eq("id", id)
       .single(),
     // A CVU already minted for this booking (Talo, still open). Lets a reload —
@@ -54,6 +66,42 @@ export default async function TurnoPage({
 
   const booking = data as BookingWithService | null;
   if (!booking) notFound();
+
+  // An abono class: its money is the month's cuota, and it can be moved or
+  // swapped instead of paid/cancelled for a credit.
+  const isClass = Boolean(booking.membership_id);
+  const [{ data: unpaidPeriod }, { data: outgoing }, { data: sameSector }] = isClass
+    ? await Promise.all([
+        supabase
+          .from("membership_periods")
+          .select("id")
+          .eq("membership_id", booking.membership_id!)
+          .eq("status", "pending")
+          .order("period")
+          .limit(1)
+          .maybeSingle(),
+        supabase
+          .from("swap_requests")
+          .select("id")
+          .eq("from_booking_id", booking.id)
+          .eq("status", "pending")
+          .maybeSingle(),
+        // The member's other classes: a move can't land on a day they already
+        // have one (one class a day per sector).
+        supabase
+          .from("bookings")
+          .select("starts_at")
+          .eq("user_id", booking.user_id)
+          .eq("sector_id", booking.sector_id)
+          .in("status", ["pending", "awaiting_payment", "confirmed"])
+          .neq("id", booking.id)
+          .gte("starts_at", nowISO),
+      ])
+    : [{ data: null }, { data: null }, { data: null }];
+  const tz = booking.sectors?.timezone ?? "America/Argentina/Buenos_Aires";
+  const busyDays = ((sameSector ?? []) as { starts_at: string }[]).map((b) =>
+    localDate(b.starts_at, tz),
+  );
   const talo: TaloTransfer | null =
     taloRow && (taloRow.talo_cvu || taloRow.talo_alias)
       ? {
@@ -94,46 +142,107 @@ export default async function TurnoPage({
   const noticeHours = booking.sectors?.cancel_notice_hours ?? 24;
   const lateCancel =
     new Date(booking.starts_at).getTime() - nowMs < noticeHours * 60 * 60_000;
-  const cancelPrompt = !isConfirmed
+  const changeNotice = booking.sectors?.change_notice_hours ?? 24;
+  const changeable =
+    isClass &&
+    isConfirmed &&
+    new Date(booking.starts_at).getTime() - nowMs >= changeNotice * 60 * 60_000;
+  const place =
+    booking.sectors && booking.sectors.slug !== "recovery"
+      ? `${booking.sectors.name} · ${booking.resources?.name ?? ""}`
+      : null;
+  const cancelPrompt = isClass
+    ? "¿Cancelar esta clase? Las clases del abono no se devuelven ni se acreditan. Si podés, movela a otro horario."
+    : !isConfirmed
     ? undefined
     : lateCancel
     ? `Faltan menos de ${noticeHours} h: si cancelás, la sesión no se devuelve. ¿Cancelar igual?`
     : "¿Cancelar este turno? Te devolvemos la sesión como crédito para reservar otro día.";
 
   return (
-    <PageShell eyebrow="Tu turno" title={svcName}>
+    <PageShell eyebrow={isClass ? "Tu clase" : "Tu turno"} title={svcName}>
       <div className="surface-card surface-lift p-6">
         <div className="flex items-start justify-between gap-4">
           <p className="capitalize text-fg-muted">{when}</p>
           <StatusBadge status={booking.status} />
         </div>
+        {(place || isClass) && (
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            {place && <span className="text-sm text-fg">{place}</span>}
+            {isClass && (
+              <Badge variant="outline" className="font-mono text-[11px] uppercase tracking-wider">
+                Abono
+              </Badge>
+            )}
+          </div>
+        )}
 
         <div className="mt-4 flex items-center justify-between border-t border-border pt-4 text-sm text-fg-muted">
-          <span>Total</span>
-          <span className="font-mono text-base font-semibold text-fg">
-            {formatARS(price)}
-          </span>
+          {isClass ? (
+            <>
+              <span>Incluida en tu abono</span>
+              <Link href="/cuenta/plan" className="text-accent underline-offset-4 hover:underline">
+                Ver mi plan
+              </Link>
+            </>
+          ) : (
+            <>
+              <span>Total</span>
+              <span className="font-mono text-base font-semibold text-fg">
+                {formatARS(price)}
+              </span>
+            </>
+          )}
         </div>
       </div>
 
-      {showHold && (
+      {isClass && needsPayment && (
+        <div className="surface-card mt-6 p-5">
+          <p className="font-semibold text-fg">Falta pagar la cuota del mes</p>
+          <p className="mt-1 text-sm text-fg-muted">
+            Tus clases se confirman cuando la cuota está paga.
+          </p>
+          {unpaidPeriod && (
+            <Button asChild className="mt-3">
+              <Link href={`/cuenta/plan/pagar/${unpaidPeriod.id}`}>Pagar la cuota</Link>
+            </Button>
+          )}
+        </div>
+      )}
+
+      {!isClass && showHold && (
         <HoldCountdown
           expiresAt={booking.hold_expires_at!}
           startedAt={booking.created_at}
-          serviceId={booking.service_id}
+          expiredHref={`/reservar/${booking.service_id}`}
         />
       )}
 
-      {needsPayment && (
+      {!isClass && needsPayment && (
         <PaymentPanel
-          bookingId={booking.id}
+          target={{ booking_id: booking.id }}
+          receiptPrefix={booking.id}
           amount={price}
-          status={booking.status}
+          awaiting={booking.status === "awaiting_payment"}
           talo={talo}
         />
       )}
 
-      {isConfirmed ? (
+      {isClass && isConfirmed && new Date(booking.starts_at).getTime() > nowMs && (
+        <ClassActions
+          bookingId={booking.id}
+          serviceId={booking.service_id}
+          startsAt={booking.starts_at}
+          resourceId={booking.resource_id}
+          timezone={tz}
+          noticeHours={changeNotice}
+          changeable={changeable}
+          outgoingRequestId={(outgoing?.id as string | undefined) ?? null}
+          busyDays={busyDays}
+        />
+      )}
+
+      {isConfirmed && isClass ? null : isConfirmed ? (
         <div className="surface-card mt-6 p-6">
           <p className="font-semibold text-fg">Tu turno está confirmado ✓</p>
           <p className="mt-2 text-sm leading-relaxed text-fg-muted">
@@ -162,7 +271,11 @@ export default async function TurnoPage({
 
       {cancellable && (
         <div className="mt-8 flex justify-center border-t border-border pt-6">
-          <CancelBooking bookingId={booking.id} confirmPrompt={cancelPrompt} />
+          <CancelBooking
+            bookingId={booking.id}
+            confirmPrompt={cancelPrompt}
+            {...(isClass ? { label: "Cancelar esta clase", confirmLabel: "Cancelar igual" } : {})}
+          />
         </div>
       )}
     </PageShell>

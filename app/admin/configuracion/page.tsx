@@ -5,7 +5,7 @@ import { AdminTabs } from "@/components/admin/admin-tabs";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { PageShell } from "@/components/ui/page-shell";
-import type { Resource, Sector } from "@/lib/types";
+import type { Resource, Sector, SectorHours } from "@/lib/types";
 
 // One card per sector: its agenda and policies (what availability and
 // create-booking read) and, for multi-bed sectors, the beds. Recovery's single
@@ -13,14 +13,18 @@ import type { Resource, Sector } from "@/lib/types";
 export default async function ConfiguracionPage() {
   await requireAdmin();
   const supabase = await createClient();
-  const [{ data: sectors }, { data: resources }] = await Promise.all([
+  const [{ data: sectors }, { data: resources }, { data: hours }, { data: monthly }] =
+    await Promise.all([
     supabase.from("sectors").select("*").order("sort_order", { ascending: true }),
     supabase
       .from("resources")
       .select("*")
       .order("sort_order", { ascending: true })
       .order("created_at", { ascending: true }),
+    supabase.from("sector_hours").select("sector_id, weekday, opens, closes"),
+    supabase.from("services").select("sector_id").eq("billing", "monthly"),
   ]);
+  const monthlySectors = new Set((monthly ?? []).map((s) => s.sector_id as string));
 
   return (
     <PageShell
@@ -28,7 +32,7 @@ export default async function ConfiguracionPage() {
       nav={<AdminTabs />}
       eyebrow="Panel"
       title="Disponibilidad"
-      description="Definí, para cada sector, el horario y los días en que se pueden reservar turnos. Esto controla la disponibilidad que ven los clientes."
+      description="Definí, para cada sector, los días y horarios en que se puede reservar. Cada día puede tener sus propios rangos. Esto controla la disponibilidad que ven los clientes."
     >
       <div className="flex max-w-2xl flex-col gap-6">
         {((sectors ?? []) as Sector[]).map((sector) => (
@@ -47,7 +51,11 @@ export default async function ConfiguracionPage() {
                   </Badge>
                 )}
               </div>
-              <SectorForm sector={sector} />
+              <SectorForm
+                sector={sector}
+                hours={((hours ?? []) as SectorHours[]).filter((h) => h.sector_id === sector.id)}
+                hasMonthly={monthlySectors.has(sector.id)}
+              />
               {sector.slug !== "recovery" && (
                 <div className="border-t border-border pt-5">
                   <ResourcesEditor

@@ -5,10 +5,11 @@
 #
 # DELETES, permanently:
 #   - every turno, payment, session balance and balance movement
+#   - every abono (membership), its schedule, its cuotas and swap offers
 #   - WhatsApp message log, push subscriptions of deleted users
 #   - every user account EXCEPT the one given (login + profile)
 #   - every uploaded receipt in the `receipts` bucket
-# KEEPS: plans (services), availability (settings), Google sync state, and the
+# KEEPS: plans (services), availability (sectors, sector_hours, beds), Google sync state, and the
 # one admin account.
 #
 # NOT handled: Google Calendar. Events of deleted turnos stay in the calendar and
@@ -57,8 +58,14 @@ begin
 
   delete from public.credit_ledger;
   delete from public.user_credits;
+  delete from public.swap_requests;
+  -- payments and membership_periods reference each other: unlink, then delete.
+  update public.membership_periods set payment_id = null;
   delete from public.payments;
+  delete from public.membership_periods;
   delete from public.bookings;
+  delete from public.membership_slots;
+  delete from public.memberships;
   delete from public.whatsapp_messages;
   delete from public.push_subscriptions where user_id <> keep_id;
   -- profiles (and anything still hanging off them) cascade from auth.users.

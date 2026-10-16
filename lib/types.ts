@@ -18,13 +18,24 @@ export type Sector = {
   active: boolean;
   sort_order: number;
   timezone: string;
-  working_hours_start: string; // "HH:MM:SS"
-  working_hours_end: string;
-  working_days: number[]; // 0=Sun … 6=Sat
   lead_minutes: number;
   hold_minutes: number;
   cancel_notice_hours: number;
   change_notice_hours: number;
+  // Monthly plans (abonos): the cuota is due by `due_day`, costs `late_fee_pct`
+  // more after it, and from `release_day` admins may free an unpaid slot.
+  due_day: number;
+  late_fee_pct: number;
+  release_day: number;
+};
+
+// One open range of one weekday (table sector_hours). A weekday with no rows is
+// closed; several rows on a day are separate ranges (morning, evening).
+export type SectorHours = {
+  sector_id: string;
+  weekday: number; // 0=Sun … 6=Sat
+  opens: string; // "HH:MM:SS"
+  closes: string;
 };
 
 // What a turno occupies inside a sector: recovery's room, a pilates bed. The
@@ -51,7 +62,15 @@ export type Service = {
   // booking spends one. Ordinary plans keep sessions_included = 1.
   sessions_included: number;
   validity_days: number | null;
+  // billing = "monthly" is an abono: the client picks `classes_per_week` fixed
+  // weekly classes and pays price_ars per month (see lib/membership.ts).
+  billing: "session" | "monthly";
+  classes_per_week: number | null;
 };
+
+export function isMonthly(s: Pick<Service, "billing">): boolean {
+  return s.billing === "monthly";
+}
 
 // A pack is a plan that includes more than one session. Lives here rather than in
 // lib/credits.ts so client components can use it without pulling in the server
@@ -83,6 +102,7 @@ export type Booking = {
   starts_at: string;
   ends_at: string;
   status: BookingStatus;
+  membership_id: string | null;
   google_event_id: string | null;
   hold_expires_at: string | null;
   cancelled_at: string | null;

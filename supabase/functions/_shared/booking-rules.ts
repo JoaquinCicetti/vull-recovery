@@ -11,35 +11,63 @@ import { localYMD, parseHM, zonedToUtc } from "./time.ts";
 
 export const DAYS_AHEAD = 14;
 
-// A sector's agenda (see _shared/sector.ts). `lead_minutes` is the earliest
-// bookable time from now.
+// A sector's agenda (see _shared/sector.ts). `hours` are the open ranges of
+// each weekday (0=Sun..6=Sat, several per day allowed, a weekday with none is
+// closed); `lead_minutes` is the earliest bookable time from now.
+export type OpenRange = { weekday: number; opens: string; closes: string };
+
 export type Settings = {
-  working_hours_start: string;
-  working_hours_end: string;
-  working_days: number[];
   timezone: string;
   lead_minutes: number;
+  hours: OpenRange[];
 };
 
 export type Busy = { start: number; end: number }; // epoch ms
 
-// Working-window bounds (epoch ms) for the local day `startMs` falls on, or null
-// when that local day is not a working day.
-export function workingWindow(
-  startMs: number,
+export type Window = { open: number; close: number }; // epoch ms
+
+// Weekday (0=Sun..6=Sat) of a local calendar date.
+export function weekdayOf(y: number, m: number, d: number): number {
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+}
+
+// The open windows (epoch ms, sorted) of one local calendar date. Empty when the
+// sector is closed that weekday.
+export function windowsForDate(
+  y: number,
+  m: number,
+  d: number,
   settings: Settings,
-): { open: number; close: number } | null {
+): Window[] {
   const tz = settings.timezone;
-  const { y, m, d } = localYMD(tz, new Date(startMs));
-  // Weekday of the local date (0=Sun..6=Sat), matching availability's loop.
-  const weekday = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
-  if (!settings.working_days.includes(weekday)) return null;
-  const open = parseHM(settings.working_hours_start);
-  const close = parseHM(settings.working_hours_end);
-  return {
-    open: zonedToUtc(y, m, d, open.h, open.m, tz).getTime(),
-    close: zonedToUtc(y, m, d, close.h, close.m, tz).getTime(),
-  };
+  const weekday = weekdayOf(y, m, d);
+  return settings.hours
+    .filter((h) => h.weekday === weekday)
+    .map((h) => {
+      const o = parseHM(h.opens);
+      const c = parseHM(h.closes);
+      return {
+        open: zonedToUtc(y, m, d, o.h, o.m, tz).getTime(),
+        close: zonedToUtc(y, m, d, c.h, c.m, tz).getTime(),
+      };
+    })
+    .sort((a, b) => a.open - b.open);
+}
+
+// The open windows of the local day `startMs` falls on.
+export function workingWindows(startMs: number, settings: Settings): Window[] {
+  const { y, m, d } = localYMD(settings.timezone, new Date(startMs));
+  return windowsForDate(y, m, d, settings);
+}
+
+// Grid start instants inside the windows: every slot steps by the plan's
+// duration from its window's opening time and must end by its close.
+export function gridTimes(windows: Window[], durationMs: number): number[] {
+  const out: number[] = [];
+  for (const w of windows) {
+    for (let s = w.open; s + durationMs <= w.close; s += durationMs) out.push(s);
+  }
+  return out;
 }
 
 function leadError(minutes: number): string {
@@ -68,14 +96,15 @@ export function validateSlot(opts: {
   if (startMs < now + settings.lead_minutes * 60000) {
     return { ok: false, error: leadError(settings.lead_minutes) };
   }
-  const win = workingWindow(startMs, settings);
-  if (!win) {
+  const wins = workingWindows(startMs, settings);
+  if (wins.length === 0) {
     return { ok: false, error: "Ese día no está disponible para reservar." };
   }
-  if (startMs < win.open || endMs > win.close) {
+  const win = wins.find((w) => startMs >= w.open && endMs <= w.close);
+  if (!win) {
     return { ok: false, error: "Ese horario está fuera del horario de atención." };
   }
-  // Slots step by `durationMs` from the day's opening time.
+  // Slots step by `durationMs` from the opening time of their window.
   if ((startMs - win.open) % durationMs !== 0) {
     return { ok: false, error: "Ese horario no está disponible." };
   }

@@ -7,7 +7,7 @@ import type { BookingStatus } from "@/lib/types";
 // proxy, not the string.
 // The `profiles!user_id` embed disambiguates bookings' two FKs to profiles.
 export const BOOKINGS_SELECT =
-  "id, starts_at, status, service_id, user_id, services(name, price_ars), sectors(slug, name), resources(name), profiles!user_id(full_name, whatsapp_phone, email)";
+  "id, starts_at, status, service_id, user_id, membership_id, memberships(locked), services(name, price_ars), sectors(slug, name), resources(name), profiles!user_id(full_name, whatsapp_phone, email)";
 
 // Same rows, but only bookings whose client matches a filter on `profiles`
 // (an inner join; the plain embed would keep the booking and null the client).
@@ -29,6 +29,8 @@ export type AdminBookingRow = {
   client: string;
   phone: string | null;
   email: string | null;
+  // A class of an abono (paid with the month's cuota); locked = recurring.
+  membership: { locked: boolean } | null;
 };
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -48,5 +50,6 @@ export function mapBooking(b: any): AdminBookingRow {
     client: b.profiles?.full_name ?? "—",
     phone: (b.profiles?.whatsapp_phone as string) ?? null,
     email: (b.profiles?.email as string) ?? null,
+    membership: b.membership_id ? { locked: Boolean(b.memberships?.locked) } : null,
   };
 }

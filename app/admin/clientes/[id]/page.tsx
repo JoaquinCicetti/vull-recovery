@@ -13,6 +13,16 @@ import { CreditAdjustForm } from "@/components/admin/credit-adjust-form";
 import { LoadErrors } from "@/components/admin/load-errors";
 import { SectionTitle, Stat } from "@/components/admin/stat";
 import { PageShell } from "@/components/ui/page-shell";
+import { MembershipActions } from "@/components/admin/membership-actions";
+import { MembershipScheduleChips } from "@/components/membership/schedule-chips";
+import {
+  dateLabel,
+  MEMBERSHIP_STATUS_LABEL,
+  MEMBERSHIP_STATUS_STYLE,
+  capFirst,
+  monthLabel,
+  periodStatusLabel,
+} from "@/lib/membership";
 import { UserAvatar } from "@/components/ui/user-avatar";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -38,6 +48,7 @@ const PROVIDER: Record<string, string> = {
   manual: "Transferencia",
   talo: "Talo",
   mobbex: "Mobbex",
+  cash: "Efectivo",
 };
 
 function waHref(phone: string | null): string | null {
@@ -59,8 +70,16 @@ export default async function ClientePage({
   const supabase = await createClient();
 
   // All admin-readable through RLS (is_admin()); independent, so one round trip.
-  const [profileRes, creditsRes, ledgerRes, bookingsRes, servicesRes, packPayRes, bookingPayRes] =
-    await Promise.all([
+  const [
+    profileRes,
+    creditsRes,
+    ledgerRes,
+    bookingsRes,
+    servicesRes,
+    packPayRes,
+    bookingPayRes,
+    membershipsRes,
+  ] = await Promise.all([
       supabase
         .from("profiles")
         .select("id, full_name, email, whatsapp_phone, is_admin, created_at")
@@ -90,8 +109,10 @@ export default async function ClientePage({
       // client through its booking — hence two reads.
       supabase
         .from("payments")
-        .select("id, amount_ars, status, provider, reversed_at, created_at, services(name)")
-        .eq("kind", "pack")
+        .select(
+          "id, kind, amount_ars, status, provider, reversed_at, created_at, services(name), membership_periods!payments_membership_period_id_fkey(period, memberships(services(name)))",
+        )
+        .in("kind", ["pack", "membership"])
         .eq("user_id", id)
         .order("created_at", { ascending: false })
         .limit(15),
@@ -103,6 +124,14 @@ export default async function ClientePage({
         .eq("bookings.user_id", id)
         .order("created_at", { ascending: false })
         .limit(15),
+      supabase
+        .from("memberships")
+        .select(
+          "id, status, locked, starts_on, ends_on, roll_error, services(name), membership_slots(weekday, start_time, resources(name))",
+        )
+        .eq("user_id", id)
+        .order("created_at", { ascending: false })
+        .limit(5),
     ]);
 
   const profile = profileRes.data;
@@ -116,6 +145,7 @@ export default async function ClientePage({
     ["Planes", servicesRes],
     ["Pagos", packPayRes],
     ["Pagos de turnos", bookingPayRes],
+    ["Abonos", membershipsRes],
   ] as const) {
     if (res.error) loadErrors.push(`${label}: ${res.error.message}`);
   }
@@ -139,7 +169,10 @@ export default async function ClientePage({
   const payments = [
     ...((packPayRes.data ?? []) as any[]).map((p) => ({
       ...p,
-      what: `Pack · ${p.services?.name ?? ""}`.trim(),
+      what:
+        p.kind === "membership"
+          ? `Cuota de ${p.membership_periods?.period ? monthLabel(p.membership_periods.period) : ""} · ${p.membership_periods?.memberships?.services?.name ?? "Abono"}`
+          : `Pack · ${p.services?.name ?? ""}`.trim(),
     })),
     ...((bookingPayRes.data ?? []) as any[]).map((p) => ({
       ...p,
@@ -153,6 +186,19 @@ export default async function ClientePage({
     .reduce((n, p) => n + (p.amount_ars as number), 0);
 
   const wa = waHref(profile.whatsapp_phone);
+
+  const memberships = (membershipsRes.data ?? []) as any[];
+  const { data: periodsData } = memberships.length
+    ? await supabase
+        .from("membership_periods_v")
+        .select("id, membership_id, period, status, amount_due_ars, is_late, due_on")
+        .in("membership_id", memberships.map((m) => m.id))
+        .order("period", { ascending: false })
+    : { data: [] };
+  const periodsBy = new Map<string, any[]>();
+  for (const p of (periodsData ?? []) as any[]) {
+    periodsBy.set(p.membership_id, [...(periodsBy.get(p.membership_id) ?? []), p]);
+  }
 
   return (
     <PageShell
@@ -244,6 +290,91 @@ export default async function ClientePage({
             services={(servicesRes.data ?? []) as { id: string; name: string }[]}
           />
         </div>
+      </section>
+
+      <section className="mt-12">
+        <div className="flex items-baseline justify-between gap-4">
+          <SectionTitle>Abono</SectionTitle>
+          {profile.email && (
+            <Link
+              href={`/admin/abonos?email=${encodeURIComponent(profile.email)}`}
+              className="text-sm text-accent underline-offset-4 hover:underline"
+            >
+              Crear abono →
+            </Link>
+          )}
+        </div>
+        {memberships.length === 0 ? (
+          <p className="mt-3 text-sm text-fg-faint">Sin abono.</p>
+        ) : (
+          <ul className="mt-3 flex flex-col gap-3">
+            {memberships.map((m) => {
+              const periods = periodsBy.get(m.id) ?? [];
+              const pending = [...periods].reverse().find((p) => p.status === "pending");
+              const live = m.status === "pending" || m.status === "active";
+              return (
+                <li key={m.id} className={`surface-card p-4 ${live ? "" : "opacity-60"}`}>
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-semibold text-fg">{m.services?.name ?? "Abono"}</p>
+                        <span
+                          className={`rounded-md px-1.5 py-0.5 text-xs ${MEMBERSHIP_STATUS_STYLE[m.status as keyof typeof MEMBERSHIP_STATUS_STYLE]}`}
+                        >
+                          {MEMBERSHIP_STATUS_LABEL[m.status as keyof typeof MEMBERSHIP_STATUS_LABEL]}
+                        </span>
+                      </div>
+                      <p className="mt-0.5 text-sm text-fg-muted">
+                        Desde {dateLabel(m.starts_on)}
+                        {m.ends_on && ` · hasta ${dateLabel(m.ends_on)}`}
+                      </p>
+                      <MembershipScheduleChips
+                        className="mt-2"
+                        size="sm"
+                        locked={m.locked}
+                        slots={(m.membership_slots ?? []).map((s: any) => ({
+                          weekday: s.weekday,
+                          start_time: s.start_time,
+                          resource_name: s.resources?.name,
+                        }))}
+                      />
+                      {m.roll_error && live && (
+                        <p className="mt-2 text-xs text-danger">
+                          No se pudo renovar: otro turno ocupa una de sus camas el mes que viene.
+                        </p>
+                      )}
+                    </div>
+                    <MembershipActions
+                      membershipId={m.id}
+                      pendingPeriodId={pending?.id ?? null}
+                      locked={m.locked}
+                      active={live}
+                    />
+                  </div>
+                  {periods.length > 0 && (
+                    <ul className="mt-3 divide-y divide-border border-t border-border">
+                      {periods.map((p) => (
+                        <li key={p.id} className="flex items-center justify-between gap-4 py-2 text-sm">
+                          <span className="text-fg-muted">{capFirst(monthLabel(p.period))}</span>
+                          <span className="flex items-center gap-3">
+                            <span className="font-mono tabular-nums text-fg">
+                              {formatARS(p.amount_due_ars)}
+                            </span>
+                            <span
+                              className={`text-xs ${p.status === "paid" ? "text-accent" : p.is_late ? "text-amber-300" : "text-fg-faint"}`}
+                            >
+                              {periodStatusLabel(p)}
+                            </span>
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </section>
 
       <section className="mt-12">

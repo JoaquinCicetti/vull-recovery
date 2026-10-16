@@ -5,7 +5,7 @@
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { sendPush, type PushSub } from "./webpush.ts";
 
-async function sendMail(
+export async function sendMail(
   to: string,
   subject: string,
   html: string,
@@ -25,7 +25,7 @@ async function sendMail(
   return res.ok;
 }
 
-const money = (ars: number) =>
+export const money = (ars: number) =>
   new Intl.NumberFormat("es-AR", {
     style: "currency",
     currency: "ARS",
@@ -35,7 +35,7 @@ const money = (ars: number) =>
 // ─── VULL-branded email shell ───────────────────────────────────────────────
 // Matte black + green accent, mono for "instrument" data (matches the app and
 // the OTP email). Inline styles + tables for email-client compatibility.
-type Row = { label: string; value: string; mono?: boolean };
+export type Row = { label: string; value: string; mono?: boolean };
 type Shell = {
   heading: string;
   lead: string;
@@ -45,7 +45,7 @@ type Shell = {
   accent?: string; // heading tint (defaults to fg)
 };
 
-function shell({ heading, lead, rows = [], note, cta, accent }: Shell): string {
+export function shell({ heading, lead, rows = [], note, cta, accent }: Shell): string {
   const rowsHtml = rows
     .map(
       (r, i) => `
@@ -175,7 +175,7 @@ async function loadBookingCtx(
 // by that user's own preference (profiles.notify_email / notify_push). Mirror of
 // fanOutToAdmins but keyed on a single user_id, and it reads the recipient's email
 // from profiles rather than assuming the caller has it. Best-effort throughout.
-async function fanOutToUser(
+export async function fanOutToUser(
   admin: SupabaseClient,
   userId: string,
   msg: { subject: string; html: string; push?: { title: string; body: string; url: string } },
@@ -311,7 +311,11 @@ export async function sendBookingCancellation(
     const lead = opts.byAdmin
       ? `Hola ${c.firstName}, cancelamos tu turno. Si tenés dudas, escribinos por WhatsApp.`
       : `Hola ${c.firstName}, tu turno quedó cancelado.`;
-    const note = opts.credit === "credited"
+    const note = opts.credit === "membership"
+      ? opts.byAdmin
+        ? "Es una clase de tu abono. Si querés recuperarla, escribinos por WhatsApp."
+        : "Es una clase de tu abono: no se devuelve ni se acredita. La próxima vez podés moverla a otro horario libre hasta 24 h antes."
+      : opts.credit === "credited"
       ? "Te devolvimos la sesión como crédito: la próxima vez que reserves este servicio la podés usar sin pagar de nuevo."
       : opts.credit === "late"
       ? "Como cancelaste fuera del plazo de aviso, la sesión no se devuelve. Si tuviste un imprevisto, escribinos por WhatsApp."
@@ -411,7 +415,7 @@ export async function sendPackConfirmation(
 
 // Fan out an admin alert to every owner: email (Resend) + Web Push, in parallel.
 // Dead push subscriptions (404/410) are pruned. All best-effort.
-async function fanOutToAdmins(
+export async function fanOutToAdmins(
   admin: SupabaseClient,
   subject: string,
   html: string,

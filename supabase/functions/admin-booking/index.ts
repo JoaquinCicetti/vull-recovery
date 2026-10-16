@@ -21,7 +21,7 @@ Deno.serve(async (req) => {
   const { json, options } = responder(req);
   if (req.method === "OPTIONS") return options();
   try {
-    const { booking_id, action, starts_at } = await req.json();
+    const { booking_id, action, starts_at, resource_id } = await req.json();
     if (!booking_id || !ACTIONS.includes(action)) {
       return json({ error: "Datos inválidos" }, 400);
     }
@@ -41,12 +41,20 @@ Deno.serve(async (req) => {
 
     const { data: booking } = await admin
       .from("bookings")
-      .select("id, status, starts_at, service_id, google_event_id")
+      .select("id, status, starts_at, service_id, google_event_id, membership_id")
       .eq("id", booking_id)
       .single();
     if (!booking) return json({ error: "Turno no encontrado" }, 404);
 
     if (action === "confirm") {
+      // An abono class is confirmed by paying its cuota (one payment for the
+      // whole month), never class by class.
+      if (booking.membership_id) {
+        return json(
+          { error: "Es una clase de un abono: registrá el pago de la cuota desde Abonos." },
+          409,
+        );
+      }
       if (!["pending", "awaiting_payment"].includes(booking.status)) {
         return json({ error: "Este turno no se puede confirmar." }, 409);
       }
@@ -145,9 +153,12 @@ Deno.serve(async (req) => {
     // Update the SAME row; the EXCLUDE / one-per-day constraints re-check on update
     // (a row never conflicts with itself). resource_id = null makes the DB give it
     // a bed that is free at the new time (its current one may not be).
+    // An explicit bed (the admin picked one) is checked by the DB to belong to
+    // the sector; the EXCLUDE arbitrates whether it is free.
+    const bed = typeof resource_id === "string" && resource_id ? resource_id : null;
     const { error: updErr } = await admin
       .from("bookings")
-      .update({ starts_at: start.toISOString(), ends_at: end.toISOString(), resource_id: null })
+      .update({ starts_at: start.toISOString(), ends_at: end.toISOString(), resource_id: bed })
       .eq("id", booking.id);
     if (updErr) {
       if (updErr.code === "23P01") {

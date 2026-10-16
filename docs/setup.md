@@ -194,6 +194,13 @@ pnpm dlx supabase secrets set \
 `${SUPABASE_URL}/functions/v1/keep-alive` (cron-job.org or a GitHub Actions cron)
 so the free project doesn't pause.
 
+**membership-cycle (abonos):** set `MEMBERSHIP_CYCLE_TOKEN` as a function secret
+and schedule a daily
+`POST ${SUPABASE_URL}/functions/v1/membership-cycle?token=$MEMBERSHIP_CYCLE_TOKEN`.
+It rolls recurring members into the next month and emails the admins when a
+member's bed was taken next month. Optional: every booking/abono function runs
+the same maintenance lazily (see ADR 0011).
+
 ---
 
 ## Environment variable reference
@@ -224,9 +231,11 @@ so the free project doesn't pause.
 | `CORS_EXTRA_ORIGINS` | Edge Function | extra browser origins allowed to call functions (comma-separated) |
 | `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | Frontend | Cloudflare Turnstile site key (optional, enables login captcha) |
 | `TURNSTILE_SECRET` | Auth | Cloudflare Turnstile secret (with `[auth.captcha]`) |
+| `MEMBERSHIP_CYCLE_TOKEN` | Edge Function | random string; gates the `membership-cycle` cron (fails closed) |
 
-> Working hours / days / timezone are **not** env vars — they're a row in the
-> `settings` table (edit in Studio or via the admin panel).
+> Opening hours are **not** env vars: each sector has per-weekday ranges in the
+> `sector_hours` table, edited in Admin → Disponibilidad. The abono billing
+> policy (due day, late fee, release day) lives on the `sectors` row.
 
 ## Security hardening
 

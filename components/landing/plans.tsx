@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { motion, type Variants } from "framer-motion";
 import { formatARS, waLink } from "@/lib/site";
-import { isPack, type Sector, type Service } from "@/lib/types";
+import { isMonthly, isPack, type Sector, type Service } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -47,6 +47,8 @@ export function Plans({ initialServices }: { initialServices: Service[] }) {
   const [services, setServices] = useState(initialServices);
   const [sectors, setSectors] = useState<Pick<Sector, "id" | "name" | "active">[]>([]);
   const [balances, setBalances] = useState<Record<string, number>>({});
+  // Monthly plans the signed-in user already has a live abono of.
+  const [members, setMembers] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const supabase = createClient();
@@ -74,6 +76,12 @@ export function Plans({ initialServices }: { initialServices: Service[] }) {
         out[row.service_id] = row.balance;
       }
       if (alive) setBalances(out);
+      const { data: mine } = await supabase
+        .from("memberships")
+        .select("service_id")
+        .eq("user_id", session.user.id)
+        .in("status", ["pending", "active"]);
+      if (alive) setMembers(new Set((mine ?? []).map((m) => m.service_id as string)));
     });
     return () => {
       alive = false;
@@ -136,7 +144,12 @@ export function Plans({ initialServices }: { initialServices: Service[] }) {
                   className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3"
                 >
                   {g.services.map((s) => (
-                    <PlanCard key={s.id} service={s} credits={balances[s.id] ?? 0} />
+                    <PlanCard
+                      key={s.id}
+                      service={s}
+                      credits={balances[s.id] ?? 0}
+                      member={members.has(s.id)}
+                    />
                   ))}
                 </motion.div>
               </div>
@@ -170,7 +183,17 @@ function groupBySector(
   return groups;
 }
 
-function PlanCard({ service: s, credits }: { service: Service; credits: number }) {
+function PlanCard({
+  service: s,
+  credits,
+  member,
+}: {
+  service: Service;
+  credits: number;
+  member: boolean;
+}) {
+  const monthly = isMonthly(s);
+  const perWeek = s.classes_per_week ?? 1;
   return (
     <motion.div variants={card} className="h-full">
       <Card className="surface-lift group relative flex h-full flex-col rounded-2xl ring-0 transition-all duration-300 [--card-spacing:--spacing(6)] hover:-translate-y-1.5 hover:border-accent/50 hover:shadow-[0_28px_70px_-28px_rgba(97,179,59,0.65)] has-data-[slot=card-footer]:pb-(--card-spacing)">
@@ -185,11 +208,23 @@ function PlanCard({ service: s, credits }: { service: Service; credits: number }
               {s.description}
             </CardDescription>
           )}
+          {monthly && (
+            <p className="mt-2 text-sm text-fg-faint">
+              Horario fijo cada semana. Podés reservar tu lugar todos los meses.
+            </p>
+          )}
         </CardHeader>
         <CardContent className="relative mt-auto flex items-end justify-between">
           {/* Already paid for: show what's left, not what it costs. */}
           <span className="font-mono text-3xl font-semibold tracking-tight text-fg">
-            {credits > 0 ? (
+            {monthly && member ? (
+              <span className="text-accent">Tu plan</span>
+            ) : monthly ? (
+              <>
+                {formatARS(s.price_ars)}
+                <span className="text-base font-medium text-fg-muted"> / mes</span>
+              </>
+            ) : credits > 0 ? (
               <span className="text-accent">
                 {credits}{" "}
                 <span className="text-base font-medium">
@@ -204,14 +239,22 @@ function PlanCard({ service: s, credits }: { service: Service; credits: number }
             variant="secondary"
             className="h-auto rounded-md px-2.5 py-1 font-mono font-medium text-fg-muted"
           >
-            {isPack(s)
-              ? `${s.sessions_included} sesiones`
-              : `${s.duration_minutes} min`}
+            {monthly
+              ? `${perWeek} ${perWeek === 1 ? "clase" : "clases"} por semana`
+              : isPack(s)
+                ? `${s.sessions_included} sesiones`
+                : `${s.duration_minutes} min`}
           </Badge>
         </CardContent>
         <CardFooter className="relative border-t-0 bg-transparent p-0 px-(--card-spacing)">
           <Button asChild size="lg" className="w-full">
-            {isPack(s) && credits === 0 ? (
+            {monthly ? (
+              member ? (
+                <Link href="/cuenta/plan">Ver mi plan</Link>
+              ) : (
+                <Link href={`/abono/${s.id}`}>Elegir mis horarios</Link>
+              )
+            ) : isPack(s) && credits === 0 ? (
               <Link href={`/comprar/${s.id}`}>Comprar pack</Link>
             ) : (
               <Link href={`/reservar/${s.id}`}>Reservar</Link>

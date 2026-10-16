@@ -35,7 +35,8 @@ function groupByDay(rows: AdminBookingRow[]): { date: string; rows: AdminBooking
 
 function Row({ b, past }: { b: AdminBookingRow; past?: boolean }) {
   const wa = waHref(b.phone);
-  const hint = paymentHint(b.status);
+  const hint =
+    b.membership && b.status === "pending" ? "Cuota sin pagar" : paymentHint(b.status);
   return (
     <li
       className={`surface-card surface-lift flex flex-wrap items-start justify-between gap-4 p-5 ${
@@ -49,10 +50,16 @@ function Row({ b, past }: { b: AdminBookingRow; past?: boolean }) {
         <div className="min-w-0">
           <p className="font-semibold text-fg">
             {b.service}
-            {b.price != null && (
-              <span className="ml-2 font-mono text-sm font-normal text-fg-faint">
-                {formatARS(b.price)}
+            {b.membership ? (
+              <span className="ml-2 rounded border border-border px-1 align-middle font-mono text-[10px] font-normal uppercase tracking-wider text-fg-faint">
+                Abono{b.membership.locked && " · fijo"}
               </span>
+            ) : (
+              b.price != null && (
+                <span className="ml-2 font-mono text-sm font-normal text-fg-faint">
+                  {formatARS(b.price)}
+                </span>
+              )
             )}
           </p>
           {b.place && <p className="text-xs text-fg-muted">{b.place}</p>}
@@ -95,6 +102,7 @@ function Row({ b, past }: { b: AdminBookingRow; past?: boolean }) {
           serviceId={b.serviceId}
           status={b.status}
           started={Boolean(past)}
+          membership={Boolean(b.membership)}
         />
       </div>
     </li>

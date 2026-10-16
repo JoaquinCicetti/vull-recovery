@@ -59,11 +59,14 @@ export function BookingActions({
   serviceId,
   status,
   started,
+  membership = false,
 }: {
   bookingId: string;
   serviceId: string;
   status: BookingStatus;
   started: boolean;
+  /** An abono class: confirmed by paying the month's cuota, not one by one. */
+  membership?: boolean;
 }) {
   const router = useRouter();
   const supabase = createClient();
@@ -74,7 +77,9 @@ export function BookingActions({
 
   const isActive = ["pending", "awaiting_payment", "confirmed"].includes(status);
   const available: Action[] = [];
-  if (status === "pending" || status === "awaiting_payment") available.push("confirm");
+  if ((status === "pending" || status === "awaiting_payment") && !membership) {
+    available.push("confirm");
+  }
   if (status === "confirmed" && started) available.push("no_show");
   if (isActive) available.push("cancel");
   const canReschedule = isActive && !started;
