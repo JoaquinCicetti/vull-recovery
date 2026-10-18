@@ -99,6 +99,14 @@ pnpm dlx supabase functions serve --env-file supabase/functions/.env
 > port with a tunnel (e.g. `ngrok http 54321`) and point the provider at the
 > tunneled `…/functions/v1/<name>` URL.
 
+**Transactional email locally (dev only).** Booking emails go through Resend,
+which no-ops without `RESEND_API_KEY`/`EMAIL_FROM`. To see them anyway, add
+`EMAIL_SINK_URL=http://host.docker.internal:54324/api/v1/send` to
+`supabase/functions/.env`: `sendMail()` then posts every email to Mailpit's send
+API instead of Resend (no API key needed) and it shows up at
+http://127.0.0.1:54324 next to the OTP mail. Never set `EMAIL_SINK_URL` as a
+deployed secret.
+
 ## 8. Google Calendar (availability)
 
 1. Google Cloud Console → create/select a project.
@@ -114,7 +122,8 @@ pnpm dlx supabase functions serve --env-file supabase/functions/.env
    - `GOOGLE_CALENDAR_ID` = the calendar id
 
 > Without this, availability is computed from DB bookings only. Working hours,
-> days, and timezone live in the **`settings`** table (edit in Studio).
+> days, slot length and timezone live per sector (Admin → Disponibilidad; see
+> the note under the env var table).
 
 ## 9. Talo (automatic bank transfers)
 
@@ -234,8 +243,13 @@ the same maintenance lazily (see ADR 0011).
 | `MEMBERSHIP_CYCLE_TOKEN` | Edge Function | random string; gates the `membership-cycle` cron (fails closed) |
 
 > Opening hours are **not** env vars: each sector has per-weekday ranges in the
-> `sector_hours` table, edited in Admin → Disponibilidad. The abono billing
-> policy (due day, late fee, release day) lives on the `sectors` row.
+> `sector_hours` table, edited in Admin → Disponibilidad. Each range has its
+> turno length (`slot_minutes`, "Turnos de 30 min"), and a turno takes one slot;
+> a plan's duration is only shown to the client. How far ahead clients book
+> (`sectors.booking_window`: this Mon–Sun week, or the next N days) and the
+> number of simultaneous turnos (active `resources`) are edited there too. The
+> abono billing policy (due day, late fee, release day) lives on the `sectors`
+> row. See ADR 0012.
 
 ## Security hardening
 

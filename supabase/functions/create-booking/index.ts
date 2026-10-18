@@ -88,9 +88,6 @@ Deno.serve(async (req) => {
       return json({ error: "Comprá el pack para reservar estas sesiones." }, 400);
     }
 
-    const durationMs = service.duration_minutes * 60000;
-    const end = new Date(start.getTime() + durationMs);
-
     const settings = sectorSettings(sector);
     const tz = settings.timezone;
     const { y, m, d } = localYMD(tz, start);
@@ -121,7 +118,10 @@ Deno.serve(async (req) => {
         .gte("starts_at", dayStart)
         .lt("starts_at", dayEnd)
         .limit(1),
-      getBusy(start.toISOString(), end.toISOString(), calendar).catch(() => []),
+      // Up to a day later: the turno's end is only known once validateSlot
+      // finds its range, and the overlap test below is exact anyway.
+      getBusy(start.toISOString(), new Date(start.getTime() + 86400000).toISOString(), calendar)
+        .catch(() => []),
     ]);
 
     if ((activeHolds?.length ?? 0) >= MAX_ACTIVE_HOLDS) {
@@ -140,18 +140,19 @@ Deno.serve(async (req) => {
     if (sameDay && sameDay.length > 0) return json({ error: SAME_DAY }, 409);
 
     // ── Re-validate the slot server-side (working hours/days, lead, grid,
-    //    Google freeBusy). availability uses the same validateSlot(). ─────────
+    //    booking window, Google freeBusy). availability uses the same
+    //    validateSlot(). The turno lasts exactly one slot of its range. ──────
     const busy: Busy[] = googleBusy.map((b) => ({
       start: new Date(b.start).getTime(),
       end: new Date(b.end).getTime(),
     }));
     const check = validateSlot({
       startMs: start.getTime(),
-      durationMs,
       settings,
       busy,
     });
     if (!check.ok) return json({ error: check.error }, 409);
+    const end = new Date(check.endMs);
 
     // Calendar event + google_event_id, after the response (best-effort; no-ops
     // when Google is unset). Nothing on /turno reads google_event_id and

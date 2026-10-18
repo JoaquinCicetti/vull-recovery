@@ -19,6 +19,13 @@ export type Sector = {
   sort_order: number;
   timezone: string;
   lead_minutes: number;
+  // How far ahead clients may book: 'rolling' = the next `rolling_days` days;
+  // 'week' = the current Mon–Sun week, the next one opening on
+  // `next_week_opens_dow` (0=Sun … 6=Sat) at `next_week_opens_at` ("HH:MM:SS").
+  booking_window: "rolling" | "week";
+  rolling_days: number;
+  next_week_opens_dow: number;
+  next_week_opens_at: string;
   hold_minutes: number;
   cancel_notice_hours: number;
   change_notice_hours: number;
@@ -30,12 +37,14 @@ export type Sector = {
 };
 
 // One open range of one weekday (table sector_hours). A weekday with no rows is
-// closed; several rows on a day are separate ranges (morning, evening).
+// closed; several rows on a day are separate ranges (morning, evening). The
+// range is cut into `slot_minutes` turnos from `opens`; a turno takes one.
 export type SectorHours = {
   sector_id: string;
   weekday: number; // 0=Sun … 6=Sat
   opens: string; // "HH:MM:SS"
   closes: string;
+  slot_minutes: number;
 };
 
 // What a turno occupies inside a sector: recovery's room, a pilates bed. The

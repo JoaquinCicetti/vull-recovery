@@ -20,6 +20,11 @@ export type Sector = {
   sector_hours: SectorHour[];
   google_calendar_id: string | null;
   lead_minutes: number;
+  // How far ahead clients may book (see bookingWindow in booking-rules.ts).
+  booking_window: "rolling" | "week";
+  rolling_days: number;
+  next_week_opens_dow: number;
+  next_week_opens_at: string;
   hold_minutes: number;
   cancel_notice_hours: number;
   change_notice_hours: number;
@@ -30,8 +35,9 @@ export type Sector = {
   release_day: number;
 };
 
-// The sector columns every function needs, with its hours embedded.
-export const SECTOR_SELECT = "*, sector_hours(weekday, opens, closes)";
+// The sector columns every function needs, with its hours (and slot grid)
+// embedded.
+export const SECTOR_SELECT = "*, sector_hours(weekday, opens, closes, slot_minutes)";
 
 // deno-lint-ignore no-explicit-any
 export type ServiceWithSector = Record<string, any> & {
@@ -96,7 +102,12 @@ export function sectorSettings(sector: Sector): Settings {
       weekday: h.weekday,
       opens: h.opens,
       closes: h.closes,
+      slot_minutes: h.slot_minutes,
     })),
+    booking_window: sector.booking_window,
+    rolling_days: sector.rolling_days,
+    next_week_opens_dow: sector.next_week_opens_dow,
+    next_week_opens_at: sector.next_week_opens_at,
   };
 }
 

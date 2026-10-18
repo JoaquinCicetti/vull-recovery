@@ -21,7 +21,15 @@ import {
 } from "@/components/kibo-ui/mini-calendar";
 
 type Day = { date: string; slots: Slot[] };
-type AvailabilityResponse = { days?: Day[]; timezone?: string };
+// How far ahead the sector lets clients book (see `availability`): the current
+// Mon–Sun week ("week") or the next N days ("rolling"). `to` is exclusive.
+type BookingWindow = {
+  kind: "week" | "rolling";
+  from: string;
+  to: string;
+  next_week_opens_at: string | null;
+};
+type AvailabilityResponse = { days?: Day[]; timezone?: string; window?: BookingWindow };
 
 const VISIBLE_DAYS = 7;
 
@@ -41,6 +49,27 @@ function groupByPeriod(slots: Slot[], tz: string): Period[] {
     { key: "tarde", label: "Tarde", slots: groups.tarde },
     { key: "noche", label: "Noche", slots: groups.noche },
   ].filter((g) => g.slots.length > 0);
+}
+
+// "La semana siguiente se habilita el domingo a las 14:00."
+function nextWeekLine(iso: string, tz: string) {
+  const weekday = new Intl.DateTimeFormat("es-AR", { timeZone: tz, weekday: "long" }).format(
+    new Date(iso),
+  );
+  return `La semana siguiente se habilita el ${weekday} a las ${fmtTime(iso, tz)}.`;
+}
+
+// "Podés reservar hasta el domingo 25." plus when the next week opens. Only for
+// a weekly window: a rolling one needs no hint.
+function windowHint(w: BookingWindow | null, tz: string): string | null {
+  if (!w || w.kind !== "week") return null;
+  const lastDay = new Intl.DateTimeFormat("es-AR", {
+    timeZone: tz,
+    weekday: "long",
+    day: "numeric",
+  }).format(new Date(new Date(w.to).getTime() - 1));
+  const until = `Podés reservar hasta el ${lastDay}.`;
+  return w.next_week_opens_at ? `${until} ${nextWeekLine(w.next_week_opens_at, tz)}` : until;
 }
 
 // Availability dates are plain "YYYY-MM-DD" strings in the salon's timezone.
@@ -79,6 +108,7 @@ export function BookingFlow({
   const supabase = createClient();
   const [days, setDays] = useState<Day[] | null>(null);
   const [tz, setTz] = useState(DEFAULT_TZ);
+  const [bookingWindow, setBookingWindow] = useState<BookingWindow | null>(null);
   const [activeDay, setActiveDay] = useState<string | null>(null);
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [selected, setSelected] = useState<Slot | null>(null);
@@ -102,6 +132,7 @@ export function BookingFlow({
     const ds: Day[] = data.days ?? [];
     setDays(ds);
     setTz(data.timezone ?? DEFAULT_TZ);
+    setBookingWindow(data.window ?? null);
     setActiveDay(ds[0]?.date ?? null);
     setStartDate(ds[0] ? toDate(ds[0].date) : null);
   }
@@ -216,6 +247,7 @@ export function BookingFlow({
   }
 
   const day = days?.find((d) => d.date === activeDay);
+  const hint = windowHint(bookingWindow, tz);
   const available = new Set(days?.map((d) => d.date));
   const blocked = new Set(bookedDays);
   const dayBlocked = activeDay ? blocked.has(activeDay) : false;
@@ -243,6 +275,9 @@ export function BookingFlow({
   return (
     <div className="mt-10">
       <p className="eyebrow">Elegí un horario</p>
+      {hint && !loading && (days?.length ?? 0) > 0 && (
+        <p className="mt-2 text-sm text-fg-faint">{hint}</p>
+      )}
 
       {credits > 0 && (
         <div className="mt-4 rounded-md border border-accent/30 bg-accent/5 px-3 py-2.5 text-sm text-fg-muted">
@@ -266,7 +301,11 @@ export function BookingFlow({
 
       {!loading && days && days.length === 0 && (
         <p className="mt-4 text-sm text-fg-faint">
-          No hay horarios disponibles por ahora. Probá más tarde.
+          {bookingWindow?.kind !== "week"
+            ? "No hay horarios disponibles por ahora. Probá más tarde."
+            : bookingWindow.next_week_opens_at
+              ? `No quedan horarios esta semana. ${nextWeekLine(bookingWindow.next_week_opens_at, tz)}`
+              : "No quedan horarios esta semana ni la próxima. Probá más tarde."}
         </p>
       )}
 

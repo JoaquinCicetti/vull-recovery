@@ -32,14 +32,14 @@ Supabase client (anon key + RLS) for auth and reads.
 
 | Table | Purpose |
 |-------|---------|
-| `services` | Plans/cards: name, price (ARS), duration, active |
+| `services` | Plans/cards: name, price (ARS), duration (shown to the client; the turno length is the sector's slot), active |
 | `profiles` | 1:1 with `auth.users`: name, WhatsApp, `is_admin` |
 | `bookings` | Appointments: time range, status, calendar event, hold expiry |
 | `payments` | Payments: provider (`talo`/`manual`, legacy `mobbex`), status, Talo id + CVU/alias, receipt, `admin_flag` |
 | `whatsapp_messages` | Inbound message log + 24h window |
 | `settings` | Legacy singleton (timezone read by metrics/email); agenda moved to `sectors` |
-| `sectors` / `resources` | Areas (recovery, pilates) with their policies; beds/rooms a turno occupies |
-| `sector_hours` | Open ranges per sector and weekday (several per day allowed) |
+| `sectors` / `resources` | Areas (recovery, pilates) with their policies (incl. the client booking window); beds/places a turno occupies (active ones = turnos per slot) |
+| `sector_hours` | Open ranges per sector and weekday (several per day allowed), each cut into `slot_minutes` turnos |
 | `memberships` / `membership_slots` / `membership_periods` | Monthly plans (abonos): the client's weekly pattern, and one cuota per month. Each class is a `bookings` row with `membership_id` (ADR 0011) |
 | `swap_requests` | Offers to swap a class between two members (propose → accept) |
 
@@ -56,16 +56,20 @@ Booking lifecycle: `pending → awaiting_payment → confirmed` (or `cancelled` 
   active statuses guarantees a user holds at most one active booking per local
   day (race-safe; code `23505`). See [ADR 0009](adr/0009-booking-invariants-enforcement.md).
 - **Server-side slot re-validation.** `create-booking` re-checks the submitted
-  time (working hours/days, lead, grid, Google freeBusy) via the shared
+  time (working hours/days, lead, grid, booking window, Google freeBusy) via the shared
   `_shared/booking-rules.ts`, the same logic `availability` uses, so a crafted or
   stale request can't book outside the rules. Full contract:
   [docs/booking-invariants.md](booking-invariants.md).
 - **Hold with expiry.** Booking creates a `pending` row with `hold_expires_at`
   (~10 min). Expired holds are freed **lazily** (at the start of `availability`
   and `create-booking`) — no cron.
-- **Availability.** `availability` takes working hours (`settings`), subtracts
-  Google Calendar busy blocks (`freeBusy`) and active bookings, and returns free
-  slots per day. If Google isn't configured, it uses DB bookings only.
+- **Availability.** `availability` walks the sector's booking window (recovery:
+  the current Mon–Sun week, the next one from Sunday 14:00; pilates: the next 14
+  days), cuts each open range (`sector_hours`) into its admin-defined
+  `slot_minutes` turnos, subtracts Google Calendar busy blocks (`freeBusy`), and
+  keeps a slot while any active resource is free for it. A turno is exactly one
+  slot; the plan's duration is only displayed. If Google isn't configured, it
+  uses DB bookings only. See [ADR 0012](adr/0012-admin-defined-slots-and-booking-window.md).
 - **Timezone.** `Intl`-based helpers (no deps) convert local ⇄ UTC respecting
   DST. Default `America/Argentina/Buenos_Aires`.
 - **RLS.** Clients see only their own rows; `is_admin()` (SECURITY DEFINER, no

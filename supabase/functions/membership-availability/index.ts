@@ -2,8 +2,9 @@
 //
 // Body: { service_id, starts_on?: "YYYY-MM-DD", locked: boolean }
 //
-// For each weekday, the class times of the sector's open ranges (stepping by
-// the plan's duration from each range's opening), and for each time the beds
+// For each weekday, the class times of the sector's open ranges (the admin's
+// slot grid of each range, where the plan's class also fits; see rangeStarts),
+// and for each time the beds
 // that are free on EVERY occurrence the membership would take:
 //   * from starts_on to the end of that month, and
 //   * when `locked`, through the end of next month too (a recurring member gets
@@ -16,7 +17,8 @@
 import { adminClient, userClient } from "../_shared/supabase.ts";
 import { responder, errMessage } from "../_shared/cors.ts";
 import { housekeeping, parseDate } from "../_shared/membership.ts";
-import { localYMD, parseHM, zonedToUtc } from "../_shared/time.ts";
+import { localYMD, zonedToUtc } from "../_shared/time.ts";
+import { rangeStarts } from "../_shared/booking-rules.ts";
 import { canUseSector, loadServiceWithSector } from "../_shared/sector.ts";
 
 const ACTIVE = ["pending", "awaiting_payment", "confirmed"];
@@ -128,9 +130,7 @@ Deno.serve(async (req) => {
       let thisMonth = 0;
       const times: { start_time: string; resources_free: string[] }[] = [];
       for (const r of ranges) {
-        const o = parseHM(r.opens);
-        const c = parseHM(r.closes);
-        for (let min = o.h * 60 + o.m; min + durMin <= c.h * 60 + c.m; min += durMin) {
+        for (const min of rangeStarts(r, durMin)) {
           const hh = Math.floor(min / 60);
           const mm = min % 60;
           const occ = dates

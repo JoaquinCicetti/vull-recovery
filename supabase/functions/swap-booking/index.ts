@@ -42,7 +42,7 @@ Deno.serve(async (req) => {
     if (action === "move") {
       const { data: b } = await admin
         .from("bookings")
-        .select("id, user_id, status, starts_at, service_id, membership_id")
+        .select("id, user_id, status, starts_at, ends_at, service_id, membership_id")
         .eq("id", body?.booking_id)
         .maybeSingle();
       if (!b || b.user_id !== user.id) return json({ error: "Clase no encontrada" }, 404);
@@ -75,12 +75,14 @@ Deno.serve(async (req) => {
           409,
         );
       }
-      const durationMs = service.duration_minutes * 60000;
+      // On the grid and inside the hours; the class keeps its length. The
+      // same-week rule above is stricter than the client booking window.
       const check = validateSlot({
         startMs: to,
-        durationMs,
         settings: sectorSettings(sector),
         busy: [],
+        lengthMs: new Date(b.ends_at).getTime() - from,
+        enforceWindow: false,
       });
       if (!check.ok) return json({ error: check.error }, 409);
 
@@ -91,7 +93,7 @@ Deno.serve(async (req) => {
         .from("bookings")
         .update({
           starts_at: new Date(to).toISOString(),
-          ends_at: new Date(to + durationMs).toISOString(),
+          ends_at: new Date(check.endMs).toISOString(),
           resource_id: bed,
         })
         .eq("id", b.id)

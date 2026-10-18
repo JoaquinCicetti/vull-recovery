@@ -58,7 +58,9 @@ Deno.serve(async (req) => {
       }
 
       // Same slot rules as a single turno (open range, grid), checked on each
-      // weekday's next occurrence; lead time is applied per class by the DB.
+      // weekday's next occurrence; lead time is applied per class by the DB and
+      // a schedule runs all month, so the client booking window doesn't apply.
+      // A class lasts its plan's duration, which must fit in the range too.
       const settings = { ...sectorSettings(sector), lead_minutes: 0 };
       const tz = sector.timezone;
       const t = localYMD(tz, new Date());
@@ -71,10 +73,11 @@ Deno.serve(async (req) => {
           .getTime();
         const check = validateSlot({
           startMs,
-          durationMs: service.duration_minutes * 60000,
           settings,
           busy: [],
           now: 0,
+          lengthMs: service.duration_minutes * 60000,
+          enforceWindow: false,
         });
         if (!check.ok) return json({ error: check.error }, 409);
       }
