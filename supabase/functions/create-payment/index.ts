@@ -17,7 +17,7 @@ import { responder, errMessage } from "../_shared/cors.ts";
 import { adminClient, userClient } from "../_shared/supabase.ts";
 import { notifyAdmins, notifyAdminsPackToVerify } from "../_shared/email.ts";
 import { notifyAdminsMembershipToVerify } from "../_shared/membership-email.ts";
-import { PAYABLE_LIST } from "../_shared/booking-status.ts";
+import { MEMBERSHIP_ACTIVE_LIST, PAYABLE_LIST } from "../_shared/booking-status.ts";
 import { canUseSector, type Sector } from "../_shared/sector.ts";
 import {
   createTaloPayment,
@@ -563,7 +563,7 @@ Deno.serve(async (req) => {
       if (!per) return json({ error: "Cuota no encontrada" }, 404);
       if (per.user_id !== user.id) return json({ error: "No autorizado" }, 403);
       if (per.status === "paid") return json({ error: "Esa cuota ya está pagada." }, 409);
-      if (per.status !== "pending" || !["pending", "active"].includes(per.membership_status)) {
+      if (per.status !== "pending" || !MEMBERSHIP_ACTIVE_LIST.includes(per.membership_status)) {
         return json({ error: "El abono ya no está activo." }, 409);
       }
       const { data: mem } = await admin

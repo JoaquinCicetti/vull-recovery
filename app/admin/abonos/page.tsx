@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { MEMBERSHIP_ACTIVE } from "@/lib/booking-status";
 import { requireAdmin } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { localDate } from "@/lib/format";
@@ -138,7 +139,7 @@ export default async function AbonosPage({
     .eq("sector_id", sector.id)
     .order("created_at", { ascending: false })
     .range((page - 1) * PAGE, page * PAGE - 1);
-  listQ = estado === "vigentes" ? listQ.in("status", ["pending", "active"]) : listQ.eq("status", estado);
+  listQ = estado === "vigentes" ? listQ.in("status", MEMBERSHIP_ACTIVE) : listQ.eq("status", estado);
   if (planFilter) listQ = listQ.eq("service_id", planFilter);
   if (fijo) listQ = listQ.eq("locked", true);
   if (q) {

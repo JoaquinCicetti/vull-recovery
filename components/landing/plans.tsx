@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { MEMBERSHIP_ACTIVE } from "@/lib/booking-status";
 import Link from "next/link";
 import { motion, type Variants } from "framer-motion";
 import { formatARS, waLink } from "@/lib/site";
@@ -80,7 +81,7 @@ export function Plans({ initialServices }: { initialServices: Service[] }) {
         .from("memberships")
         .select("service_id")
         .eq("user_id", session.user.id)
-        .in("status", ["pending", "active"]);
+        .in("status", MEMBERSHIP_ACTIVE);
       if (alive) setMembers(new Set((mine ?? []).map((m) => m.service_id as string)));
     });
     return () => {
