@@ -1,9 +1,18 @@
-// Transactional email via the Resend HTTP API. No-ops if RESEND_API_KEY /
-// EMAIL_FROM are unset, so the booking flow keeps working without email
-// configured. EMAIL_FROM must be a sender on the Resend-verified domain,
+// Transactional email via the Resend HTTP API (or, in local dev only, the
+// EMAIL_SINK_URL Mailpit sink). No-ops if RESEND_API_KEY / EMAIL_FROM are
+// unset, so the booking flow keeps working without email configured.
+// EMAIL_FROM must be a sender on the Resend-verified domain,
 // e.g. `VULL <hola@vull.com.ar>`.
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { sendPush, type PushSub } from "./webpush.ts";
+import { SESSION_BRIEFING } from "./session-briefing.ts";
+import {
+  ADDRESS_LINE,
+  CONTACT_PHONE_DISPLAY,
+  INSTAGRAM_HANDLE,
+  INSTAGRAM_URL,
+  waUrl,
+} from "./site.ts";
 
 export async function sendMail(
   to: string,
@@ -12,6 +21,26 @@ export async function sendMail(
 ): Promise<boolean> {
   const apiKey = Deno.env.get("RESEND_API_KEY");
   const from = Deno.env.get("EMAIL_FROM");
+
+  // DEV ONLY: with EMAIL_SINK_URL set (local supabase/functions/.env, never a
+  // deployed secret), mail goes to Mailpit's send API instead of Resend, e.g.
+  // http://host.docker.internal:54324/api/v1/send. See docs/setup.md.
+  const sink = Deno.env.get("EMAIL_SINK_URL");
+  if (sink) {
+    if (!to) return false;
+    const res = await fetch(sink, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        From: { Email: from ?? "dev@vull.local" },
+        To: [{ Email: to }],
+        Subject: subject,
+        HTML: html,
+      }),
+    });
+    return res.ok;
+  }
+
   if (!apiKey || !from || !to) return false;
 
   const res = await fetch("https://api.resend.com/emails", {
@@ -36,16 +65,49 @@ export const money = (ars: number) =>
 // Matte black + green accent, mono for "instrument" data (matches the app and
 // the OTP email). Inline styles + tables for email-client compatibility.
 export type Row = { label: string; value: string; mono?: boolean };
+/** A titled checklist under the rows (e.g. the pre-session briefing). */
+export type Section = {
+  title: string;
+  lead?: string;
+  items: string[];
+  tone?: "ok" | "warn"; // ok: green checks; warn: amber title, muted bullets
+  footer?: string;
+};
 type Shell = {
   heading: string;
   lead: string;
   rows?: Row[];
+  sections?: Section[];
   note?: string;
   cta?: { label: string; url: string };
   accent?: string; // heading tint (defaults to fg)
 };
 
-export function shell({ heading, lead, rows = [], note, cta, accent }: Shell): string {
+const FONT = "font-family:Arial,Helvetica,sans-serif;";
+
+function sectionHtml(sec: Section): string {
+  const warn = sec.tone === "warn";
+  const items = sec.items
+    .map(
+      (it) => `
+        <tr>
+          <td valign="top" style="width:22px; padding:5px 0; ${FONT} font-size:14px; line-height:1.5; ${warn ? "color:#7d7d7d;" : "color:#61b33b; font-weight:700;"}">${warn ? "&#9642;" : "&#10003;"}</td>
+          <td style="padding:5px 0; ${FONT} font-size:14px; line-height:1.5; color:#bdbdbd;">${it}</td>
+        </tr>`,
+    )
+    .join("");
+  return `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:24px; border-top:1px solid #262626;">
+      <tr><td style="padding-top:20px;">
+        <p style="margin:0 0 8px; ${FONT} font-size:11px; font-weight:700; letter-spacing:0.18em; text-transform:uppercase; color:${warn ? "#e5a33b" : "#61b33b"};">${sec.title}</p>
+        ${sec.lead ? `<p style="margin:0 0 8px; ${FONT} font-size:14px; line-height:1.5; color:#bdbdbd;">${sec.lead}</p>` : ""}
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${items}</table>
+        ${sec.footer ? `<p style="margin:10px 0 0; ${FONT} font-size:13px; line-height:1.5; color:#7d7d7d;">${sec.footer}</p>` : ""}
+      </td></tr>
+    </table>`;
+}
+
+export function shell({ heading, lead, rows = [], sections = [], note, cta, accent }: Shell): string {
   const rowsHtml = rows
     .map(
       (r, i) => `
@@ -77,6 +139,7 @@ export function shell({ heading, lead, rows = [], note, cta, accent }: Shell): s
                     ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${rowsHtml}</table>`
                     : ""
                 }
+                ${sections.map(sectionHtml).join("")}
                 ${
                   note
                     ? `<p style="margin:24px 0 0; font-family:Arial,Helvetica,sans-serif; font-size:13px; line-height:1.5; color:#7d7d7d;">${note}</p>`
@@ -93,7 +156,11 @@ export function shell({ heading, lead, rows = [], note, cta, accent }: Shell): s
             </tr>
             <tr>
               <td style="padding:20px 4px 0;">
-                <p style="margin:0; font-family:Arial,Helvetica,sans-serif; font-size:12px; color:#7d7d7d;">VULL · Recuperación deportiva</p>
+                <p style="margin:0; ${FONT} font-size:12px; line-height:1.7; color:#7d7d7d;">
+                  ${ADDRESS_LINE}<br />
+                  Turnos y consultas: <a href="${waUrl()}" style="color:#bdbdbd; text-decoration:none;">${CONTACT_PHONE_DISPLAY}</a><br />
+                  <a href="${INSTAGRAM_URL}" style="color:#bdbdbd; text-decoration:none;">${INSTAGRAM_HANDLE}</a>
+                </p>
               </td>
             </tr>
           </table>
@@ -115,6 +182,8 @@ type BookingEmailCtx = {
   ref: string;
   appUrl: string;
   bookingId: string;
+  /** sectors.slug; gates sector-specific copy (the recovery briefing). */
+  sectorSlug: string | null;
 };
 
 async function loadBookingCtx(
@@ -123,7 +192,7 @@ async function loadBookingCtx(
 ): Promise<BookingEmailCtx | null> {
   const { data: b } = await admin
     .from("bookings")
-    .select("id, user_id, starts_at, services(name, price_ars)")
+    .select("id, user_id, starts_at, services(name, price_ars), sectors(slug)")
     .eq("id", bookingId)
     .single();
   if (!b) return null;
@@ -168,6 +237,8 @@ async function loadBookingCtx(
     ref: b.id.slice(0, 8).toUpperCase(),
     appUrl: Deno.env.get("APP_URL") ?? "",
     bookingId: b.id,
+    // deno-lint-ignore no-explicit-any
+    sectorSlug: (b.sectors as any)?.slug ?? null,
   };
 }
 
@@ -232,7 +303,9 @@ export async function sendBookingReceived(
 ): Promise<void> {
   // Email-only ack: with Resend unconfigured, loadBookingCtx + fanOutToUser would
   // still spend 5 DB/Auth reads before sendMail no-ops. Skip the whole thing.
-  if (!Deno.env.get("RESEND_API_KEY") || !Deno.env.get("EMAIL_FROM")) return;
+  const mailOn = Deno.env.get("EMAIL_SINK_URL") ||
+    (Deno.env.get("RESEND_API_KEY") && Deno.env.get("EMAIL_FROM"));
+  if (!mailOn) return;
   try {
     const c = await loadBookingCtx(admin, bookingId);
     if (!c) return;
@@ -261,6 +334,21 @@ export async function sendBookingReceived(
   }
 }
 
+/** SESSION_BRIEFING as two email sections: what to bring, then health caveats. */
+function briefingSections(): Section[] {
+  const b = SESSION_BRIEFING;
+  return [
+    { title: b.title, lead: b.intro, items: b.bring, tone: "ok", footer: b.facilities },
+    {
+      title: "Condiciones de salud",
+      lead: `${b.healthIntro} ${b.healthLead}`,
+      items: b.contraindications,
+      tone: "warn",
+      footer: b.healthNote,
+    },
+  ];
+}
+
 /** Receipt when payment is accredited and the booking becomes confirmed. */
 export async function sendBookingConfirmation(
   admin: SupabaseClient,
@@ -279,6 +367,9 @@ export async function sendBookingConfirmation(
         { label: "Pagado", value: money(c.price), mono: true },
         { label: "Comprobante", value: c.ref, mono: true },
       ],
+      // The pre-session briefing describes the recovery circuit; other sectors
+      // (pilates abonos use membership-email.ts anyway) don't get it.
+      sections: c.sectorSlug === SESSION_BRIEFING.sectorSlug ? briefingSections() : [],
       note: "Escribinos por WhatsApp con tu nombre para coordinar los últimos detalles. Si no, mostrá este email al llegar.",
       cta: c.appUrl
         ? { label: "Ver mi turno", url: `${c.appUrl}/turno/${c.bookingId}` }

@@ -10,6 +10,11 @@ import { ClassActions } from "@/components/membership/class-actions";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/status-badge";
 import { CancelBooking } from "@/components/cancel-booking";
+import {
+  SessionBriefingDialog,
+  SessionBriefingTrigger,
+} from "@/components/session-briefing-dialog";
+import { SESSION_BRIEFING } from "@/lib/session-briefing";
 import { PageShell } from "@/components/ui/page-shell";
 import { Button } from "@/components/ui/button";
 import type { Booking } from "@/lib/types";
@@ -147,6 +152,13 @@ export default async function TurnoPage({
     isClass &&
     isConfirmed &&
     new Date(booking.starts_at).getTime() - nowMs >= changeNotice * 60 * 60_000;
+  // Pre-session recommendations: recovery turnos only (the copy describes the
+  // circuit), and only while the session is still ahead.
+  const briefing =
+    isConfirmed &&
+    !isClass &&
+    booking.sectors?.slug === SESSION_BRIEFING.sectorSlug &&
+    new Date(booking.starts_at).getTime() > nowMs;
   const place =
     booking.sectors && booking.sectors.slug !== "recovery"
       ? `${booking.sectors.name} · ${booking.resources?.name ?? ""}`
@@ -244,17 +256,26 @@ export default async function TurnoPage({
 
       {isConfirmed && isClass ? null : isConfirmed ? (
         <div className="surface-card mt-6 p-6">
+          {/* Lives only in this confirmed branch, so it mounts once whichever
+              path confirmed the turno (credit, Talo refresh, admin). */}
+          {briefing && <SessionBriefingDialog bookingId={booking.id} />}
           <p className="font-semibold text-fg">Tu turno está confirmado ✓</p>
           <p className="mt-2 text-sm leading-relaxed text-fg-muted">
             Te enviamos el comprobante <span className="font-mono">{ref}</span> a
-            tu email. Escribinos por WhatsApp con tu nombre así coordinamos los
-            últimos detalles; si no, mostrá el comprobante del email al llegar.
+            tu email{briefing && ", junto con las recomendaciones para tu sesión"}.
+            Escribinos por WhatsApp con tu nombre así coordinamos los últimos
+            detalles; si no, mostrá el comprobante del email al llegar.
           </p>
           <Button asChild size="lg" className="mt-4 w-full">
             <a href={waLink(waMsg)} target="_blank" rel="noopener noreferrer">
               Escribinos por WhatsApp
             </a>
           </Button>
+          {briefing && (
+            <div className="mt-2">
+              <SessionBriefingTrigger />
+            </div>
+          )}
         </div>
       ) : (
         <>
