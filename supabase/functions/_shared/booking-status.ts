@@ -24,12 +24,16 @@ export const PAYABLE = CONFIRMABLE;
 /** Terminal states. Nothing moves a booking out of these. */
 export const TERMINAL = ["cancelled", "expired", "no_show"] as const;
 
+/** A membership (abono) holds its beds only in these statuses. */
+export const MEMBERSHIP_ACTIVE = ["pending", "active"] as const;
+
 // Mutable copies for the Supabase client's `.in()` / `Array.includes()`, which
 // do not accept `readonly string[]`.
 export const ACTIVE_LIST: string[] = [...ACTIVE];
 export const CONFIRMABLE_LIST: string[] = [...CONFIRMABLE];
 export const PAYABLE_LIST: string[] = [...PAYABLE];
 export const TERMINAL_LIST: string[] = [...TERMINAL];
+export const MEMBERSHIP_ACTIVE_LIST: string[] = [...MEMBERSHIP_ACTIVE];
 
 export function isActive(status: string): boolean {
   return ACTIVE_LIST.includes(status);

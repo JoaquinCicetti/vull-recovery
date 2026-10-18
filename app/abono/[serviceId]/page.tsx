@@ -1,4 +1,5 @@
 import { notFound, redirect } from "next/navigation";
+import { MEMBERSHIP_ACTIVE } from "@/lib/booking-status";
 import { getService } from "@/lib/services";
 import { getUserAndProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -38,7 +39,7 @@ export default async function AbonoPage({
       .select("id, status, membership_periods(id, status)")
       .eq("user_id", user.id)
       .eq("sector_id", service.sector_id)
-      .in("status", ["pending", "active"])
+      .in("status", MEMBERSHIP_ACTIVE)
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();

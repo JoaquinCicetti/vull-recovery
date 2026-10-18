@@ -14,6 +14,9 @@ export const ACTIVE_STATUSES = [
 /** Statuses in which the client still owes us money. */
 export const PAYABLE_STATUSES = ["pending", "awaiting_payment"] as const;
 
+/** A membership (abono) holds its beds only in these statuses. */
+export const MEMBERSHIP_ACTIVE: string[] = ["pending", "active"];
+
 export function isActiveStatus(status: string): boolean {
   return (ACTIVE_STATUSES as readonly string[]).includes(status);
 }

@@ -116,6 +116,12 @@ pnpm exec supabase functions deploy
 ```
 The frontend calls these via `supabase.functions.invoke(...)`; they live on Supabase, not Vercel.
 
+### 5. Abonos cron (`membership-cycle`)
+Set the `MEMBERSHIP_CYCLE_TOKEN` function secret and schedule a daily
+`POST ${SUPABASE_URL}/functions/v1/membership-cycle?token=$MEMBERSHIP_CYCLE_TOKEN`.
+It rolls recurring members into next month; details in `docs/setup.md`
+("membership-cycle (abonos)") and ADR 0011.
+
 ---
 
 ## Smoke test on the live domain

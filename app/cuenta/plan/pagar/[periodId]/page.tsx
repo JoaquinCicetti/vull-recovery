@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { MEMBERSHIP_ACTIVE } from "@/lib/booking-status";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -105,7 +106,7 @@ export default async function PagarCuotaPage({
   const plan = mem.services?.name ?? "Abono";
   const slots = mem.membership_slots.map((s) => ({ ...s, resource_name: s.resources?.name }));
   const paid = per.status === "paid";
-  const gone = per.status === "void" || !["pending", "active"].includes(mem.status);
+  const gone = per.status === "void" || !MEMBERSHIP_ACTIVE.includes(mem.status);
   const awaiting = Boolean(manualRow) || Boolean(inFlight);
   const showHold = mem.status === "pending" && Boolean(mem.hold_expires_at) && !paid && !gone;
   const adminHeld = mem.status === "pending" && !mem.hold_expires_at && mem.created_by !== mem.user_id;

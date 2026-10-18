@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { MEMBERSHIP_ACTIVE } from "@/lib/booking-status";
 import { requireAdmin } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { localDate } from "@/lib/format";
@@ -72,7 +73,7 @@ export default async function AdminPage() {
         { count: "exact" },
       )
       .eq("status", "pending")
-      .in("membership_status", ["pending", "active"])
+      .in("membership_status", MEMBERSHIP_ACTIVE)
       .lt("due_on", today)
       .order("due_on", { ascending: true })
       .limit(50),
