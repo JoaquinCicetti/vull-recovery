@@ -17,8 +17,20 @@ export function getURL(path = "") {
 export const SITE_TAGLINE =
   "Recuperación deportiva. Entrenás al límite, recuperá igual.";
 
+// Public contact details (footer, emails). The phone is the owner's number for
+// "turnos y consultas". Mirrored for the edge functions in
+// supabase/functions/_shared/site.ts. Change one, change both.
+export const CONTACT_PHONE_DISPLAY = "3412 10-2151";
+export const CONTACT_WHATSAPP_NUMBER = "5493412102151"; // +54 9 341 210-2151, wa.me format
+export const ADDRESS_LINE = "Montevideo 40 | Complejo Loyal";
+export const INSTAGRAM_HANDLE = "@vull.recovery";
+export const INSTAGRAM_URL = "https://instagram.com/vull.recovery";
+
 // Business WhatsApp number, international format without "+", e.g. 5491122334455.
-export const WHATSAPP_NUMBER = process.env.NEXT_PUBLIC_WHATSAPP_BUSINESS_NUMBER ?? "";
+// The env var still overrides; `||` (not `??`) so the blank
+// NEXT_PUBLIC_WHATSAPP_BUSINESS_NUMBER= in .env.example falls back too.
+export const WHATSAPP_NUMBER =
+  process.env.NEXT_PUBLIC_WHATSAPP_BUSINESS_NUMBER || CONTACT_WHATSAPP_NUMBER;
 
 // Alias/CBU shown to clients paying by manual bank transfer.
 export const TRANSFER_ALIAS = process.env.NEXT_PUBLIC_TRANSFER_ALIAS ?? "";
