@@ -22,7 +22,8 @@ async function readError(error: unknown, fallback: string): Promise<string> {
 }
 
 // Compact slot picker for admin reschedule: fetches availability for the booking's
-// service and moves the turno to the chosen slot via admin-booking.
+// service and moves the turno to the chosen slot via admin-booking. Admin scope:
+// slots beyond the client booking window are offered too.
 export function ReschedulePanel({
   bookingId,
   serviceId,
@@ -42,7 +43,7 @@ export function ReschedulePanel({
   useEffect(() => {
     let alive = true;
     supabase.functions
-      .invoke("availability", { body: { service_id: serviceId } })
+      .invoke("availability", { body: { service_id: serviceId, scope: "admin" } })
       .then(({ data, error }) => {
         if (!alive) return;
         if (error) {

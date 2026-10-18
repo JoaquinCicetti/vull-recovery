@@ -5,7 +5,9 @@
 //   action "no_show"    → mark a confirmed, already-started turno as a no-show.
 //   action "reschedule" → move the SAME booking to a new time (preserving id,
 //                         payment linkage, google_event_id); re-validates the
-//                         slot and lets the DB EXCLUDE / one-per-day arbitrate.
+//                         slot (grid, hours, lead — NOT the client booking
+//                         window: admins may book further ahead) and lets the
+//                         DB EXCLUDE / one-per-day arbitrate.
 // Cancellation stays in cancel-booking. Mirrors admin-payment's is_admin gate.
 import { responder, errMessage } from "../_shared/cors.ts";
 import { adminClient, userClient } from "../_shared/supabase.ts";
@@ -41,7 +43,7 @@ Deno.serve(async (req) => {
 
     const { data: booking } = await admin
       .from("bookings")
-      .select("id, status, starts_at, service_id, google_event_id, membership_id")
+      .select("id, status, starts_at, ends_at, service_id, google_event_id, membership_id")
       .eq("id", booking_id)
       .single();
     if (!booking) return json({ error: "Turno no encontrado" }, 404);
@@ -134,21 +136,30 @@ Deno.serve(async (req) => {
 
     const service = await loadServiceWithSector(admin, booking.service_id);
     if (!service) return json({ error: "Servicio no disponible" }, 404);
-    const durationMs = service.duration_minutes * 60000;
-    const end = new Date(start.getTime() + durationMs);
+    // A turno takes one slot of its new range; an abono class keeps its length.
+    const lengthMs = booking.membership_id
+      ? new Date(booking.ends_at).getTime() - new Date(booking.starts_at).getTime()
+      : undefined;
 
     const settings = sectorSettings(service.sectors);
     const googleBusy = await getBusy(
       start.toISOString(),
-      end.toISOString(),
+      new Date(start.getTime() + 86400000).toISOString(),
       sectorCalendarId(service.sectors),
     ).catch(() => []);
     const busy: Busy[] = googleBusy.map((b) => ({
       start: new Date(b.start).getTime(),
       end: new Date(b.end).getTime(),
     }));
-    const check = validateSlot({ startMs: start.getTime(), durationMs, settings, busy });
+    const check = validateSlot({
+      startMs: start.getTime(),
+      settings,
+      busy,
+      lengthMs,
+      enforceWindow: false,
+    });
     if (!check.ok) return json({ error: check.error }, 409);
+    const end = new Date(check.endMs);
 
     // Update the SAME row; the EXCLUDE / one-per-day constraints re-check on update
     // (a row never conflicts with itself). resource_id = null makes the DB give it

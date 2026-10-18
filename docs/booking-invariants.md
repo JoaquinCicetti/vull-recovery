@@ -3,7 +3,8 @@
 The rules a turno must satisfy, the layer(s) that enforce each, and the exact
 Spanish message the client sees. **HARD** invariants are guaranteed at the
 database (race-safe, cannot be bypassed by a crafted request); **edge** rules are
-re-validated server-side in `create-booking`; **best-effort** rules depend on an
+re-validated server-side in `create-booking` (and by the other functions that
+move a turno); **best-effort** rules depend on an
 external system. The client UX layer only prevents obvious mistakes early — it is
 never the guarantee.
 
@@ -24,15 +25,35 @@ pilates' beds). See [Sectors](#sectors-and-resources) below.
 | No past slot | — | `start < now` → 400 | past days not shown | — | "Ese horario ya pasó" |
 | Lead time ≥ `sectors.lead_minutes` | — | `validateSlot` | earliest filter | — | "Necesitás reservar con al menos una hora de anticipación." |
 | Open that weekday | — | `validateSlot` (no `sector_hours` row that weekday) | closed days disabled | — | "Ese día no está disponible para reservar." |
-| Inside one open range | — | `validateSlot` (`[start, end]` within one range) | only in-range slots shown | — | "Ese horario está fuera del horario de atención." |
-| Slot-grid aligned | — | `validateSlot` (steps of the plan's duration from **that range's** `opens`) | only grid slots shown | — | "Ese horario no está disponible." |
+| Inside one open range | — | `validateSlot` (`[start, start + slot]` within one range) | only in-range slots shown | — | "Ese horario está fuera del horario de atención." |
+| Slot-grid aligned; a turno is exactly one slot | — | `validateSlot` (steps of **that range's** `slot_minutes` from its `opens`; `ends_at = starts_at + slot_minutes`) | only grid slots shown | — | "Ese horario no está disponible." |
+| Inside the booking window | — | `validateSlot` (`start < bookingWindow(now).to`; skipped for admin reschedules and abono schedules) | `availability` only returns the window | — | "Ese horario todavía no está habilitado para reservar." |
 | Open ranges of a weekday don't overlap (HARD) | `sector_hours_no_overlap` EXCLUDE | (admin form validates) | — | `23P01` | "Dos rangos del mismo día se superponen." |
 | No Google freeBusy overlap (**best-effort**) | — (NOT in the EXCLUDE) | `validateSlot` over `getBusy()` | `availability` subtracts busy | — | "Ese horario ya no está disponible. Elegí otro." |
 
 `validateSlot` and the working-window logic live in
 `supabase/functions/_shared/booking-rules.ts` and are the **single source** used
 by both `availability` (to generate slots) and `create-booking` (to re-validate
-the submitted time), so the two cannot drift.
+the submitted time), so the two cannot drift. `admin-booking` (reschedule),
+`swap-booking` (move) and `membership` (create) use it too, with the window off.
+
+**Slots and window** ([ADR 0012](adr/0012-admin-defined-slots-and-booking-window.md)).
+The grid is the admin's: each `sector_hours` range has a `slot_minutes`, and a
+turno occupies exactly one slot whatever the plan's `duration_minutes` says
+(that is shown to the client only). Capacity per slot is the number of active
+resources. An abono class keeps its plan's length, which must fit in the range
+as well as one slot. How far ahead clients book is `sectors.booking_window`:
+
+- `week` (recovery): the current Mon–Sun week. From `next_week_opens_dow` at
+  `next_week_opens_at` (Sunday 14:00) the next week opens too, and the rest of
+  Sunday stays bookable. Monday 10:00 → until Sunday; Sunday 13:59 → until
+  Sunday; Sunday 14:00 → until the next Sunday.
+- `rolling` (pilates): the next `rolling_days` (14) days.
+
+Neither is a DB constraint: the window depends on `now()`, and a grid trigger
+would tie existing rows to config an admin can edit. Admins may reschedule
+beyond the window (`availability` with `scope: "admin"` lists the next
+`rolling_days` days), never off the grid.
 
 Abono classes add their own rules: see [Memberships](#memberships-abonos) and
 [Moving and swapping classes](#moving-and-swapping-classes).
@@ -215,7 +236,8 @@ fall in the same local week (Mon–Sun) and the same calendar month, so a paid
 month's class never lands in an unpaid one.
 
 - **Move** (`swap-booking` → `move`) updates the same row, so its turno page and
-  emails follow it. `validateSlot` checks the hours, grid and lead; the EXCLUDE
+  emails follow it. `validateSlot` checks the hours, grid and lead (not the
+  client window: the same-week rule is stricter), and the class keeps its length; the EXCLUDE
   and the per-day index arbitrate. One conditional UPDATE re-asserts
   `confirmed` and the notice, so a race returns "Ya no se puede mover esta
   clase."

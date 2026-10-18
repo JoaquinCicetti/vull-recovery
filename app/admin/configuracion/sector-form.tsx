@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { WEEK_ORDER, WEEKDAY_LONG, hm } from "@/lib/membership";
 import {
   Select,
   SelectContent,
@@ -51,6 +52,10 @@ export function SectorForm({
   const [active, setActive] = useState(sector.active);
   const [week, setWeek] = useState<WeekHours>(() => toWeekHours(hours));
   const [tz, setTz] = useState(sector.timezone);
+  const [bookingWin, setBookingWin] = useState(sector.booking_window);
+  const [rollingDays, setRollingDays] = useState(String(sector.rolling_days));
+  const [opensDow, setOpensDow] = useState(String(sector.next_week_opens_dow));
+  const [opensAt, setOpensAt] = useState(hm(sector.next_week_opens_at));
   const [lead, setLead] = useState(String(sector.lead_minutes));
   const [hold, setHold] = useState(String(sector.hold_minutes));
   const [notice, setNotice] = useState(String(sector.cancel_notice_hours));
@@ -79,6 +84,15 @@ export function SectorForm({
       setError(hoursError);
       return;
     }
+    const days = Number(rollingDays);
+    if (bookingWin === "rolling" && !(days >= 1 && days <= 90)) {
+      setError("Se puede reservar con entre 1 y 90 días de anticipación.");
+      return;
+    }
+    if (bookingWin === "week" && !opensAt) {
+      setError("Elegí a qué hora se habilita la semana siguiente.");
+      return;
+    }
     if (Number(hold) < 1) {
       setError("La reserva sin pagar tiene que durar al menos 1 minuto.");
       return;
@@ -101,6 +115,10 @@ export function SectorForm({
         .update({
           active: canHide ? active : true,
           timezone: tz,
+          booking_window: bookingWin,
+          ...(bookingWin === "rolling"
+            ? { rolling_days: days }
+            : { next_week_opens_dow: Number(opensDow), next_week_opens_at: opensAt }),
           lead_minutes: Number(lead) || 0,
           hold_minutes: Number(hold),
           cancel_notice_hours: Number(notice) || 0,
@@ -139,6 +157,65 @@ export function SectorForm({
       )}
 
       <WeekdayHoursEditor idPrefix={sector.id} value={week} onChange={touch(setWeek)} />
+
+      <fieldset className="flex flex-col gap-3">
+        <legend className="mb-2 text-sm text-fg-muted">Ventana de reserva</legend>
+        <div className="flex flex-wrap items-end gap-4">
+          <Select
+            value={bookingWin}
+            onValueChange={(v) => touch(setBookingWin)(v as Sector["booking_window"])}
+          >
+            <SelectTrigger className="w-full sm:w-fit" aria-label="Ventana de reserva">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="week">Semana actual, lunes a domingo</SelectItem>
+              <SelectItem value="rolling">Próximos N días</SelectItem>
+            </SelectContent>
+          </Select>
+          {bookingWin === "rolling" ? (
+            <NumberField
+              id={`${sector.id}-rolling`}
+              label="Días"
+              value={rollingDays}
+              onChange={touch(setRollingDays)}
+            />
+          ) : (
+            <>
+              <Field id={`${sector.id}-opens-dow`} label="La semana siguiente se habilita el">
+                <Select value={opensDow} onValueChange={touch(setOpensDow)}>
+                  <SelectTrigger id={`${sector.id}-opens-dow`} className="w-fit">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {WEEK_ORDER.map((d) => (
+                      <SelectItem key={d} value={String(d)}>
+                        {WEEKDAY_LONG[d]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field id={`${sector.id}-opens-at`} label="a las">
+                <Input
+                  id={`${sector.id}-opens-at`}
+                  type="time"
+                  className="w-fit font-mono"
+                  value={opensAt}
+                  onChange={(e) => touch(setOpensAt)(e.target.value)}
+                  required
+                />
+              </Field>
+            </>
+          )}
+        </div>
+        <p className="text-xs text-fg-faint">
+          {bookingWin === "rolling"
+            ? `Los clientes pueden reservar en los próximos ${rollingDays || "—"} días.`
+            : `Los clientes reservan dentro de la semana en curso. La semana siguiente se habilita el ${WEEKDAY_LONG[Number(opensDow)].toLowerCase()} a las ${opensAt || "—"}.`}{" "}
+          Los admins pueden reprogramar más adelante.
+        </p>
+      </fieldset>
 
       <div className="flex flex-col gap-1.5">
         <Label className="text-fg-muted">Zona horaria</Label>
@@ -280,9 +357,9 @@ function Field({
   );
 }
 
-// The sector's resources (pilates beds). For a single class the DB assigns the
-// first free one; an abono member picks theirs. Resources with turnos can't be
-// deleted, only deactivated.
+// The sector's resources (pilates beds, recovery's places): how many turnos fit
+// in one slot. For a single turno the DB assigns the first free one; an abono
+// member picks theirs. Resources with turnos can't be deleted, only deactivated.
 export function ResourcesEditor({
   sector,
   resources,
@@ -295,6 +372,8 @@ export function ResourcesEditor({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const activeCount = resources.filter((r) => r.active).length;
+  // Pilates has beds; recovery just has places for simultaneous turnos.
+  const noun = sector.slug === "pilates" ? "Cama" : "Lugar";
 
   async function run(op: PromiseLike<{ error: { message: string } | null }>) {
     setBusy(true);
@@ -311,11 +390,11 @@ export function ResourcesEditor({
   function add() {
     const taken = new Set(resources.map((r) => r.name));
     let n = resources.length + 1;
-    while (taken.has(`Cama ${n}`)) n++;
+    while (taken.has(`${noun} ${n}`)) n++;
     run(
       supabase.from("resources").insert({
         sector_id: sector.id,
-        name: `Cama ${n}`,
+        name: `${noun} ${n}`,
         sort_order: resources.length,
       }),
     );
@@ -329,7 +408,7 @@ export function ResourcesEditor({
           <span className="font-mono font-semibold text-fg">{activeCount}</span>
         </span>
         <Button type="button" variant="outline" size="sm" onClick={add} disabled={busy}>
-          Agregar cama
+          Agregar {noun.toLowerCase()}
         </Button>
       </div>
       <ul className="flex flex-col gap-2">
@@ -339,6 +418,7 @@ export function ResourcesEditor({
             resource={r}
             busy={busy}
             lastActive={r.active && activeCount === 1}
+            inactiveLabel={noun === "Cama" ? "Inactiva" : "Inactivo"}
             onSave={(patch) => run(supabase.from("resources").update(patch).eq("id", r.id))}
           />
         ))}
@@ -352,11 +432,13 @@ function ResourceRow({
   resource,
   busy,
   lastActive,
+  inactiveLabel,
   onSave,
 }: {
   resource: Resource;
   busy: boolean;
   lastActive: boolean;
+  inactiveLabel: string;
   onSave: (patch: Partial<Pick<Resource, "name" | "active">>) => void;
 }) {
   const [name, setName] = useState(resource.name);
@@ -376,7 +458,7 @@ function ResourceRow({
       )}
       {!resource.active && (
         <Badge variant="outline" className="text-xs text-fg-faint">
-          Inactiva
+          {inactiveLabel}
         </Badge>
       )}
       <Switch

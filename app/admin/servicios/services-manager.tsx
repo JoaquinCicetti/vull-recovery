@@ -19,6 +19,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+// A plan's duration is what the client reads on its card. The turno itself is
+// one slot of the sector's grid (Disponibilidad); an abono class lasts this long.
+const DURATION_HINT = "Solo informativo. Los turnos los define Disponibilidad.";
+
 // A plan belongs to one sector for good: its turnos are filed under it, so the
 // sector is chosen on creation and not editable afterwards. The same goes for
 // how it is billed: per session (single or pack) or monthly (an abono of N
@@ -155,6 +159,7 @@ export function ServicesManager({
                     onChange={(e) => setDur(e.target.value.replace(/\D/g, ""))}
                     required
                   />
+                  <p className="mt-1 text-xs text-fg-faint">{DURATION_HINT}</p>
                 </div>
                 {monthlyForm ? (
                   <div className="w-28">
@@ -307,6 +312,8 @@ function ServiceRow({ service, sector }: { service: Service; sector?: Sector }) 
               inputMode="numeric"
               value={dur}
               onChange={(e) => setDur(e.target.value.replace(/\D/g, ""))}
+              aria-label="Duración (min)"
+              title={DURATION_HINT}
             />
             {!monthly && (
               <Input
