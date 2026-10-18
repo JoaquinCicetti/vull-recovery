@@ -111,16 +111,29 @@ rate-limited to a handful of emails per hour — fine for a quick test, not for 
 users. Locally nothing is needed: OTP codes land in Mailpit (`:54324`).
 
 ### 4. Edge Functions must be deployed (separate from the frontend)
+Apply the migrations first (`pnpm exec supabase db push`): the functions call
+RPCs the migrations create.
 ```bash
 pnpm exec supabase functions deploy
 ```
 The frontend calls these via `supabase.functions.invoke(...)`; they live on Supabase, not Vercel.
 
-### 5. Abonos cron (`membership-cycle`)
-Set the `MEMBERSHIP_CYCLE_TOKEN` function secret and schedule a daily
-`POST ${SUPABASE_URL}/functions/v1/membership-cycle?token=$MEMBERSHIP_CYCLE_TOKEN`.
-It rolls recurring members into next month; details in `docs/setup.md`
-("membership-cycle (abonos)") and ADR 0011.
+### 5. Crons and their secrets
+Every edge secret is listed in `supabase/.env.secrets.example`; `scripts/deploy.sh`
+warns when a required one is missing (`--strict` fails). Then point an external
+cron (cron-job.org, GitHub Actions…) at each of these:
+
+| Endpoint | Every | Secret |
+|----------|-------|--------|
+| `POST ${SUPABASE_URL}/functions/v1/notify-dispatch?token=$NOTIFY_DISPATCH_TOKEN` | 5 min | `NOTIFY_DISPATCH_TOKEN` |
+| `POST ${SUPABASE_URL}/functions/v1/talo-reconcile?token=$TALO_RECONCILE_TOKEN` | ~10 min | `TALO_RECONCILE_TOKEN` |
+| `POST ${SUPABASE_URL}/functions/v1/membership-cycle?token=$MEMBERSHIP_CYCLE_TOKEN` | daily | `MEMBERSHIP_CYCLE_TOKEN` |
+| `POST ${SUPABASE_URL}/functions/v1/calendar-poll?token=$CALENDAR_POLL_TOKEN` | ~5 min (only with Google) | `CALENDAR_POLL_TOKEN` |
+| `GET ${SUPABASE_URL}/functions/v1/keep-alive` | weekly | — |
+
+`notify-dispatch` sends what the notifications outbox still holds (ADR 0013);
+`membership-cycle` rolls recurring members into next month (ADR 0011). Details
+in `docs/setup.md`.
 
 ---
 

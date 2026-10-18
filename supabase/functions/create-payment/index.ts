@@ -7,7 +7,7 @@
 // method "talo"   → mints a one-time CVU/alias the client transfers to; Talo
 //                   settles it automatically (talo-webhook / talo-reconcile).
 // method "manual" → records a receipt for admin review (the $0 fallback).
-// method "mobbex" → legacy, switched off; removed once Talo is proven in prod.
+// (The legacy Mobbex method is gone with its webhook; ADR 0010.)
 //
 // The amount is ALWAYS taken server-side from the services row, never from the
 // client, and the two online/manual paths are mutually exclusive so one purchase
@@ -15,8 +15,7 @@
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { responder, errMessage } from "../_shared/cors.ts";
 import { adminClient, userClient } from "../_shared/supabase.ts";
-import { notifyAdmins, notifyAdminsPackToVerify } from "../_shared/email.ts";
-import { notifyAdminsMembershipToVerify } from "../_shared/membership-email.ts";
+import { emit, kick } from "../_shared/notify.ts";
 import { MEMBERSHIP_ACTIVE_LIST, PAYABLE_LIST } from "../_shared/booking-status.ts";
 import { canUseSector, type Sector } from "../_shared/sector.ts";
 import {
@@ -382,44 +381,17 @@ async function startTalo(admin: SupabaseClient, opts: {
   return { ok: false, error: "No se pudo iniciar el pago", status: 500 };
 }
 
-// ── Legacy Mobbex checkout (switched off; removed once Talo is live) ──────────
-async function mobbexCheckout(opts: {
-  amount: number;
-  reference: string;
-  description: string;
-  email?: string;
-  name?: string;
-  returnUrl: string;
-}) {
-  const apiKey = Deno.env.get("MOBBEX_API_KEY");
-  const accessToken = Deno.env.get("MOBBEX_ACCESS_TOKEN");
-  if (!apiKey || !accessToken) return { error: "unconfigured" as const };
-  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-  const secret = Deno.env.get("MOBBEX_WEBHOOK_SECRET") ?? "";
-  const webhookUrl = `${supabaseUrl}/functions/v1/mobbex-webhook${
-    secret ? `?token=${encodeURIComponent(secret)}` : ""
-  }`;
-  const res = await fetch("https://api.mobbex.com/p/checkout", {
-    method: "POST",
-    headers: {
-      "x-api-key": apiKey,
-      "x-access-token": accessToken,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      total: opts.amount,
-      currency: "ARS",
-      reference: opts.reference,
-      description: opts.description,
-      customer: { email: opts.email, name: opts.name ?? opts.email },
-      return_url: opts.returnUrl,
-      webhook: webhookUrl,
-      test: (Deno.env.get("MOBBEX_TEST") ?? "false") === "true",
-    }),
+// A receipt waits for a human: queue "por verificar" for the admins (once per
+// payment) and send it after the response.
+async function receiptToVerify(admin: SupabaseClient, paymentId: string, userId: string) {
+  await emit(admin, {
+    kind: "payment_to_verify",
+    subject: paymentId,
+    audience: "admins",
+    actor: "client",
+    user: userId,
   });
-  const out = await res.json().catch(() => null);
-  if (!res.ok || !out?.data?.url) return { error: "checkout_failed" as const, detail: out };
-  return { url: out.data.url as string, id: out.data.id as string };
+  kick(admin);
 }
 
 Deno.serve(async (req) => {
@@ -431,7 +403,7 @@ Deno.serve(async (req) => {
     if (!booking_id && !pack_service_id && !membership_period_id) {
       return json({ error: "Falta booking_id, pack_service_id o membership_period_id" }, 400);
     }
-    if (!["talo", "manual", "mobbex"].includes(method)) {
+    if (!["talo", "manual"].includes(method)) {
       return json({ error: "Método de pago inválido" }, 400);
     }
 
@@ -497,7 +469,7 @@ Deno.serve(async (req) => {
         if (insErr || !packPay) {
           return json({ error: "No se pudo registrar el comprobante" }, 500);
         }
-        await notifyAdminsPackToVerify(admin, packPay.id);
+        await receiptToVerify(admin, packPay.id, user.id);
         return json({ ok: true });
       }
 
@@ -516,45 +488,11 @@ Deno.serve(async (req) => {
         return json(out.data);
       }
 
-      // Mobbex (legacy): create the pack payment row first so its id is the reference.
-      const { data: pay, error: payErr } = await admin
-        .from("payments")
-        .insert({
-          kind: "pack",
-          service_id: pack.id,
-          user_id: user.id,
-          provider: "mobbex",
-          amount_ars: amount,
-          status: "pending",
-        })
-        .select("id")
-        .single();
-      if (payErr || !pay) return json({ error: "No se pudo iniciar el pago" }, 500);
-
-      const co = await mobbexCheckout({
-        amount,
-        reference: pay.id,
-        description: `${pack.name}`,
-        email: user.email,
-        name: profile?.full_name ?? undefined,
-        returnUrl: `${appUrl}/comprar/exito?ref=${pay.id}`,
-      });
-      if ("error" in co) {
-        return json(
-          { error: co.error === "unconfigured" ? "Pagos online no configurados" : "No se pudo iniciar el pago" },
-          co.error === "unconfigured" ? 503 : 502,
-        );
-      }
-      await admin
-        .from("payments")
-        .update({ mobbex_checkout_id: co.id, external_reference: pay.id })
-        .eq("id", pay.id);
-      return json({ url: co.url, checkout_id: co.id });
+      return json({ error: "Método de pago inválido" }, 400);
     }
 
     // ══ ABONO CUOTA ══════════════════════════════════════════════════════════
     if (membership_period_id) {
-      if (method === "mobbex") return json({ error: "Método de pago inválido" }, 400);
       const { data: per } = await admin
         .from("membership_periods_v")
         .select("id, membership_id, user_id, period, status, amount_due_ars, membership_status")
@@ -617,7 +555,7 @@ Deno.serve(async (req) => {
               .eq("status", "pending"),
           ]);
         }
-        await notifyAdminsMembershipToVerify(admin, pay.id);
+        await receiptToVerify(admin, pay.id, user.id);
         return json({ ok: true });
       }
 
@@ -691,22 +629,22 @@ Deno.serve(async (req) => {
         }
         await retire(admin, live);
       }
-      const { error: insErr } = await admin.from("payments").insert({
+      const { data: bookPay, error: insErr } = await admin.from("payments").insert({
         booking_id,
         provider: "manual",
         amount_ars: amount,
         status: "pending",
         receipt_path,
         external_reference: booking_id,
-      });
-      if (insErr) {
+      }).select("id").single();
+      if (insErr || !bookPay) {
         return json({ error: "No se pudo registrar el comprobante" }, 500);
       }
       await admin
         .from("bookings")
         .update({ status: "awaiting_payment" })
         .eq("id", booking_id);
-      await notifyAdmins(admin, "payment_to_verify", booking_id);
+      await receiptToVerify(admin, bookPay.id, user.id);
       return json({ ok: true });
     }
 
@@ -729,47 +667,7 @@ Deno.serve(async (req) => {
       return json(out.data);
     }
 
-    // Mobbex (legacy)
-    const co = await mobbexCheckout({
-      amount,
-      reference: booking_id,
-      description: `${booking.services?.name ?? "Turno"} — ${booking_id.slice(0, 8)}`,
-      email: user.email,
-      name: profile?.full_name ?? undefined,
-      returnUrl: `${appUrl}/turno/${booking_id}`,
-    });
-    if ("error" in co) {
-      return json(
-        { error: co.error === "unconfigured" ? "Pagos online no configurados" : "No se pudo iniciar el pago", detail: co.detail },
-        co.error === "unconfigured" ? 503 : 502,
-      );
-    }
-    const { data: existing } = await admin
-      .from("payments")
-      .select("id")
-      .eq("booking_id", booking_id)
-      .eq("provider", "mobbex")
-      .maybeSingle();
-    if (existing) {
-      await admin
-        .from("payments")
-        .update({ mobbex_checkout_id: co.id, amount_ars: amount, status: "pending" })
-        .eq("id", existing.id);
-    } else {
-      await admin.from("payments").insert({
-        booking_id,
-        provider: "mobbex",
-        amount_ars: amount,
-        status: "pending",
-        mobbex_checkout_id: co.id,
-        external_reference: booking_id,
-      });
-    }
-    await admin
-      .from("bookings")
-      .update({ status: "awaiting_payment" })
-      .eq("id", booking_id);
-    return json({ url: co.url, checkout_id: co.id });
+    return json({ error: "Método de pago inválido" }, 400);
   } catch (e) {
     return json({ error: errMessage(e) }, 500);
   }

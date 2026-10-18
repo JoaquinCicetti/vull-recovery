@@ -9,7 +9,7 @@
 // subscription (browser/device). Validate early against one live subscription
 // before relying on it in production; a subtle bug is silent non-delivery.
 
-function b64urlToBytes(s: string): Uint8Array {
+function b64urlToBytes(s: string): Uint8Array<ArrayBuffer> {
   s = s.replace(/-/g, "+").replace(/_/g, "/");
   const pad = s.length % 4 ? 4 - (s.length % 4) : 0;
   const bin = atob(s + "=".repeat(pad));
@@ -22,7 +22,7 @@ function bytesToB64url(b: Uint8Array): string {
   for (const x of b) s += String.fromCharCode(x);
   return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
-function concat(...parts: Uint8Array[]): Uint8Array {
+function concat(...parts: Uint8Array[]): Uint8Array<ArrayBuffer> {
   const len = parts.reduce((n, p) => n + p.length, 0);
   const out = new Uint8Array(len);
   let o = 0;
@@ -83,11 +83,11 @@ async function vapidAuthHeader(endpoint: string): Promise<string> {
 }
 
 async function hkdf(
-  salt: Uint8Array,
-  ikm: Uint8Array,
-  info: Uint8Array,
+  salt: Uint8Array<ArrayBuffer>,
+  ikm: Uint8Array<ArrayBuffer>,
+  info: Uint8Array<ArrayBuffer>,
   len: number,
-): Promise<Uint8Array> {
+): Promise<Uint8Array<ArrayBuffer>> {
   const key = await crypto.subtle.importKey("raw", ikm, "HKDF", false, ["deriveBits"]);
   const bits = await crypto.subtle.deriveBits(
     { name: "HKDF", hash: "SHA-256", salt, info },
@@ -101,7 +101,7 @@ async function encryptPayload(
   payload: string,
   p256dh: string,
   authSecretB64: string,
-): Promise<Uint8Array> {
+): Promise<Uint8Array<ArrayBuffer>> {
   const uaPub = b64urlToBytes(p256dh); // 65
   const authSecret = b64urlToBytes(authSecretB64); // 16
   const as = await crypto.subtle.generateKey(
@@ -150,7 +150,8 @@ async function encryptPayload(
 export type PushSub = { endpoint: string; p256dh: string; auth: string };
 
 // Returns the HTTP status (0 when VAPID is unconfigured). 404/410 mean the
-// subscription is gone and the caller should delete it.
+// subscription is gone and the caller should delete it; any other non-2xx is
+// logged here with the `[notify]` prefix.
 export async function sendPush(sub: PushSub, payload: string): Promise<number> {
   if (!vapidConfigured()) return 0;
   const [auth, body] = await Promise.all([
@@ -167,5 +168,19 @@ export async function sendPush(sub: PushSub, payload: string): Promise<number> {
     },
     body,
   });
+  if (!res.ok) {
+    // 404/410 are expected (a device unsubscribed; the caller prunes it).
+    // Anything else is a real failure worth seeing in the logs.
+    const detail = await res.text().catch(() => "");
+    if (res.status !== 404 && res.status !== 410) {
+      console.error("[notify] push failed", {
+        status: res.status,
+        host: new URL(sub.endpoint).host,
+        body: detail.slice(0, 300),
+      });
+    }
+  } else {
+    await res.body?.cancel();
+  }
   return res.status;
 }

@@ -9,12 +9,14 @@
 // Latency shape: the browser waits on this whole function, and from the edge
 // region to the DB every round trip costs ~20–180 ms, so the checks run in two
 // parallel phases and everything that is not needed to answer (calendar event,
-// emails, push) runs AFTER the response via defer(). Only the insert decides.
+// notices) runs AFTER the response via defer()/kick(). Only the insert decides.
+// The notices are outbox rows (ADR 0013): book_with_credit queues its own, the
+// pending path queues booking_received right after its insert.
 import { responder, errMessage } from "../_shared/cors.ts";
 import { adminClient, userClient } from "../_shared/supabase.ts";
 import { createEvent, getBusy } from "../_shared/google.ts";
-import { sendBookingReceived, sendBookingConfirmation, notifyAdmins } from "../_shared/email.ts";
 import { defer } from "../_shared/background.ts";
+import { dispatch, emit, kick } from "../_shared/notify.ts";
 import { housekeeping } from "../_shared/membership.ts";
 import { localYMD, zonedToUtc } from "../_shared/time.ts";
 import { type Busy, validateSlot } from "../_shared/booking-rules.ts";
@@ -200,8 +202,7 @@ Deno.serve(async (req) => {
         `Turno ${booking.id} (crédito)`,
         "confirmed",
       );
-      defer(() => sendBookingConfirmation(admin, booking.id));
-      defer(() => notifyAdmins(admin, "booking_confirmed", booking.id));
+      kick(admin);
       return json({ booking });
     }
 
@@ -234,8 +235,18 @@ Deno.serve(async (req) => {
       `Reserva ${booking.id} (pago pendiente)`,
       "tentative",
     );
-    // Acknowledge the held reservation (best-effort; no-ops if email unset).
-    defer(() => sendBookingReceived(admin, booking.id));
+    // Acknowledge the held reservation (email only; the client's, never the
+    // admins': they hear once it is paid).
+    defer(async () => {
+      await emit(admin, {
+        kind: "booking_received",
+        subject: booking.id,
+        audience: "user",
+        actor: "client",
+        user: user.id,
+      });
+      await dispatch(admin);
+    });
 
     return json({ booking });
   } catch (e) {

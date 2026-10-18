@@ -22,6 +22,7 @@
 import { json, errMessage } from "../_shared/cors.ts";
 import { adminClient } from "../_shared/supabase.ts";
 import { settleTaloPayment } from "../_shared/talo-settle.ts";
+import { dispatch } from "../_shared/notify.ts";
 import { timingSafeEqual } from "jsr:@std/crypto@1/timing-safe-equal";
 
 async function sha256(s: string): Promise<Uint8Array> {
@@ -50,7 +51,11 @@ Deno.serve(async (req) => {
     // Non-payment pings (or malformed) — acknowledge and ignore.
     if (!paymentId) return json({ ok: true });
 
-    const out = await settleTaloPayment(adminClient(), paymentId);
+    const admin = adminClient();
+    const out = await settleTaloPayment(admin, paymentId);
+    // Send what the settle queued before answering: a webhook has no "after
+    // the response". A failure here stays in the outbox for notify-dispatch.
+    await dispatch(admin).catch((e) => console.error("[notify] dispatch failed", e));
     // 5xx invites Talo to retry, which is what we want for a transient failure.
     return json({ ok: out.status < 400, result: out.result }, out.status);
   } catch (e) {

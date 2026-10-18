@@ -5,11 +5,10 @@ import { useRouter } from "next/navigation";
 import { Check, Laptop, Smartphone } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { fmtDate } from "@/lib/format";
+import { currentEndpoint, PUSH_PROBLEM, pushProblem, subscribeThisDevice } from "@/lib/push";
 import { Section, SettingRow } from "@/components/account/section";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-
-const VAPID = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
 
 export type PushDevice = {
   id: string;
@@ -19,19 +18,14 @@ export type PushDevice = {
 };
 
 // What this browser can do right now.
-//   unsupported → no Web Push here (or VAPID not configured)
-//   denied      → the user blocked the site's notifications in the browser
-//   off / on    → can subscribe / is subscribed (see `endpoint`)
-type Support = "loading" | "unsupported" | "denied" | "off" | "on";
+//   unsupported   → no Web Push here (or VAPID not configured)
+//   needs_install → iPhone/iPad outside the installed app
+//   denied        → the user blocked the site's notifications in the browser
+//   off / on      → can subscribe / is subscribed (see `endpoint`)
+type Support = "loading" | "unsupported" | "needs_install" | "denied" | "off" | "on";
 
-function urlBase64ToUint8Array(base64: string): Uint8Array {
-  const pad = "=".repeat((4 - (base64.length % 4)) % 4);
-  const b64 = (base64 + pad).replace(/-/g, "+").replace(/_/g, "/");
-  const raw = atob(b64);
-  const out = new Uint8Array(raw.length);
-  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
-  return out;
-}
+const ONE_CHANNEL =
+  "Necesitás al menos un canal: es como te enteramos si cancelamos o cambiamos un turno.";
 
 // "Chrome · Android" from a user agent. Good enough to tell your own devices apart.
 function describe(ua: string | null): { label: string; mobile: boolean } {
@@ -67,10 +61,12 @@ function describe(ua: string | null): { label: string; mobile: boolean } {
 }
 
 const EVENTS = [
-  ["Reserva recibida", "Cuando reservás y falta el pago."],
+  ["Reserva recibida", "Cuando reservás y falta el pago (solo por email)."],
   ["Turno confirmado", "Cuando se acredita el pago o usás una sesión."],
-  ["Turno cancelado", "Si lo cancelás vos o lo cancela VULL."],
+  ["Turno cancelado o reprogramado", "Si lo cancelás vos, o si VULL lo cancela o le cambia el horario."],
+  ["Comprobante rechazado", "Si no pudimos verificar un pago que subiste."],
   ["Sesiones acreditadas", "Cuando se aprueba la compra de un pack."],
+  ["Abono", "Cuota acreditada, lugar liberado y propuestas de intercambio."],
 ];
 
 // Notification preferences + the devices that receive push.
@@ -80,6 +76,11 @@ const EVENTS = [
 //     this at all", applies everywhere;
 //   * the DEVICE registration (push_subscriptions) — a browser has to subscribe
 //     before it can receive anything, and can be removed on its own.
+//
+// At least one channel stays on (profiles_one_channel in the DB): the last one
+// can't be switched off. Push only turns on once a device really subscribed
+// (lib/push.ts verifies support, the installed app on iOS and permission
+// first), so "push on" always means a device can receive it.
 export function NotificationCenter({
   userId,
   email,
@@ -103,21 +104,11 @@ export function NotificationCenter({
   const [error, setError] = useState<string | null>(null);
 
   const detect = useCallback(async () => {
-    const supported =
-      Boolean(VAPID) &&
-      "serviceWorker" in navigator &&
-      "PushManager" in window &&
-      "Notification" in window;
-    if (!supported) return setSupport("unsupported");
-    if (Notification.permission === "denied") return setSupport("denied");
-    try {
-      const reg = await navigator.serviceWorker.getRegistration();
-      const sub = await reg?.pushManager.getSubscription();
-      setEndpoint(sub?.endpoint ?? null);
-      setSupport(sub ? "on" : "off");
-    } catch {
-      setSupport("off");
-    }
+    const problem = pushProblem();
+    if (problem) return setSupport(problem === "dismissed" || problem === "failed" ? "off" : problem);
+    const here = await currentEndpoint();
+    setEndpoint(here);
+    setSupport(here ? "on" : "off");
   }, []);
 
   useEffect(() => {
@@ -130,56 +121,65 @@ export function NotificationCenter({
     setError(null);
     const { error } = await supabase.from("profiles").update(patch).eq("id", userId);
     if (error) {
-      setError("No se pudo guardar. Probá de nuevo.");
+      // 23514 = profiles_one_channel: the DB refuses to leave no channel on.
+      setError(error.code === "23514" ? ONE_CHANNEL : "No se pudo guardar. Probá de nuevo.");
       // Roll the optimistic toggle back so the UI matches the stored value.
       if (patch.notify_email !== undefined) setEmailOn(!patch.notify_email);
       if (patch.notify_push !== undefined) setPushOn(!patch.notify_push);
+      return false;
     }
+    return true;
   }
 
+  // Subscribe THIS device; on success push is on (it can now be delivered).
   async function enableHere() {
-    if (!VAPID) return;
     setBusy("here");
     setError(null);
     try {
-      const reg = await navigator.serviceWorker.register("/sw.js");
-      const perm = await Notification.requestPermission();
-      if (perm !== "granted") {
-        setSupport(perm === "denied" ? "denied" : "off");
-        return;
+      const res = await subscribeThisDevice(supabase, userId);
+      if (!res.ok) {
+        setError(PUSH_PROBLEM[res.problem]);
+        await detect();
+        return false;
       }
-      const sub = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(VAPID) as BufferSource,
-      });
-      const json = sub.toJSON();
-      if (!json.keys) throw new Error("no keys");
-      const { error } = await supabase.from("push_subscriptions").upsert(
-        {
-          user_id: userId,
-          endpoint: sub.endpoint,
-          p256dh: json.keys.p256dh,
-          auth: json.keys.auth,
-          user_agent: navigator.userAgent,
-          last_seen_at: new Date().toISOString(),
-        },
-        { onConflict: "endpoint" },
-      );
-      if (error) throw error;
-      setEndpoint(sub.endpoint);
+      setEndpoint(res.endpoint);
       setSupport("on");
+      if (!pushOn) {
+        setPushOn(true);
+        await savePref({ notify_push: true });
+      }
       router.refresh();
-    } catch {
-      setError("No se pudo activar en este dispositivo.");
-      await detect();
+      return true;
     } finally {
       setBusy(null);
     }
   }
 
+  // Turning push on needs a device that can receive it: one already
+  // registered, or this one, verified and subscribed first. On failure the
+  // preference stays off and the reason is shown.
+  async function togglePush(on: boolean) {
+    if (!on) {
+      setPushOn(false);
+      await savePref({ notify_push: false });
+      return;
+    }
+    if (devices.length > 0) {
+      setPushOn(true);
+      await savePref({ notify_push: true });
+      return;
+    }
+    await enableHere();
+  }
+
   // Remove a device. For THIS browser that also means dropping the browser-side
   // subscription, or it would keep an endpoint the server no longer knows.
   async function remove(d: { id?: string; endpoint: string }) {
+    const last = devices.length === 1;
+    if (last && pushOn && !emailOn) {
+      setError("Prendé el email antes de quitar tu último dispositivo: si no, no te llegaría ningún aviso.");
+      return;
+    }
     setBusy(d.endpoint);
     setError(null);
     try {
@@ -196,6 +196,11 @@ export function NotificationCenter({
         .eq("user_id", userId)
         .eq("endpoint", d.endpoint);
       if (error) throw error;
+      // No device left: push can't reach anyone, so say so in the preference.
+      if (last && pushOn) {
+        setPushOn(false);
+        await savePref({ notify_push: false });
+      }
       router.refresh();
     } catch {
       setError("No se pudo quitar el dispositivo.");
@@ -205,14 +210,18 @@ export function NotificationCenter({
   }
 
   const hereRegistered = endpoint != null && devices.some((d) => d.endpoint === endpoint);
-  const silent = !emailOn && (!pushOn || devices.length === 0);
+  // Push on but no device left (every one unsubscribed or expired) and email off.
+  const silent = !emailOn && devices.length === 0;
+  // The last channel on can't be switched off, nor email while push has no device.
+  const emailLocked = emailOn && (!pushOn || devices.length === 0);
+  const pushLocked = pushOn && !emailOn;
 
   return (
     <>
       {silent && (
         <p className="mb-6 rounded-md border border-amber-400/25 bg-amber-400/5 px-4 py-3 text-sm text-amber-300">
-          Ahora no te llega ningún aviso. Vas a tener que entrar a la app para ver el estado
-          de tus turnos.
+          Ningún dispositivo recibe tus avisos push. Activá este dispositivo o prendé el email.
+          Si cancelamos o cambiamos un turno, te avisamos por email igual.
         </p>
       )}
 
@@ -224,11 +233,17 @@ export function NotificationCenter({
           <SettingRow
             htmlFor="notify-email"
             label="Email"
-            help={email ? <span className="font-mono">{email}</span> : "Sin email cargado"}
+            help={
+              <>
+                {email ? <span className="font-mono">{email}</span> : "Sin email cargado"}
+                {emailLocked && <span className="mt-0.5 block">{ONE_CHANNEL}</span>}
+              </>
+            }
             control={
               <Switch
                 id="notify-email"
                 checked={emailOn}
+                disabled={emailLocked}
                 onCheckedChange={(v) => {
                   setEmailOn(v);
                   void savePref({ notify_email: v });
@@ -240,20 +255,20 @@ export function NotificationCenter({
             htmlFor="notify-push"
             label="Notificaciones push"
             help={
-              !pushOn
-                ? "Apagadas en todos tus dispositivos"
-                : devices.length === 0
-                  ? "Activá al menos un dispositivo abajo"
-                  : `En ${devices.length} ${devices.length === 1 ? "dispositivo" : "dispositivos"}`
+              pushLocked
+                ? ONE_CHANNEL
+                : !pushOn
+                  ? "Apagadas. Al prenderlas activamos este dispositivo."
+                  : devices.length === 0
+                    ? "Activá al menos un dispositivo abajo"
+                    : `En ${devices.length} ${devices.length === 1 ? "dispositivo" : "dispositivos"}`
             }
             control={
               <Switch
                 id="notify-push"
                 checked={pushOn}
-                onCheckedChange={(v) => {
-                  setPushOn(v);
-                  void savePref({ notify_push: v });
-                }}
+                disabled={pushLocked || busy !== null}
+                onCheckedChange={(v) => void togglePush(v)}
               />
             }
           />
@@ -264,20 +279,15 @@ export function NotificationCenter({
         title="Dispositivos"
         description="Cada navegador o teléfono se activa por separado."
       >
-        <div
-          className={`surface-card divide-y divide-border transition-opacity duration-150 ${
-            pushOn ? "" : "opacity-50"
-          }`}
-        >
+        <div className="surface-card divide-y divide-border">
           <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
             <div className="min-w-0">
               <p className="text-sm font-medium text-fg">Este dispositivo</p>
               <p className="mt-0.5 text-xs text-fg-faint">
                 {support === "loading" && "Comprobando…"}
-                {support === "unsupported" &&
-                  "Este navegador no admite notificaciones push. En iPhone, agregá VULL a la pantalla de inicio y abrila desde ahí."}
-                {support === "denied" &&
-                  "Bloqueaste las notificaciones de este sitio. Habilitalas desde el candado de la barra de direcciones y recargá."}
+                {support === "unsupported" && PUSH_PROBLEM.unsupported}
+                {support === "needs_install" && PUSH_PROBLEM.needs_install}
+                {support === "denied" && PUSH_PROBLEM.denied}
                 {support === "off" && "Todavía no recibe avisos."}
                 {support === "on" &&
                   (hereRegistered ? "Recibe avisos." : "Hay que volver a activarlo.")}
@@ -289,7 +299,7 @@ export function NotificationCenter({
               </span>
             ) : (
               (support === "off" || support === "on") && (
-                <Button size="sm" onClick={enableHere} disabled={busy !== null || !pushOn}>
+                <Button size="sm" onClick={() => void enableHere()} disabled={busy !== null}>
                   {busy === "here" ? "Activando…" : "Activar"}
                 </Button>
               )
@@ -339,7 +349,8 @@ export function NotificationCenter({
           ))}
         </ul>
         <p className="mt-3 text-xs text-fg-faint">
-          Son avisos sobre tus propios turnos. No enviamos publicidad.
+          Son avisos sobre tus propios turnos. No enviamos publicidad. Si VULL cancela o
+          cambia tu turno y ningún canal tuyo puede recibirlo, te avisamos por email igual.
         </p>
       </Section>
     </>

@@ -8,13 +8,16 @@
 // on a manual row it means "no money arrived"; on a Talo row the pesos are
 // already in the account and cannot be declined, so rejecting one is only
 // allowed once Talo confirms nothing was received (or it was refunded).
+//
+// Notices (ADR 0013): approving queues the client's confirmation inside the
+// RPC with actor 'admin', so the other admins are not told; rejecting queues
+// payment_rejected for the client. kick() sends them after the response.
 import { responder, errMessage } from "../_shared/cors.ts";
 import { adminClient, userClient } from "../_shared/supabase.ts";
 import { patchEventStatus } from "../_shared/google.ts";
-import { sendBookingConfirmation, sendPackConfirmation } from "../_shared/email.ts";
 import { CONFIRMABLE_LIST } from "../_shared/booking-status.ts";
 import { getTaloPayment, setTaloExpiration } from "../_shared/talo.ts";
-import { sendMembershipConfirmation } from "../_shared/membership-email.ts";
+import { emit, kick } from "../_shared/notify.ts";
 
 Deno.serve(async (req) => {
   const { json, options } = responder(req);
@@ -41,7 +44,7 @@ Deno.serve(async (req) => {
     const { data: pay } = await admin
       .from("payments")
       .select(
-        "id, booking_id, kind, service_id, user_id, membership_period_id, status, provider, talo_payment_id, reversed_at",
+        "id, booking_id, kind, service_id, user_id, membership_period_id, status, provider, talo_payment_id, reversed_at, bookings(user_id)",
       )
       .eq("id", payment_id)
       .single();
@@ -102,6 +105,17 @@ Deno.serve(async (req) => {
       if (pay.kind === "membership" && pay.membership_period_id) {
         await reopenSignupHold(admin, pay.membership_period_id);
       }
+      // The client hears why their payment didn't go through (was silent).
+      await emit(admin, {
+        kind: "payment_rejected",
+        subject: pay.id,
+        audience: "user",
+        actor: "admin",
+        // deno-lint-ignore no-explicit-any
+        user: pay.user_id ?? (pay.bookings as any)?.user_id ?? null,
+        payload: { kind: pay.kind },
+      });
+      kick(admin);
       return json({ ok: true });
     }
 
@@ -135,6 +149,7 @@ Deno.serve(async (req) => {
       const { data: res, error } = await admin.rpc("approve_membership_period", {
         p_period: pay.membership_period_id,
         p_payment: pay.id,
+        p_actor: "admin",
       });
       if (error) return json({ error: "No se pudo aprobar la cuota." }, 500);
       if (res === "no_slot" || res === "not_found") {
@@ -156,7 +171,7 @@ Deno.serve(async (req) => {
         .from("payments")
         .update({ status: "approved", admin_flag: null })
         .eq("id", payment_id);
-      await sendMembershipConfirmation(admin, pay.membership_period_id);
+      kick(admin);
       return json({ ok: true });
     }
 
@@ -167,23 +182,16 @@ Deno.serve(async (req) => {
         .from("payments")
         .update({ status: "approved", admin_flag: null })
         .eq("id", payment_id);
-      const { data: granted } = await admin.rpc("grant_pack_credits", {
-        p_payment_id: payment_id,
-      });
-      // Tell the client their sessions are live (best-effort; was silent before).
-      if (granted) await sendPackConfirmation(admin, payment_id);
+      // Queues the client's "sesiones acreditadas" (idempotent per payment).
+      await admin.rpc("grant_pack_credits", { p_payment_id: payment_id, p_actor: "admin" });
+      kick(admin);
       return json({ ok: true });
     }
 
     // Booking payment. Confirm the booking FIRST and only mark the money as
-    // approved if that actually succeeded.
-    //
-    // Previously the payment was flipped to `approved` up front, the booking
-    // UPDATE ran with its error discarded, and the confirmation email was sent
-    // unconditionally. If the hold had lapsed (booking `expired`/`cancelled`) and
-    // someone else had taken the slot, the UPDATE hit the bookings_no_overlap
-    // EXCLUDE constraint (23P01), the error was dropped, and the client was told
-    // "turno confirmado" for a slot that belongs to another client.
+    // approved if that actually succeeded (confirm_booking does both under one
+    // row lock). If the hold lapsed and someone else took the slot, the client
+    // must not be told "turno confirmado" for a slot that belongs to another.
     const { data: booking } = await admin
       .from("bookings")
       .select("id, google_event_id, status")
@@ -210,28 +218,30 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { error: updErr } = await admin
-      .from("bookings")
-      .update({ status: "confirmed", hold_expires_at: null })
-      .eq("id", booking.id)
-      .in("status", CONFIRMABLE_LIST);
-    if (updErr) {
+    const { data: res, error: rpcErr } = await admin.rpc("confirm_booking", {
+      p_booking: booking.id,
+      p_payment: payment_id,
+      p_actor: "admin",
+    });
+    if (rpcErr || res === "gone") {
       // 23P01 = the slot was taken while this payment sat in the queue.
       return json(
         {
-          error:
-            updErr.code === "23P01"
-              ? "Ese horario ya fue tomado por otro turno. Reprogramá este turno antes de aprobar el pago."
-              : "No se pudo confirmar el turno. El pago quedó pendiente.",
+          error: rpcErr?.code === "23P01"
+            ? "Ese horario ya fue tomado por otro turno. Reprogramá este turno antes de aprobar el pago."
+            : res === "gone"
+            ? "El turno ya no está activo (venció o fue cancelado). Reprogramalo desde el turno o rechazá el pago y devolvé el dinero."
+            : "No se pudo confirmar el turno. El pago quedó pendiente.",
         },
         409,
       );
     }
-
-    await admin
-      .from("payments")
-      .update({ status: "approved", admin_flag: null })
-      .eq("id", payment_id);
+    if (res === "already") {
+      await admin
+        .from("payments")
+        .update({ status: "approved", admin_flag: null })
+        .eq("id", payment_id);
+    }
 
     if (booking.google_event_id) {
       try {
@@ -240,9 +250,7 @@ Deno.serve(async (req) => {
         /* calendar best-effort */
       }
     }
-    // Email the confirmation receipt (best-effort; no-ops if email unset).
-    await sendBookingConfirmation(admin, booking.id);
-
+    kick(admin);
     return json({ ok: true });
   } catch (e) {
     return json({ error: errMessage(e) }, 500);

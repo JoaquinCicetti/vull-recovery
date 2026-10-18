@@ -11,6 +11,8 @@
 //
 // Every rule is in SQL (create_membership & co., service-role only); this
 // function authenticates, shape-checks and maps errors (_shared/membership.ts).
+// Notices: a client who stops renewing tells the admins (queued by
+// set_membership_locked, ADR 0013); a signup tells them once it is paid.
 import { responder, errMessage } from "../_shared/cors.ts";
 import { adminClient, userClient } from "../_shared/supabase.ts";
 import {
@@ -26,6 +28,7 @@ import { validateSlot } from "../_shared/booking-rules.ts";
 import { sectorSettings } from "../_shared/sector.ts";
 import { setTaloExpiration } from "../_shared/talo.ts";
 import { localYMD, parseHM, zonedToUtc } from "../_shared/time.ts";
+import { kick } from "../_shared/notify.ts";
 
 Deno.serve(async (req) => {
   const { json, options } = responder(req);
@@ -108,6 +111,7 @@ Deno.serve(async (req) => {
       const { data, error } = await admin.rpc("set_membership_locked", {
         p_membership: id,
         p_locked: Boolean(body.locked),
+        p_actor: "client",
       });
       if (error) {
         const e = mapDbError(error);
@@ -122,6 +126,7 @@ Deno.serve(async (req) => {
           .eq("status", "void");
         await killLivePeriodPayments(admin, (voided ?? []).map((p) => p.id), setTaloExpiration);
       }
+      kick(admin);
       return json({ membership: data });
     }
 

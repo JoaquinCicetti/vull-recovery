@@ -13,6 +13,10 @@
 //                                     last paid month are cancelled
 //   set_locked { membership_id, locked }
 //   cycle      {}                     run the lazy maintenance now
+//
+// Notices (ADR 0013): the RPCs queue the client's (cuota paid, place
+// released) with actor 'admin', so the other admins are not told; a desk sale
+// queues membership_created_by_admin here. kick() sends them after the response.
 import { responder, errMessage } from "../_shared/cors.ts";
 import { adminClient, userClient } from "../_shared/supabase.ts";
 import { isAdminUser, loadServiceWithSector } from "../_shared/sector.ts";
@@ -23,13 +27,8 @@ import {
   parseDate,
   parseSlots,
 } from "../_shared/membership.ts";
-import {
-  sendMembershipConfirmation,
-  sendMembershipCreatedByAdmin,
-  sendMembershipReleased,
-} from "../_shared/membership-email.ts";
 import { setTaloExpiration } from "../_shared/talo.ts";
-import { defer } from "../_shared/background.ts";
+import { emit, kick } from "../_shared/notify.ts";
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -47,6 +46,7 @@ Deno.serve(async (req) => {
 
     if (action === "cycle") {
       const { data } = await admin.rpc("housekeeping");
+      kick(admin); // a roll collision queues an alert
       return json({ ok: true, result: data });
     }
 
@@ -116,8 +116,17 @@ Deno.serve(async (req) => {
         // admin will most likely retry with another bed).
         return json({ error: m.error }, m.status);
       }
-      const membershipId = data.membership.id as string;
-      defer(() => sendMembershipCreatedByAdmin(admin, membershipId, { paid, newAccount: created }));
+      // The client may not even have signed in yet: this notice is how they
+      // learn they have a place, so it goes by email whatever the preferences.
+      await emit(admin, {
+        kind: "membership_created_by_admin",
+        subject: data.membership.id as string,
+        audience: "user",
+        actor: "admin",
+        user: clientId,
+        payload: { paid, new_account: created },
+      });
+      kick(admin);
       return json({
         membership: data.membership,
         period: data.period,
@@ -140,7 +149,7 @@ Deno.serve(async (req) => {
       if (res === "no_slot" || res === "not_found") {
         return json({ error: "El abono ya no está activo." }, 409);
       }
-      defer(() => sendMembershipConfirmation(admin, periodId));
+      kick(admin);
       return json({ ok: true });
     }
 
@@ -166,7 +175,7 @@ Deno.serve(async (req) => {
         const e = mapDbError(error);
         return json({ error: e.error }, e.status);
       }
-      defer(() => sendMembershipReleased(admin, id, { byAdmin: true }));
+      kick(admin);
       return json({ ok: true, cancelled: n });
     }
 
@@ -174,6 +183,7 @@ Deno.serve(async (req) => {
       const { data, error } = await admin.rpc("set_membership_locked", {
         p_membership: id,
         p_locked: Boolean(body.locked),
+        p_actor: "admin",
       });
       if (error) {
         const e = mapDbError(error);

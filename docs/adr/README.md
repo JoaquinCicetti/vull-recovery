@@ -18,3 +18,4 @@ consequences, and the alternatives we rejected. Format is lightweight
 | [0010](0010-payments-talo-transfers.md) | Payments via Talo automatic bank transfers, manual receipt as $0 fallback | Accepted |
 | [0011](0011-memberships-as-materialized-bookings.md) | Monthly plans (abonos) as materialized bookings | Accepted |
 | [0012](0012-admin-defined-slots-and-booking-window.md) | Admin-defined slots and a weekly client booking window | Accepted |
+| [0013](0013-notification-outbox.md) | Notifications as an outbox written beside the invariant | Accepted |

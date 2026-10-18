@@ -76,18 +76,17 @@ Then `/admin` and `/admin/servicios` unlock.
 ## 7. Edge Function secrets (local)
 
 The core flow (availability + booking) needs **no** external secrets. For Google
-/ Mobbex / WhatsApp, put them in `supabase/functions/.env` and serve functions
-with that file:
+/ Talo / email / WhatsApp, put them in `supabase/functions/.env` and serve
+functions with that file. Every edge secret, by name, is in
+`supabase/.env.secrets.example`:
 
 ```bash
 # supabase/functions/.env  (SUPABASE_URL/keys are injected automatically)
-GOOGLE_SERVICE_ACCOUNT_JSON=
+GOOGLE_CLIENT_EMAIL=
+GOOGLE_PRIVATE_KEY=
 GOOGLE_CALENDAR_ID=
-MOBBEX_API_KEY=
-MOBBEX_ACCESS_TOKEN=
-MOBBEX_TEST=true
-MOBBEX_WEBHOOK_SECRET=some-random-string
 APP_URL=http://localhost:3000
+NOTIFY_DISPATCH_TOKEN=some-random-string
 WHATSAPP_VERIFY_TOKEN=
 ```
 
@@ -95,12 +94,13 @@ WHATSAPP_VERIFY_TOKEN=
 pnpm dlx supabase functions serve --env-file supabase/functions/.env
 ```
 
-> Webhooks (Mobbex/WhatsApp) need a **public URL**. Locally, expose the functions
+> Webhooks (Talo/WhatsApp) need a **public URL**. Locally, expose the functions
 > port with a tunnel (e.g. `ngrok http 54321`) and point the provider at the
 > tunneled `…/functions/v1/<name>` URL.
 
-**Transactional email locally (dev only).** Booking emails go through Resend,
-which no-ops without `RESEND_API_KEY`/`EMAIL_FROM`. To see them anyway, add
+**Transactional email locally (dev only).** Booking emails go through Resend;
+without `RESEND_API_KEY`/`EMAIL_FROM` each one fails and is listed on /admin
+("Avisos no enviados"). To see them instead, add
 `EMAIL_SINK_URL=http://host.docker.internal:54324/api/v1/send` to
 `supabase/functions/.env`: `sendMail()` then posts every email to Mailpit's send
 API instead of Resend (no API key needed) and it shows up at
@@ -188,12 +188,16 @@ list of assumptions the sandbox run below resolves.
 pnpm dlx supabase link --project-ref <ref>
 pnpm dlx supabase db push
 pnpm dlx supabase functions deploy
+# Every name in supabase/.env.secrets.example above "@optional":
 pnpm dlx supabase secrets set \
-  GOOGLE_SERVICE_ACCOUNT_JSON="$(cat key.json)" GOOGLE_CALENDAR_ID=... \
-  MOBBEX_API_KEY=... MOBBEX_ACCESS_TOKEN=... MOBBEX_TEST=false \
-  MOBBEX_WEBHOOK_SECRET=... APP_URL=https://tu-dominio WHATSAPP_VERIFY_TOKEN=... \
-  RESEND_API_KEY=re_... EMAIL_FROM="VULL <hola@tu-dominio>"
+  APP_URL=https://tu-dominio RESEND_API_KEY=re_... EMAIL_FROM="VULL <hola@tu-dominio>" \
+  VAPID_PUBLIC_KEY=... VAPID_PRIVATE_KEY=... VAPID_SUBJECT=mailto:... \
+  TALO_WEBHOOK_SECRET=... TALO_RECONCILE_TOKEN=... MEMBERSHIP_CYCLE_TOKEN=... \
+  NOTIFY_DISPATCH_TOKEN=...
 ```
+
+`scripts/deploy.sh` warns about any required secret missing from the project
+(`--strict` makes it fail).
 
 **Frontend (Vercel):** import the repo and set `NEXT_PUBLIC_SUPABASE_URL`,
 `NEXT_PUBLIC_SUPABASE_ANON_KEY` (from the cloud project), `NEXT_PUBLIC_SITE_URL`
@@ -206,9 +210,19 @@ so the free project doesn't pause.
 **membership-cycle (abonos):** set `MEMBERSHIP_CYCLE_TOKEN` as a function secret
 and schedule a daily
 `POST ${SUPABASE_URL}/functions/v1/membership-cycle?token=$MEMBERSHIP_CYCLE_TOKEN`.
-It rolls recurring members into the next month and emails the admins when a
+It rolls recurring members into the next month and alerts the admins when a
 member's bed was taken next month. Optional: every booking/abono function runs
 the same maintenance lazily (see ADR 0011).
+
+**notify-dispatch (notifications):** set `NOTIFY_DISPATCH_TOKEN` and schedule,
+every 5 minutes,
+`POST ${SUPABASE_URL}/functions/v1/notify-dispatch?token=$NOTIFY_DISPATCH_TOKEN`.
+It sends whatever the notifications outbox still holds (see
+[Notifications](#notifications) and ADR 0013).
+
+**External crons, all together:** `keep-alive` weekly, `membership-cycle`
+daily, `talo-reconcile` every ~10 min, `notify-dispatch` every 5 min,
+`calendar-poll` every ~5 min (only with Google configured).
 
 ---
 
@@ -224,10 +238,7 @@ the same maintenance lazily (see ADR 0011).
 | `SUPABASE_URL` / `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` | Edge Function | **injected automatically** by Supabase — don't set manually |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | Edge Function | GCP service-account JSON key (step 8) |
 | `GOOGLE_CALENDAR_ID` | Edge Function | Google Calendar → Integrate calendar |
-| `MOBBEX_API_KEY` / `MOBBEX_ACCESS_TOKEN` | Edge Function | mobbex.dev dev portal |
-| `MOBBEX_TEST` | Edge Function | `true` sandbox / `false` live |
-| `MOBBEX_WEBHOOK_SECRET` | Edge Function | random string you choose — **required** (webhook fails closed without it) |
-| `APP_URL` | Edge Function | site URL used for Mobbex `return_url` |
+| `APP_URL` | Edge Function | site URL: Talo redirect, links in emails, CORS |
 | `RESEND_API_KEY` | Edge Function + Auth SMTP | resend.com → API Keys (free tier, own domain) |
 | `EMAIL_FROM` | Edge Function | sender on the Resend-verified domain, e.g. `VULL <hola@tu-dominio>` |
 | `WHATSAPP_VERIFY_TOKEN` | Edge Function | Meta webhook verify token (GET handshake) |
@@ -241,6 +252,11 @@ the same maintenance lazily (see ADR 0011).
 | `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | Frontend | Cloudflare Turnstile site key (optional, enables login captcha) |
 | `TURNSTILE_SECRET` | Auth | Cloudflare Turnstile secret (with `[auth.captcha]`) |
 | `MEMBERSHIP_CYCLE_TOKEN` | Edge Function | random string; gates the `membership-cycle` cron (fails closed) |
+| `NOTIFY_DISPATCH_TOKEN` | Edge Function | random string; gates the `notify-dispatch` cron (fails closed) |
+| `CALENDAR_POLL_TOKEN` | Edge Function | random string; gates the `calendar-poll` cron (fails closed) |
+| `EMAIL_SINK_URL` | Edge Function (local only) | Mailpit send API; **never** a deployed secret |
+
+The full list of edge secrets, by name, is `supabase/.env.secrets.example`.
 
 > Opening hours are **not** env vars: each sector has per-weekday ranges in the
 > `sector_hours` table, edited in Admin → Disponibilidad. Each range has its
@@ -270,21 +286,89 @@ the same maintenance lazily (see ADR 0011).
   with no key, captcha is off and login is unchanged. The OTP resend cooldown is
   `60s` (`[auth.email] max_frequency`).
 
-## Notifications (owner alerts)
+## Notifications
 
-The owner is alerted on actionable events (a transfer/pack receipt to verify, a
-paid/credit booking confirmed, a client cancellation) via two channels, both
-best-effort:
+Every notice is a row in the `notifications` outbox, written by the same
+transaction that caused it, and sent by one dispatcher
+(`supabase/functions/_shared/notify.ts`). Decision record:
+[ADR 0013](adr/0013-notification-outbox.md).
 
-- **Email** — reuses Resend (`RESEND_API_KEY` + `EMAIL_FROM`). Works on any device,
-  no setup beyond email. This is the always-available floor.
-- **Web Push** — instant notification to the owner's device(s). `npx web-push
-  generate-vapid-keys`, then set `NEXT_PUBLIC_VAPID_PUBLIC_KEY` (browser) +
-  `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`/`VAPID_SUBJECT` (Edge secrets). The owner
-  enables it from **/admin** ("Activar notificaciones"). iOS requires the PWA be
-  added to the home screen first (iOS 16.4+); email covers that gap. Validate
-  against one real device before relying on it (the encryption can't be tested
-  without a live subscription).
+**Who hears what.** An admin's own action never notifies the other admins,
+only the client.
+
+| Event | Client | Admins |
+|-------|--------|--------|
+| Turno booked, payment pending | "Reserva tomada" (email only) | — |
+| Turno paid (Talo), incl. pay-at-booking | "Turno confirmado" | "Nuevo turno pagado" (one notice for pay + book) |
+| Turno booked with a pack credit | "Turno confirmado" | "X usó 1 sesión de su pack (quedan N)" |
+| Receipt uploaded (turno, pack, cuota) | — | "… por verificar" |
+| Admin approves a receipt / confirms by hand / cash cuota | confirmation | — |
+| Admin rejects a receipt | "Comprobante rechazado" | — |
+| Pack paid (Talo) | "Sesiones acreditadas" | "Pack vendido" |
+| Cuota paid (Talo) | "Abono confirmado" | "Nuevo abono" (first cuota) / "Cuota pagada" |
+| Client cancels | "Turno cancelado" | "Turno cancelado por el cliente" |
+| Admin / Google Calendar cancels | "Turno cancelado" (**critical**) | — |
+| Admin reschedules | "Turno reprogramado" (**critical**) | — |
+| Client moves or swaps a class | swap: offer + answer to the members | "Clase movida" |
+| Client stops renewing an abono | — | "Abono sin renovación" |
+| Admin releases an abono / sells one at the desk | "Liberamos tu lugar" / "Tu lugar está reservado" (email even with email off) | — |
+| Talo anomalies, calendar conflicts, abono roll collisions | — | alert, once per payment+flag / booking+time / member+month |
+
+**Channels.** Clients choose email and/or push on /cuenta/notificaciones; at
+least one stays on (`profiles_one_channel`). Push turns on only after this
+device subscribed: the browser must support it (service worker, PushManager,
+Notification), an iPhone/iPad must run the installed app, and permission must
+be granted; otherwise the reason is shown and push stays off. A **critical**
+notice (the centre cancelled or moved the turno) that reaches nobody, because
+email is off and no device took the push, goes by email anyway, recorded as
+`channels.fallback = "email"`. Admins get email + push on every device, no
+preferences.
+
+- **Email**: Resend (`RESEND_API_KEY` + `EMAIL_FROM`).
+- **Web Push**: `npx web-push generate-vapid-keys`, then set
+  `NEXT_PUBLIC_VAPID_PUBLIC_KEY` (browser) + `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`/
+  `VAPID_SUBJECT` (Edge secrets). The owner enables it from **/admin** ("Activar
+  notificaciones"); iOS 16.4+ requires the installed PWA. Validate against one
+  real device before relying on it (the encryption can't be tested without a
+  live subscription).
+
+**Delivery.** The function that queued a notice sends it right after its
+response (`kick`); webhooks and crons send before answering. The
+`notify-dispatch` cron (every 5 min) sends whatever is left. A row that fails
+(e.g. Resend rejects `EMAIL_FROM`) keeps its `error`, is retried up to 5 times,
+and is listed on **/admin → Avisos no enviados** with a "Reintentar" button.
+Every failure is also logged with the `[notify]` prefix in the function logs.
+
+### Verifying notifications locally
+
+With the local stack running, the migration applied, functions served with
+`EMAIL_SINK_URL` (mail lands in Mailpit, :54324) and Talo sandbox + `DEV_MODE`.
+After each step, `select kind, audience, actor, sent_at, error, channels from
+notifications order by created_at desc;` shows what was queued and sent.
+
+1. **Single turno, Talo.** Book, pay with "Simular pago". One `booking_confirmed`
+   for the user and ONE for admins ("reservó y pagó"); nothing for the payment
+   itself. The client email has the briefing (recovery).
+2. **Receipt.** Book, upload a receipt: one `payment_to_verify` (admins).
+   Approve it from /admin: `booking_confirmed` user only (actor `admin`).
+   Repeat and reject instead: `payment_rejected` to the client.
+3. **Pack + 2 credit bookings.** Buy a pack via Talo: `pack_purchased` user +
+   admins. Book twice with credits: each a `booking_confirmed` admins row that
+   reads "usó 1 sesión de su pack (quedan N)" with N going down.
+4. **Client cancel vs admin cancel.** Client cancels: `booking_cancelled` user +
+   admins. Admin cancels another: user only. Then set that client to
+   `notify_email = false, notify_push = true` in SQL with no `push_subscriptions`
+   row, and cancel again as admin: the email still goes out, with
+   `channels.fallback = "email"`.
+5. **Admin reschedule.** `booking_rescheduled` user only, "Antes / Ahora" rows.
+6. **Abono cuota, Talo vs desk.** Sign up and pay via Talo: `membership_paid`
+   user + admins ("Nuevo abono"). Mark next month paid in cash from /admin:
+   user only.
+7. **Failure path.** Serve functions with a bad `EMAIL_FROM` (and no sink):
+   the row gets `error`, appears on /admin "Avisos no enviados". Fix the env,
+   press "Reintentar": it goes out and leaves the list.
+8. **Replay.** Call `talo-webhook` five times for the same paid payment (and run
+   `talo-reconcile`): still exactly one row per (kind, subject, audience).
 
 ## Google Calendar sync-back (optional)
 

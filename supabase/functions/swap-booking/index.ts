@@ -10,11 +10,12 @@
 // sectors.change_notice_hours ahead; within the same Mon–Sun week and the same
 // month. A move keeps the same row (its turno page and emails follow it); the
 // EXCLUDE and one-per-day index arbitrate. Swaps are SQL (swap_bookings).
+// Notices (ADR 0013): propose/resolve_swap queue the members' own; a move or
+// an accepted swap tells the admins "Clase movida".
 import { responder, errMessage } from "../_shared/cors.ts";
 import { adminClient, userClient } from "../_shared/supabase.ts";
 import { housekeeping, mapDbError } from "../_shared/membership.ts";
-import { sendSwapProposed, sendSwapResolved } from "../_shared/membership-email.ts";
-import { defer } from "../_shared/background.ts";
+import { emit, kick } from "../_shared/notify.ts";
 import { validateSlot } from "../_shared/booking-rules.ts";
 import { loadServiceWithSector, sectorSettings } from "../_shared/sector.ts";
 import { localYMD } from "../_shared/time.ts";
@@ -116,6 +117,17 @@ Deno.serve(async (req) => {
         .update({ status: "expired", resolved_at: new Date().toISOString() })
         .eq("status", "pending")
         .or(`from_booking_id.eq.${b.id},to_booking_id.eq.${b.id}`);
+      // Each move is its own notice (a class moved twice is told twice).
+      await emit(admin, {
+        kind: "class_moved",
+        subject: b.id,
+        audience: "admins",
+        actor: "client",
+        user: user.id,
+        payload: { swap: false, previous_starts_at: b.starts_at, starts_at: moved[0].starts_at },
+        dedup: `${moved[0].starts_at}@${Date.now()}`,
+      });
+      kick(admin);
       return json({ booking: moved[0] });
     }
 
@@ -130,7 +142,7 @@ Deno.serve(async (req) => {
         const e = mapDbError(error, { noticeHours: await noticeOf(admin, body?.from_booking_id) });
         return json({ error: e.error }, e.status);
       }
-      defer(() => sendSwapProposed(admin, data.id));
+      kick(admin);
       return json({ request: data });
     }
 
@@ -145,9 +157,7 @@ Deno.serve(async (req) => {
         const e = mapDbError(error);
         return json({ error: e.error }, e.status);
       }
-      if (action !== "cancel") {
-        defer(() => sendSwapResolved(admin, data.id, action === "accept" ? "accepted" : "declined"));
-      }
+      kick(admin);
       return json({ request: data });
     }
 

@@ -49,10 +49,6 @@ export const TALO_ENABLED = process.env.NEXT_PUBLIC_TALO_ENABLED === "true";
 // edge secret + Talo sandbox). Must be false in production.
 export const DEV_MODE = process.env.NEXT_PUBLIC_DEV_MODE === "true";
 
-// Legacy Mobbex switch. Never enabled in production; Talo replaced it. Kept
-// only until the Mobbex code is deleted.
-export const MOBBEX_ENABLED = process.env.NEXT_PUBLIC_MOBBEX_ENABLED === "true";
-
 // Build a wa.me deep link. The client tapping this messages us FIRST, which
 // opens the free 24h reply window (see plan). Optional prefilled message.
 export function waLink(message?: string) {

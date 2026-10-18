@@ -4,8 +4,7 @@
 // and no amount — by design ("enviamos el mínimo necesario"). So the webhook is a
 // TRIGGER only and every fact about money comes from GET /payments/{id} with a
 // Bearer token. Nothing in here ever throws into a money path: every export
-// returns a discriminated result and the caller decides, exactly like the
-// OperationLookup shape in ./mobbex.ts.
+// returns a discriminated result and the caller decides.
 //
 // Docs: https://docs.talo.com.ar/transfers/payments-api
 //

@@ -8,13 +8,17 @@
 //                         slot (grid, hours, lead — NOT the client booking
 //                         window: admins may book further ahead) and lets the
 //                         DB EXCLUDE / one-per-day arbitrate.
+//   action "dispatch_notifications" → send the notifications outbox now (the
+//                         /admin "Reintentar ahora" button; ADR 0013).
 // Cancellation stays in cancel-booking. Mirrors admin-payment's is_admin gate.
+// The client is told about a confirm or a reschedule (queued by the RPC with
+// actor 'admin', so the other admins are not).
 import { responder, errMessage } from "../_shared/cors.ts";
 import { adminClient, userClient } from "../_shared/supabase.ts";
 import { getBusy, patchEventStatus, patchEventTime } from "../_shared/google.ts";
-import { sendBookingConfirmation } from "../_shared/email.ts";
 import { type Busy, validateSlot } from "../_shared/booking-rules.ts";
 import { loadServiceWithSector, sectorCalendarId, sectorSettings } from "../_shared/sector.ts";
+import { dispatch, kick } from "../_shared/notify.ts";
 
 const ACTIONS = ["confirm", "no_show", "reschedule"];
 const ACTIVE = ["pending", "awaiting_payment", "confirmed"];
@@ -24,7 +28,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return options();
   try {
     const { booking_id, action, starts_at, resource_id } = await req.json();
-    if (!booking_id || !ACTIONS.includes(action)) {
+    if (action !== "dispatch_notifications" && (!booking_id || !ACTIONS.includes(action))) {
       return json({ error: "Datos inválidos" }, 400);
     }
 
@@ -40,6 +44,10 @@ Deno.serve(async (req) => {
       .eq("id", user.id)
       .single();
     if (!me?.is_admin) return json({ error: "No autorizado" }, 403);
+
+    if (action === "dispatch_notifications") {
+      return json({ ok: true, ...(await dispatch(admin)) });
+    }
 
     const { data: booking } = await admin
       .from("bookings")
@@ -60,21 +68,22 @@ Deno.serve(async (req) => {
       if (!["pending", "awaiting_payment"].includes(booking.status)) {
         return json({ error: "Este turno no se puede confirmar." }, 409);
       }
-      // Guard the write with the same status set: between the read above and this
-      // UPDATE the hold can lapse (the lazy sweep flips it to `expired`), and the
-      // row could then be confirmed back out of a terminal state.
-      const { error: updErr } = await admin
-        .from("bookings")
-        .update({ status: "confirmed", hold_expires_at: null })
-        .eq("id", booking.id)
-        .in("status", ["pending", "awaiting_payment"]);
-      if (updErr) {
+      // confirm_booking re-asserts the status under a row lock: between the
+      // read above and the write the hold can lapse (the lazy sweep flips it to
+      // `expired`), and the row must not be confirmed back out of a terminal state.
+      const { data: res, error: updErr } = await admin.rpc("confirm_booking", {
+        p_booking: booking.id,
+        p_payment: null,
+        p_actor: "admin",
+      });
+      if (updErr || res !== "ok") {
         return json(
           {
-            error:
-              updErr.code === "23P01"
-                ? "Ese horario ya fue tomado por otro turno."
-                : "No se pudo confirmar el turno.",
+            error: updErr?.code === "23P01"
+              ? "Ese horario ya fue tomado por otro turno."
+              : res === "gone" || res === "already"
+              ? "Este turno no se puede confirmar."
+              : "No se pudo confirmar el turno.",
           },
           409,
         );
@@ -94,7 +103,7 @@ Deno.serve(async (req) => {
           /* calendar best-effort */
         }
       }
-      await sendBookingConfirmation(admin, booking.id);
+      kick(admin);
       return json({ ok: true });
     }
 
@@ -167,10 +176,16 @@ Deno.serve(async (req) => {
     // An explicit bed (the admin picked one) is checked by the DB to belong to
     // the sector; the EXCLUDE arbitrates whether it is free.
     const bed = typeof resource_id === "string" && resource_id ? resource_id : null;
-    const { error: updErr } = await admin
-      .from("bookings")
-      .update({ starts_at: start.toISOString(), ends_at: end.toISOString(), resource_id: bed })
-      .eq("id", booking.id);
+    const { data: moved, error: updErr } = await admin.rpc("reschedule_booking", {
+      p_booking: booking.id,
+      p_starts: start.toISOString(),
+      p_ends: end.toISOString(),
+      p_resource: bed,
+      p_actor: "admin",
+    });
+    if (!updErr && moved?.result !== "ok") {
+      return json({ error: "Este turno no se puede reprogramar." }, 409);
+    }
     if (updErr) {
       if (updErr.code === "23P01") {
         return json({ error: "Ese horario ya está ocupado. Elegí otro." }, 409);
@@ -187,6 +202,7 @@ Deno.serve(async (req) => {
         /* calendar best-effort */
       }
     }
+    kick(admin);
     return json({ ok: true });
   } catch (e) {
     return json({ error: errMessage(e) }, 500);
