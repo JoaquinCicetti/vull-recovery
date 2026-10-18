@@ -13,16 +13,14 @@
 //      "Confirm the booking before settling the money" can no longer prevent a
 //      bad outcome, only decide who gets alerted. So no branch below ever
 //      pretends money did not arrive.
+//
+// Notices: the confirm/grant/approve RPCs queue the client's and the admins'
+// notices themselves (ADR 0013); anomalies queue an admin_alert deduped per
+// payment and flag, so a webhook storm or every reconcile run says it once.
+// The callers (talo-webhook, talo-reconcile) dispatch before answering.
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
-import { CONFIRMABLE_LIST } from "./booking-status.ts";
 import { patchEventStatus } from "./google.ts";
-import {
-  notifyAdmins,
-  notifyAdminsSimple,
-  sendBookingConfirmation,
-  sendPackConfirmation,
-} from "./email.ts";
-import { sendMembershipConfirmation } from "./membership-email.ts";
+import { emitAdminAlert } from "./notify.ts";
 import {
   getTaloPayment,
   setTaloExpiration,
@@ -167,8 +165,10 @@ export async function settleTaloPayment(
     // Unverifiable is NOT "unpaid". Leave the row alone, tell a human, and invite
     // a retry. Falling back to the request body here is the exact Mobbex hole.
     await flag(admin, pay, "unverified");
-    await notifyAdminsSimple(
+    await alertOnce(
       admin,
+      pay,
+      "unverified",
       "Pago Talo sin verificar",
       `No pudimos confirmar con Talo el pago ${paymentId} (${verified.reason}). Quedó pendiente: revisalo en el panel de Talo antes de confirmar el turno.`,
     );
@@ -183,8 +183,10 @@ export async function settleTaloPayment(
     return { status: 200, result: "foreign_account" };
   }
   if (v.externalId && pay.external_reference && v.externalId !== pay.external_reference) {
-    await notifyAdminsSimple(
+    await alertOnce(
       admin,
+      pay,
+      "external_id_mismatch",
       "Pago Talo inconsistente",
       `El pago ${paymentId} dice external_id ${v.externalId} pero nuestra fila ${pay.id} espera ${pay.external_reference}. No se tocó nada.`,
     );
@@ -213,8 +215,10 @@ export async function settleTaloPayment(
             raw: auditBlob(v),
           })
           .eq("id", pay.id);
-        await notifyAdminsSimple(
+        await alertOnce(
           admin,
+          pay,
+          "reversed",
           "⚠️ Pago Talo reintegrado",
           `El dinero del pago ${pay.id} (${pay.amount_ars}) volvió al cliente. El turno sigue confirmado: decidí vos si se cancela.`,
         );
@@ -317,7 +321,7 @@ export async function settleTaloPayment(
 
   if (next !== "approved") {
     await write(admin, pay, next, adminFlag, v);
-    if (alert) await notifyAdminsSimple(admin, alert.heading, alert.body);
+    if (alert) await alertOnce(admin, pay, adminFlag ?? "alert", alert.heading, alert.body);
     return { status: 200, result: next + (adminFlag ? `:${adminFlag}` : "") };
   }
 
@@ -328,8 +332,19 @@ export async function settleTaloPayment(
     ? await approveMembershipPeriod(admin, pay, adminFlag, v)
     : await approveBooking(admin, pay, adminFlag, v);
 
-  if (alert) await notifyAdminsSimple(admin, alert.heading, alert.body);
+  if (alert) await alertOnce(admin, pay, adminFlag ?? "alert", alert.heading, alert.body);
   return outcome;
+}
+
+/** One admin_alert per (payment, flag): reconcile re-runs every few minutes. */
+function alertOnce(
+  admin: SupabaseClient,
+  pay: PaymentRow,
+  flagName: string,
+  heading: string,
+  body: string,
+): Promise<void> {
+  return emitAdminAlert(admin, { subject: pay.id, dedup: flagName, heading, body });
 }
 
 async function write(
@@ -360,12 +375,9 @@ async function approvePack(
   v: TaloPayment,
 ): Promise<SettleResult> {
   await write(admin, pay, "approved", adminFlag, v);
-  const { data: granted } = await admin.rpc("grant_pack_credits", {
-    p_payment_id: pay.id,
-  });
-  // Idempotent at the DB level (credit_ledger_purchase_uniq), so a replay grants
-  // nothing and must not email the client a second time.
-  if (granted) await sendPackConfirmation(admin, pay.id);
+  // Idempotent at the DB level (credit_ledger_purchase_uniq): a replay grants
+  // nothing and queues no second notice.
+  await admin.rpc("grant_pack_credits", { p_payment_id: pay.id, p_actor: "system" });
   return { status: 200, result: "approved_pack" };
 }
 
@@ -408,6 +420,7 @@ async function approveMembershipPeriod(
   const { data: res, error } = await admin.rpc("approve_membership_period", {
     p_period: pay.membership_period_id,
     p_payment: pay.id,
+    p_actor: "system",
   });
   if (error) {
     // Could not decide: leave the row for the next webhook / reconcile run.
@@ -415,8 +428,10 @@ async function approveMembershipPeriod(
   }
   if (res === "no_slot" || res === "not_found") {
     await write(admin, pay, "approved", "paid_no_slot", v);
-    await notifyAdminsSimple(
+    await alertOnce(
       admin,
+      pay,
+      "paid_no_slot",
       "⚠️ Cuota cobrada sin abono",
       `Entró la plata del pago ${pay.id} (${pay.amount_ars}) pero el abono ya no está activo (venció la reserva o se liberó). Hay que volver a armarle el horario o devolver el dinero.`,
     );
@@ -432,8 +447,10 @@ async function approveMembershipPeriod(
       .single();
     if (per?.payment_id && per.payment_id !== pay.id) {
       await write(admin, pay, "approved", "duplicate_payment", v);
-      await notifyAdminsSimple(
+      await alertOnce(
         admin,
+        pay,
+        "duplicate_payment",
         "⚠️ Cuota pagada dos veces",
         `El pago ${pay.id} (${pay.amount_ars}) entró para una cuota que ya estaba paga. Hay que devolverlo o tomarlo a cuenta del mes siguiente.`,
       );
@@ -441,7 +458,6 @@ async function approveMembershipPeriod(
     }
   }
   await write(admin, pay, "approved", adminFlag, v);
-  if (res === "ok") await sendMembershipConfirmation(admin, pay.membership_period_id);
   return { status: 200, result: res === "ok" ? "approved_membership" : "already_paid" };
 }
 
@@ -456,37 +472,35 @@ async function approveBooking(
     return { status: 200, result: "approved_orphan" };
   }
 
-  const { data: booking } = await admin
-    .from("bookings")
-    .select("id, google_event_id, status")
-    .eq("id", pay.booking_id)
-    .single();
+  // confirm_booking re-asserts the confirmable set under a row lock, approves
+  // this payment and queues the notices: the client's, and the admins' single
+  // "reservó y pagó" (a payment never notifies them by itself).
+  const { data: res, error } = await admin.rpc("confirm_booking", {
+    p_booking: pay.booking_id,
+    p_payment: pay.id,
+    p_actor: "system",
+  });
+  if (error && error.code !== "23P01") {
+    // Could not decide: leave the row for the next webhook / reconcile run.
+    return { status: 503, result: `confirm_failed:${error.code ?? "?"}` };
+  }
 
-  if (booking?.status === "confirmed") {
+  if (res === "already") {
     await write(admin, pay, "approved", adminFlag, v);
     return { status: 200, result: "already_confirmed" };
   }
 
-  // Re-assert the confirmable set in the UPDATE itself and CHECK what it did.
-  // The mobbex webhook fired this update unguarded and discarded the result.
-  const { data: updated, error: updErr } = await admin
-    .from("bookings")
-    .update({ status: "confirmed", hold_expires_at: null })
-    .eq("id", pay.booking_id)
-    .in("status", CONFIRMABLE_LIST)
-    .select("id");
-
-  const confirmed = !updErr && Array.isArray(updated) && updated.length > 0;
-
-  if (!confirmed) {
+  if (error || res !== "ok") {
     // The pesos already arrived and cannot be handed back automatically. Record
     // the money truthfully and shout for a human — do NOT mark it rejected.
     await write(admin, pay, "approved", "paid_no_slot", v);
-    await notifyAdminsSimple(
+    await alertOnce(
       admin,
+      pay,
+      "paid_no_slot",
       "⚠️ Cobrado sin turno",
       `Entró la plata del pago ${pay.id} pero el turno ${pay.booking_id} ya no se puede confirmar${
-        updErr?.code === "23P01" ? " (el horario lo tomó otro turno)" : ""
+        error?.code === "23P01" ? " (el horario lo tomó otro turno)" : ""
       }. Hay que reprogramarlo o devolver el dinero.`,
     );
     return { status: 200, result: "paid_no_slot" };
@@ -494,6 +508,11 @@ async function approveBooking(
 
   await write(admin, pay, "approved", adminFlag, v);
 
+  const { data: booking } = await admin
+    .from("bookings")
+    .select("google_event_id")
+    .eq("id", pay.booking_id)
+    .single();
   if (booking?.google_event_id) {
     try {
       await patchEventStatus(booking.google_event_id, "confirmed");
@@ -501,8 +520,6 @@ async function approveBooking(
       /* calendar best-effort */
     }
   }
-  await sendBookingConfirmation(admin, pay.booking_id);
-  await notifyAdmins(admin, "booking_confirmed", pay.booking_id);
   return { status: 200, result: "approved_booking" };
 }
 

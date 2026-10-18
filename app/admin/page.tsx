@@ -11,6 +11,10 @@ import { AdminTabs } from "@/components/admin/admin-tabs";
 import { LoadErrors } from "@/components/admin/load-errors";
 import { SectionTitle, Stat } from "@/components/admin/stat";
 import { PushManager } from "@/components/push-manager";
+import {
+  FailedNotifications,
+  type FailedNotification,
+} from "@/components/admin/failed-notifications";
 import { PageShell } from "@/components/ui/page-shell";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -35,7 +39,7 @@ export default async function AdminPage() {
   // into next month), so the lists below are current.
   await supabase.rpc("admin_membership_cycle");
 
-  const [payRes, weekRes, upcomingRes, overdueRes, rollRes] = await Promise.all([
+  const [payRes, weekRes, upcomingRes, overdueRes, rollRes, notifRes] = await Promise.all([
     // Payments needing a human (bounded; receipts fetched lazily on click):
     // manual receipts waiting for approval, PLUS any Talo payment the settle path
     // could not resolve on its own (underpaid, unverifiable, paid without a slot,
@@ -84,11 +88,29 @@ export default async function AdminPage() {
       .eq("status", "active")
       .not("roll_error", "is", null)
       .limit(20),
+    // Notices the dispatcher could not deliver (ADR 0013): a failed row keeps
+    // `error` until it goes out.
+    supabase
+      .from("notifications")
+      .select("id, kind, audience, created_at, error, attempts")
+      .is("sent_at", null)
+      .not("error", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(20),
   ]);
   if (payRes.error) loadErrors.push(`Pagos: ${payRes.error.message}`);
   if (weekRes.error) loadErrors.push(`Turnos: ${weekRes.error.message}`);
   if (upcomingRes.error) loadErrors.push(`Próximos: ${upcomingRes.error.message}`);
   if (overdueRes.error) loadErrors.push(`Cuotas: ${overdueRes.error.message}`);
+  if (notifRes.error) loadErrors.push(`Avisos: ${notifRes.error.message}`);
+  const failedNotifications: FailedNotification[] = ((notifRes.data ?? []) as any[]).map((n) => ({
+    id: n.id,
+    kind: n.kind,
+    audience: n.audience,
+    createdAt: n.created_at,
+    error: n.error,
+    attempts: n.attempts,
+  }));
 
   const overduePeriods = (overdueRes.data ?? []) as any[];
   const { data: overdueMembers } = overduePeriods.length
@@ -167,6 +189,12 @@ export default async function AdminPage() {
       <div className="mt-8">
         <PushManager />
       </div>
+
+      {failedNotifications.length > 0 && (
+        <section className="mt-8">
+          <FailedNotifications rows={failedNotifications} />
+        </section>
+      )}
 
       {(overdueTotal > 0 || rollErrors.length > 0) && (
         <section className="mt-10">

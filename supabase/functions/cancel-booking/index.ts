@@ -1,13 +1,13 @@
 // Authenticated Edge Function: cancel a booking.
 // The owner can cancel their own future booking; an admin can cancel any.
 // Setting status='cancelled' frees the slot (the no-overlap EXCLUDE constraint
-// ignores cancelled rows). Best-effort: cancels the Google Calendar event,
-// clears any pending manual payment, and emails the client.
+// ignores cancelled rows). The write, the credit and the notices are one RPC
+// (cancel_booking); around it, the Talo CVU kill and the Google Calendar event.
 import { responder, errMessage } from "../_shared/cors.ts";
 import { killLiveTaloPayments } from "../_shared/talo-settle.ts";
 import { adminClient, userClient } from "../_shared/supabase.ts";
 import { patchEventStatus } from "../_shared/google.ts";
-import { sendBookingCancellation, notifyAdmins } from "../_shared/email.ts";
+import { kick } from "../_shared/notify.ts";
 
 const CANCELLABLE = ["pending", "awaiting_payment", "confirmed"];
 
@@ -57,41 +57,29 @@ Deno.serve(async (req) => {
     // An abono class: cancelling only frees the bed (nothing comes back; the
     // remedy is moving it). While the first cuota is unpaid the schedule is one
     // thing: the client drops the whole signup from Mi plan instead.
-    if (booking.membership_id) {
-      if (!isAdmin && booking.status !== "confirmed") {
-        return json(
-          { error: "Tu abono todavía no está pago. Si no lo querés, cancelalo desde Mi plan." },
-          409,
-        );
-      }
-      const { error: updErr } = await admin
-        .from("bookings")
-        .update({
-          status: "cancelled",
-          cancelled_at: new Date().toISOString(),
-          cancelled_by: user.id,
-          cancellation_reason: typeof reason === "string" ? reason : null,
-          hold_expires_at: null,
-        })
-        .eq("id", booking.id)
-        .in("status", CANCELLABLE);
-      if (updErr) return json({ error: updErr.message }, 400);
-      await sendBookingCancellation(admin, booking.id, { byAdmin: isAdmin, credit: "membership" });
-      if (!isAdmin) await notifyAdmins(admin, "booking_cancelled_by_client", booking.id);
-      return json({ ok: true, credit: "membership" });
+    if (booking.membership_id && !isAdmin && booking.status !== "confirmed") {
+      return json(
+        { error: "Tu abono todavía no está pago. Si no lo querés, cancelalo desde Mi plan." },
+        409,
+      );
     }
 
-    const { error: updErr } = await admin
-      .from("bookings")
-      .update({
-        status: "cancelled",
-        cancelled_at: new Date().toISOString(),
-        cancelled_by: user.id,
-        cancellation_reason: typeof reason === "string" ? reason : null,
-        hold_expires_at: null,
-      })
-      .eq("id", booking.id);
-    if (updErr) return json({ error: updErr.message }, 400);
+    // Kill any live Talo CVU FIRST, so a cancelled turno cannot keep quietly
+    // accepting the client's money.
+    if (!booking.membership_id) await killLiveTaloPayments(admin, booking.id);
+
+    // cancel_booking: the guarded UPDATE, pending payments rejected, a paid
+    // turno back as one credit (always when an admin cancels, with notice when
+    // the client does; return_cancelled_booking), and the notices: the client
+    // always, the admins when the client did it.
+    const { data: credit, error: rpcErr } = await admin.rpc("cancel_booking", {
+      p_booking: booking.id,
+      p_by: user.id,
+      p_reason: typeof reason === "string" ? reason : null,
+      p_by_admin: isAdmin,
+    });
+    if (rpcErr) return json({ error: rpcErr.message }, 400);
+    if (credit === "gone") return json({ error: "Este turno no se puede cancelar." }, 409);
 
     // Cancel the calendar event (best-effort).
     if (booking.google_event_id) {
@@ -101,29 +89,7 @@ Deno.serve(async (req) => {
         /* calendar best-effort */
       }
     }
-
-    // Kill any live Talo CVU FIRST, so a cancelled turno cannot keep quietly
-    // accepting the client's money; then clear the pending rows so they leave
-    // the admin queue. (An approved payment becomes a credit below.)
-    await killLiveTaloPayments(admin, booking.id);
-    await admin
-      .from("payments")
-      .update({ status: "rejected" })
-      .eq("booking_id", booking.id)
-      .eq("status", "pending");
-
-    // A paid turno (pack credit or approved payment) comes back as one credit:
-    // always when an admin cancels, with >= 24h notice when the client does.
-    // Idempotent; the rule lives in the RPC so every cancel path shares it.
-    const { data: credit } = await admin.rpc("return_cancelled_booking", {
-      p_booking_id: booking.id,
-      p_by_admin: isAdmin,
-    });
-
-    // Notify the client (best-effort; no-ops if email unset).
-    await sendBookingCancellation(admin, booking.id, { byAdmin: isAdmin, credit });
-    // Alert the owner when a client cancels (not when the admin does it).
-    if (!isAdmin) await notifyAdmins(admin, "booking_cancelled_by_client", booking.id);
+    kick(admin);
 
     return json({ ok: true, credit });
   } catch (e) {

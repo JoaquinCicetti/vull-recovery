@@ -29,7 +29,7 @@ export default async function NotificacionesPage() {
         userId={user!.id}
         email={profile?.email ?? user!.email ?? null}
         initialEmail={profile?.notify_email ?? true}
-        initialPush={profile?.notify_push ?? true}
+        initialPush={profile?.notify_push ?? false}
         devices={devices}
       />
     </PageShell>

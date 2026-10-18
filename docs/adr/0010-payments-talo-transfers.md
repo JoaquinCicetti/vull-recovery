@@ -99,7 +99,9 @@ production:
 - The Mobbex code is retired in a follow-up commit once the sandbox run passes:
   delete `mobbex-webhook`, `_shared/mobbex.ts`, the Mobbex branch of
   `create-payment`, and run `supabase functions delete mobbex-webhook` (removing
-  the config block does not undeploy a live endpoint).
+  the config block does not undeploy a live endpoint). The code went with the
+  notification outbox ([ADR 0013](0013-notification-outbox.md)); the remote
+  `functions delete` is still the owner's step.
 
 ## Alternatives considered
 - **Keep Mobbex** — never enabled, card-centric, and seven audit items away from

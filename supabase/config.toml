@@ -423,9 +423,6 @@ verify_jwt = true
 verify_jwt = true
 
 # External webhooks / cron — no Supabase JWT; verified by their own secrets.
-[functions.mobbex-webhook]
-verify_jwt = false
-
 [functions.whatsapp-webhook]
 verify_jwt = false
 
@@ -490,4 +487,9 @@ verify_jwt = true
 
 # Cron: authenticated by ?token=MEMBERSHIP_CYCLE_TOKEN, fails closed.
 [functions.membership-cycle]
+verify_jwt = false
+
+# Cron: sends the notifications outbox (ADR 0013); authenticated by
+# ?token=NOTIFY_DISPATCH_TOKEN, fails closed.
+[functions.notify-dispatch]
 verify_jwt = false

@@ -93,8 +93,9 @@ payment — comes back as **one credit for the same service**, never as money:
 - admin cancel or Google Calendar cancel → always credit
 
 The rule lives only in `return_cancelled_booking` (SQL), called by
-`cancel-booking` and `calendar-poll`; at most one return per booking is enforced
-by `credit_ledger_return_uniq`. The turno page mirrors the sector's window for
+`cancel_booking` (the one cancel transition, used by `cancel-booking` and
+`calendar-poll`, which also queues the notices; ADR 0013); at most one return
+per booking is enforced by `credit_ledger_return_uniq`. The turno page mirrors the sector's window for
 copy only.
 
 ## Holds

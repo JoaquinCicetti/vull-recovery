@@ -36,6 +36,8 @@ yarn-error.log*
 # copy was never in the repo — a fresh clone had no env reference at all. It holds
 # only names and comments, never values.
 !.env.example
+# The canonical list of Edge Function secrets (names only, no values).
+!supabase/.env.secrets.example
 envs/*
 
 # vercel

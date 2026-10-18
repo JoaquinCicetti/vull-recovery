@@ -14,6 +14,7 @@
 import { json, errMessage } from "../_shared/cors.ts";
 import { adminClient } from "../_shared/supabase.ts";
 import { settleTaloPayment } from "../_shared/talo-settle.ts";
+import { dispatch } from "../_shared/notify.ts";
 
 // How far back to look. A CVU cannot outlive this, so anything older is settled
 // or abandoned for good.
@@ -54,7 +55,12 @@ Deno.serve(async (req) => {
       results[out.result] = (results[out.result] ?? 0) + 1;
     }
 
-    return json({ ok: true, checked: rows?.length ?? 0, results });
+    // Everything the settles queued, once, before answering.
+    const notified = await dispatch(admin).catch((e) => {
+      console.error("[notify] dispatch failed", e);
+      return null;
+    });
+    return json({ ok: true, checked: rows?.length ?? 0, results, notified });
   } catch (e) {
     return json({ error: errMessage(e) }, 500);
   }

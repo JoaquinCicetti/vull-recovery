@@ -9,7 +9,7 @@
 //
 // Policy:
 //   • event cancelled/deleted, booking still active → cancel the booking (free the
-//     slot), refund a pack credit if one was used, email the client.
+//     slot), refund a pack credit if one was used, notify the client.
 //   • event time moved vs the booking → flag a conflict to the owner (never
 //     silently move a possibly-paid client).
 //   • event with no matching booking (owner's personal block) → ignore.
@@ -17,7 +17,7 @@ import { json, errMessage } from "../_shared/cors.ts";
 import { killLiveTaloPayments } from "../_shared/talo-settle.ts";
 import { adminClient } from "../_shared/supabase.ts";
 import { listEvents } from "../_shared/google.ts";
-import { sendBookingCancellation, notifyAdminsSimple } from "../_shared/email.ts";
+import { dispatch, emitAdminAlert } from "../_shared/notify.ts";
 
 const ACTIVE = ["pending", "awaiting_payment", "confirmed"];
 
@@ -70,41 +70,32 @@ Deno.serve(async (req) => {
       if (!booking || !ACTIVE.includes(booking.status)) continue;
 
       if (ev.status === "cancelled") {
-        await admin
-          .from("bookings")
-          .update({
-            status: "cancelled",
-            cancelled_at: new Date().toISOString(),
-            cancellation_reason: "Cancelado en Google Calendar",
-            hold_expires_at: null,
-          })
-          .eq("id", booking.id);
         // A cancelled turno must not leave a live CVU behind.
         await killLiveTaloPayments(admin, booking.id);
-        await admin
-          .from("payments")
-          .update({ status: "rejected" })
-          .eq("booking_id", booking.id)
-          .eq("status", "pending");
-        // Cancelled by the centre → a paid turno always comes back as a credit.
-        const { data: credit } = await admin.rpc("return_cancelled_booking", {
-          p_booking_id: booking.id,
+        // Cancelled by the centre → a paid turno always comes back as a credit,
+        // and the client is told (critical: it goes out even if their channels
+        // can't deliver). Same RPC as cancel-booking.
+        const { data: res } = await admin.rpc("cancel_booking", {
+          p_booking: booking.id,
+          p_by: null,
+          p_reason: "Cancelado en Google Calendar",
           p_by_admin: true,
         });
-        await sendBookingCancellation(admin, booking.id, { byAdmin: true, credit });
-        cancelled++;
+        if (res && res !== "gone") cancelled++;
       } else {
         const evStart = ev.start?.dateTime
           ? new Date(ev.start.dateTime).getTime()
           : null;
         const bkStart = new Date(booking.starts_at).getTime();
         if (evStart !== null && Math.abs(evStart - bkStart) > 60000) {
-          // Moved externally — don't auto-move the client; flag it.
-          await notifyAdminsSimple(
-            admin,
-            "Conflicto de calendario",
-            "Un turno fue movido en Google Calendar pero no en la app. Revisalo en el panel y reprogramá desde ahí si corresponde.",
-          );
+          // Moved externally — don't auto-move the client; flag it (once per
+          // booking and new time, however many polls see it).
+          await emitAdminAlert(admin, {
+            subject: booking.id,
+            dedup: `calendar_moved:${evStart}`,
+            heading: "Conflicto de calendario",
+            body: "Un turno fue movido en Google Calendar pero no en la app. Revisalo en el panel y reprogramá desde ahí si corresponde.",
+          });
           conflicts++;
         }
       }
@@ -118,7 +109,11 @@ Deno.serve(async (req) => {
       })
       .eq("id", true);
 
-    return json({ ok: true, cancelled, conflicts });
+    const notified = await dispatch(admin).catch((e) => {
+      console.error("[notify] dispatch failed", e);
+      return null;
+    });
+    return json({ ok: true, cancelled, conflicts, notified });
   } catch (e) {
     return json({ error: errMessage(e) }, 500);
   }

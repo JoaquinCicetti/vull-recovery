@@ -19,6 +19,7 @@ Admin panel               ──▶     Edge Functions:                 Google C
                                    • talo-webhook      ◀─────────  Talo (notification)
                                    • talo-reconcile    ─────────▶  Talo (GET /payments)
                                    • admin-payment
+                                   • notify-dispatch   ─────────▶  Resend / Web Push
                                    • whatsapp-webhook  ◀─────────  WhatsApp (inbound)
                                    • keep-alive
                        client taps wa.me link ────────────────────▶  WhatsApp (messages first)
@@ -35,13 +36,14 @@ Supabase client (anon key + RLS) for auth and reads.
 | `services` | Plans/cards: name, price (ARS), duration (shown to the client; the turno length is the sector's slot), active |
 | `profiles` | 1:1 with `auth.users`: name, WhatsApp, `is_admin` |
 | `bookings` | Appointments: time range, status, calendar event, hold expiry |
-| `payments` | Payments: provider (`talo`/`manual`, legacy `mobbex`), status, Talo id + CVU/alias, receipt, `admin_flag` |
+| `payments` | Payments: provider (`talo`/`manual`/`cash`, legacy `mobbex` rows), status, Talo id + CVU/alias, receipt, `admin_flag` |
 | `whatsapp_messages` | Inbound message log + 24h window |
 | `settings` | Legacy singleton (timezone read by metrics/email); agenda moved to `sectors` |
 | `sectors` / `resources` | Areas (recovery, pilates) with their policies (incl. the client booking window); beds/places a turno occupies (active ones = turnos per slot) |
 | `sector_hours` | Open ranges per sector and weekday (several per day allowed), each cut into `slot_minutes` turnos |
 | `memberships` / `membership_slots` / `membership_periods` | Monthly plans (abonos): the client's weekly pattern, and one cuota per month. Each class is a `bookings` row with `membership_id` (ADR 0011) |
 | `swap_requests` | Offers to swap a class between two members (propose → accept) |
+| `notifications` | Outbox: one row per notice (kind, subject, audience, actor), with what was sent or why not (ADR 0013) |
 
 Booking lifecycle: `pending → awaiting_payment → confirmed` (or `cancelled` / `expired`).
 
@@ -72,6 +74,12 @@ Booking lifecycle: `pending → awaiting_payment → confirmed` (or `cancelled` 
   uses DB bookings only. See [ADR 0012](adr/0012-admin-defined-slots-and-booking-window.md).
 - **Timezone.** `Intl`-based helpers (no deps) convert local ⇄ UTC respecting
   DST. Default `America/Argentina/Buenos_Aires`.
+- **Notifications outbox.** The transition that causes a notice writes it to
+  `notifications` in its own transaction (`confirm_booking`, `cancel_booking`,
+  `reschedule_booking`, the pack/abono/swap RPCs); one dispatcher
+  (`_shared/notify.ts`) renders and sends it, records the result, and failures
+  show on /admin. An admin's own action notifies only the client. See
+  [ADR 0013](adr/0013-notification-outbox.md).
 - **RLS.** Clients see only their own rows; `is_admin()` (SECURITY DEFINER, no
   recursion) gates the admin view. Writes with logic (holds, confirmations) go
   through service-role functions.
@@ -100,11 +108,13 @@ Booking lifecycle: `pending → awaiting_payment → confirmed` (or `cancelled` 
 |----------|-----|------|
 | `availability` | public | Computes free slots |
 | `create-booking` | user | Race-safe hold + tentative event |
-| `create-payment` | user | Talo CVU / manual receipt (legacy Mobbex branch pending removal) |
+| `create-payment` | user | Talo CVU / manual receipt |
 | `talo-webhook` | public* | Notification → re-verify with Talo → settle (`_shared/talo-settle.ts`) |
 | `talo-reconcile` | cron* | Re-checks unsettled Talo payments through the same settle path |
-| `mobbex-webhook` | public* | Legacy; to be deleted (ADR 0010) |
 | `admin-payment` | admin | Approve / reject / dismiss a payment needing a human |
+| `admin-booking` | admin | Confirm by hand, no-show, reschedule; "Reintentar ahora" for notices |
+| `cancel-booking` | user | Client or admin cancel (`cancel_booking` RPC + Talo/Google around it) |
+| `calendar-poll` | cron* | Google Calendar edits back to bookings |
 | `whatsapp-webhook` | public* | Meta verify + inbound logging |
 | `keep-alive` | public | Ping so the free project doesn't pause |
 | `membership-availability` | public | Free beds per weekday/time across a whole month (abono picker) |
@@ -112,5 +122,6 @@ Booking lifecycle: `pending → awaiting_payment → confirmed` (or `cancelled` 
 | `admin-membership` | admin | Desk sale (creates the client's account if needed), cash cuota, release, lock |
 | `swap-booking` | user | Move an abono class to a free slot; propose/accept/decline/cancel swaps |
 | `membership-cycle` | cron* | Daily roll of recurring members + roll-error alert |
+| `notify-dispatch` | cron* | Sends the notifications outbox every ~5 min (safety net for `kick()`) |
 
 \* Webhooks authenticate via their own secret/token, not a Supabase JWT.

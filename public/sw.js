@@ -1,5 +1,6 @@
-// Service worker for admin Web Push. Registered only from the admin panel
-// (components/admin/push-manager.tsx), so ordinary visitors never get one.
+// Service worker for Web Push. Registered only when someone turns push on
+// (lib/push.ts: the admin panel's button and /cuenta/notificaciones), so
+// ordinary visitors never get one.
 self.addEventListener("push", (event) => {
   let data = {};
   try {
