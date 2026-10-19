@@ -15,7 +15,8 @@ consequences, and the alternatives we rejected. Format is lightweight
 | [0007](0007-db-level-no-double-booking.md) | DB-level no-double-booking + lazy hold expiry | Accepted |
 | [0008](0008-resend-email-provider.md) | Resend as the email provider (own domain) | Accepted |
 | [0009](0009-booking-invariants-enforcement.md) | One-per-day at the DB; re-validate booking rules at the edge | Accepted |
-| [0010](0010-payments-talo-transfers.md) | Payments via Talo automatic bank transfers, manual receipt as $0 fallback | Accepted |
+| [0010](0010-payments-talo-transfers.md) | Payments via Talo automatic bank transfers (manual receipt fallback superseded by 0014) | Accepted |
 | [0011](0011-memberships-as-materialized-bookings.md) | Monthly plans (abonos) as materialized bookings | Accepted |
 | [0012](0012-admin-defined-slots-and-booking-window.md) | Admin-defined slots and a weekly client booking window | Accepted |
 | [0013](0013-notification-outbox.md) | Notifications as an outbox written beside the invariant | Accepted |
+| [0014](0014-no-manual-confirmation-admin-slot-blocks.md) | No manual confirmation; cash at the desk is an admin slot block | Accepted |

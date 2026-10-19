@@ -2,22 +2,16 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  BarChart3,
-  CalendarDays,
-  CircleDollarSign,
-  Settings2,
-  Users,
-} from "lucide-react";
+import { BarChart3, CalendarDays, Settings2, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-// The backoffice sections: what happens (Agenda, per sector), what is owed
-// (Pagos), who (Clientes), how it is going (Métricas) and how it is set up
-// (Ajustes). Rendered once by app/admin/layout.tsx so the bar never re-mounts
-// between pages. On a phone: five equal columns, icon over label.
+// The backoffice sections: what happens (Agenda, per sector), who (Clientes),
+// how it is going (Métricas) and how it is set up (Ajustes). Money needs no
+// section: Talo settles turnos on its own, cash is an admin slot block, and the
+// abonos' cuotas live with the abonos. Rendered once by app/admin/layout.tsx so
+// the bar never re-mounts between pages. On a phone: equal columns, icon over label.
 const TABS = [
   { href: "/admin/agenda", label: "Agenda", icon: CalendarDays },
-  { href: "/admin/pagos", label: "Pagos", icon: CircleDollarSign },
   { href: "/admin/clientes", label: "Clientes", icon: Users },
   { href: "/admin/metricas", label: "Métricas", icon: BarChart3 },
   { href: "/admin/ajustes", label: "Ajustes", icon: Settings2 },

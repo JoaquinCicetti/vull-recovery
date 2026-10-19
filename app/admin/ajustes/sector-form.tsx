@@ -291,8 +291,8 @@ export function SectorForm({
           </div>
           <p className="text-xs text-fg-faint">
             La cuota de cada mes vence el {dueDay || "—"}. Después se cobra {lateFee || "0"} % de
-            recargo. Desde el {releaseDay || "—"}, las cuotas impagas aparecen en Pagos para
-            liberar el lugar a mano.
+            recargo. Desde el {releaseDay || "—"}, las cuotas impagas se filtran en Agenda ›
+            Abonos para liberar el lugar a mano.
           </p>
         </fieldset>
       )}

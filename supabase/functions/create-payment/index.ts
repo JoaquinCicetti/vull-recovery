@@ -4,18 +4,18 @@
 //   { membership_period_id } → pay one month of an abono (surcharge included
 //                              when late, computed by membership_periods_v)
 //
-// method "talo"   → mints a one-time CVU/alias the client transfers to; Talo
-//                   settles it automatically (talo-webhook / talo-reconcile).
-// method "manual" → records a receipt for admin review (the $0 fallback).
+// The only method is "talo": a one-time CVU/alias the client transfers to,
+// settled automatically (talo-webhook / talo-reconcile). The manual receipt
+// (upload a proof, an admin approves) is gone — ADR 0014: cash at the desk is
+// an admin slot block, not a payment. Legacy manual rows still exist and
+// rivalPayment keeps a Talo CVU from being minted on top of one.
 // (The legacy Mobbex method is gone with its webhook; ADR 0010.)
 //
 // The amount is ALWAYS taken server-side from the services row, never from the
-// client, and the two online/manual paths are mutually exclusive so one purchase
-// can never be approved twice.
+// client.
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { responder, errMessage } from "../_shared/cors.ts";
 import { adminClient, userClient } from "../_shared/supabase.ts";
-import { emit, kick } from "../_shared/notify.ts";
 import { MEMBERSHIP_ACTIVE_LIST, PAYABLE_LIST } from "../_shared/booking-status.ts";
 import { canUseSector, type Sector } from "../_shared/sector.ts";
 import {
@@ -25,16 +25,6 @@ import {
   setTaloPrice,
   taloConfigured,
 } from "../_shared/talo.ts";
-
-// A receipt must live in the caller's own folder and be an image/PDF.
-const RECEIPT_EXT = /\.(png|jpe?g|webp|pdf)$/i;
-function validReceipt(path: unknown, userId: string): boolean {
-  return (
-    typeof path === "string" &&
-    path.startsWith(`${userId}/`) &&
-    RECEIPT_EXT.test(path)
-  );
-}
 
 const PAY_COLS =
   "id, status, amount_ars, talo_payment_id, talo_cvu, talo_alias, talo_expires_at";
@@ -381,29 +371,16 @@ async function startTalo(admin: SupabaseClient, opts: {
   return { ok: false, error: "No se pudo iniciar el pago", status: 500 };
 }
 
-// A receipt waits for a human: queue "por verificar" for the admins (once per
-// payment) and send it after the response.
-async function receiptToVerify(admin: SupabaseClient, paymentId: string, userId: string) {
-  await emit(admin, {
-    kind: "payment_to_verify",
-    subject: paymentId,
-    audience: "admins",
-    actor: "client",
-    user: userId,
-  });
-  kick(admin);
-}
-
 Deno.serve(async (req) => {
   const { json, options } = responder(req);
   if (req.method === "OPTIONS") return options();
   try {
-    const { booking_id, pack_service_id, membership_period_id, method = "talo", receipt_path } =
+    const { booking_id, pack_service_id, membership_period_id, method = "talo" } =
       await req.json();
     if (!booking_id && !pack_service_id && !membership_period_id) {
       return json({ error: "Falta booking_id, pack_service_id o membership_period_id" }, 400);
     }
-    if (!["talo", "manual"].includes(method)) {
+    if (method !== "talo") {
       return json({ error: "Método de pago inválido" }, 400);
     }
 
@@ -438,40 +415,6 @@ Deno.serve(async (req) => {
       }
       const amount: number = pack.price_ars ?? 0;
       const target = { serviceId: pack.id, userId: user.id };
-
-      if (method === "manual") {
-        if (!validReceipt(receipt_path, user.id)) {
-          return json({ error: "Comprobante inválido" }, 400);
-        }
-        // Never two live ways to pay one thing (see rivalPayment).
-        const live = await rivalPayment(admin, "talo", target);
-        if (live) {
-          if (live.status === "approved") {
-            return json({ error: "Ese pack ya está pagado." }, 409);
-          }
-          // The client chose to switch to a receipt: kill the CVU so it cannot
-          // ALSO take their money later.
-          await retire(admin, live);
-        }
-        const { data: packPay, error: insErr } = await admin
-          .from("payments")
-          .insert({
-            kind: "pack",
-            service_id: pack.id,
-            user_id: user.id,
-            provider: "manual",
-            amount_ars: amount,
-            status: "pending",
-            receipt_path,
-          })
-          .select("id")
-          .single();
-        if (insErr || !packPay) {
-          return json({ error: "No se pudo registrar el comprobante" }, 500);
-        }
-        await receiptToVerify(admin, packPay.id, user.id);
-        return json({ ok: true });
-      }
 
       if (method === "talo") {
         const out = await startTalo(admin, {
@@ -519,45 +462,6 @@ Deno.serve(async (req) => {
       }
       const amount: number = per.amount_due_ars;
       const target = { periodId: per.id };
-
-      if (method === "manual") {
-        if (!validReceipt(receipt_path, user.id)) {
-          return json({ error: "Comprobante inválido" }, 400);
-        }
-        const live = await rivalPayment(admin, "talo", target);
-        if (live) {
-          if (live.status === "approved") return json({ error: "Esa cuota ya está pagada." }, 409);
-          await retire(admin, live);
-        }
-        const { data: pay, error: insErr } = await admin
-          .from("payments")
-          .insert({
-            kind: "membership",
-            membership_period_id: per.id,
-            user_id: user.id,
-            provider: "manual",
-            amount_ars: amount,
-            status: "pending",
-            receipt_path,
-            external_reference: per.id,
-          })
-          .select("id")
-          .single();
-        if (insErr || !pay) return json({ error: "No se pudo registrar el comprobante" }, 500);
-        // A receipt waits for a human: the signup must not lapse meanwhile.
-        if (mem?.status === "pending") {
-          await Promise.all([
-            admin.from("memberships").update({ hold_expires_at: null }).eq("id", mem.id),
-            admin
-              .from("bookings")
-              .update({ status: "awaiting_payment", hold_expires_at: null })
-              .eq("membership_id", mem.id)
-              .eq("status", "pending"),
-          ]);
-        }
-        await receiptToVerify(admin, pay.id, user.id);
-        return json({ ok: true });
-      }
 
       // deno-lint-ignore no-explicit-any
       const planName = (mem?.services as any)?.name ?? "Abono";
@@ -617,36 +521,6 @@ Deno.serve(async (req) => {
 
     const amount: number = booking.services?.price_ars ?? 0;
     const target = { bookingId: booking_id };
-
-    if (method === "manual") {
-      if (!validReceipt(receipt_path, user.id)) {
-        return json({ error: "Comprobante inválido" }, 400);
-      }
-      const live = await rivalPayment(admin, "talo", target);
-      if (live) {
-        if (live.status === "approved") {
-          return json({ error: "Este turno ya está pagado." }, 409);
-        }
-        await retire(admin, live);
-      }
-      const { data: bookPay, error: insErr } = await admin.from("payments").insert({
-        booking_id,
-        provider: "manual",
-        amount_ars: amount,
-        status: "pending",
-        receipt_path,
-        external_reference: booking_id,
-      }).select("id").single();
-      if (insErr || !bookPay) {
-        return json({ error: "No se pudo registrar el comprobante" }, 500);
-      }
-      await admin
-        .from("bookings")
-        .update({ status: "awaiting_payment" })
-        .eq("id", booking_id);
-      await receiptToVerify(admin, bookPay.id, user.id);
-      return json({ ok: true });
-    }
 
     if (method === "talo") {
       const out = await startTalo(admin, {

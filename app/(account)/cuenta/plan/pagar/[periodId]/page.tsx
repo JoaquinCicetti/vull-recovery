@@ -46,7 +46,7 @@ export default async function PagarCuotaPage({
 }) {
   const { periodId } = await params;
   const supabase = await createClient();
-  const [{ profile }, { data: per }, { data: taloRow }, { data: manualRow }] = await Promise.all([
+  const [{ profile }, { data: per }, { data: taloRow }] = await Promise.all([
     requireUser(`/cuenta/plan/pagar/${periodId}`),
     supabase
       .from("membership_periods_v")
@@ -60,14 +60,6 @@ export default async function PagarCuotaPage({
       .eq("provider", "talo")
       .eq("status", "pending")
       .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle(),
-    supabase
-      .from("payments")
-      .select("id")
-      .eq("membership_period_id", periodId)
-      .eq("provider", "manual")
-      .eq("status", "pending")
       .limit(1)
       .maybeSingle(),
   ]);
@@ -107,7 +99,7 @@ export default async function PagarCuotaPage({
   const slots = mem.membership_slots.map((s) => ({ ...s, resource_name: s.resources?.name }));
   const paid = per.status === "paid";
   const gone = per.status === "void" || !MEMBERSHIP_ACTIVE.includes(mem.status);
-  const awaiting = Boolean(manualRow) || Boolean(inFlight);
+  const awaiting = Boolean(inFlight);
   const showHold = mem.status === "pending" && Boolean(mem.hold_expires_at) && !paid && !gone;
   const adminHeld = mem.status === "pending" && !mem.hold_expires_at && mem.created_by !== mem.user_id;
   const firstName = (profile?.full_name ?? "").split(" ")[0];
@@ -202,7 +194,6 @@ export default async function PagarCuotaPage({
           )}
           <PaymentPanel
             target={{ membership_period_id: per.id }}
-            receiptPrefix={`abono-${per.id}`}
             amount={per.amount_due_ars}
             awaiting={awaiting}
             talo={talo}

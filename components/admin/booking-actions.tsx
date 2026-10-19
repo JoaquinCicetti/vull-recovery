@@ -4,9 +4,9 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  BanknoteArrowDown,
   CalendarClock,
   ExternalLink,
+  LockOpen,
   MoreHorizontal,
   UserX,
   XCircle,
@@ -32,14 +32,14 @@ import { ConfirmDialog } from "@/components/admin/confirm-dialog";
 import { ReschedulePanel } from "@/components/admin/reschedule-panel";
 import type { BookingStatus } from "@/lib/types";
 
-type Action = "paid" | "no_show" | "cancel";
+type Action = "no_show" | "cancel" | "unblock";
 
 /**
  * Admin per-turno actions behind one menu, each with its own question before
- * it runs. "Marcar pagado" is the only positive one (a turno is confirmed BY
- * paying: there is no confirm without a payment). Cancel is red and says what
- * the client loses; reschedule warns before the slot picker opens.
- * paid / no_show / reschedule go through the is_admin-gated `admin-booking`
+ * it runs. There is no "confirm": a turno is confirmed by its payment (Talo)
+ * or not at all; cash at the desk is a slot block (ADR 0014). Cancel is red
+ * and says what the client loses; reschedule warns before the slot picker.
+ * no_show / reschedule / unblock go through the is_admin-gated `admin-booking`
  * function; cancel uses `cancel-booking`.
  */
 export function BookingActions({
@@ -48,6 +48,7 @@ export function BookingActions({
   status,
   started,
   membership = false,
+  block = false,
   summary,
 }: {
   bookingId: string;
@@ -56,6 +57,8 @@ export function BookingActions({
   started: boolean;
   /** An abono class: paid with the month's cuota, never one by one. */
   membership?: boolean;
+  /** An admin block: no client, no money; its only action is to free it. */
+  block?: boolean;
   /** "Lun 20 oct · 10:00 · Juan Pérez": names the turno inside each dialog. */
   summary: string;
 }) {
@@ -64,17 +67,16 @@ export function BookingActions({
   const [dialog, setDialog] = useState<Action | "reschedule" | null>(null);
 
   const isActive = ["pending", "awaiting_payment", "confirmed"].includes(status);
-  const canPay = (status === "pending" || status === "awaiting_payment") && !membership;
-  const canNoShow = status === "confirmed" && started;
-  const canReschedule = isActive && !started;
-  const canCancel = isActive;
+  const canNoShow = !block && status === "confirmed" && started;
+  const canReschedule = !block && isActive && !started;
+  const canCancel = !block && isActive;
+  const canUnblock = block && isActive;
+
+  if (block && !canUnblock) return null;
 
   async function run(action: Action): Promise<string | null> {
     const fn = action === "cancel" ? "cancel-booking" : "admin-booking";
-    const body =
-      action === "cancel"
-        ? { booking_id: bookingId }
-        : { booking_id: bookingId, action: action === "paid" ? "confirm" : action };
+    const body = action === "cancel" ? { booking_id: bookingId } : { booking_id: bookingId, action };
     const { error } = await supabase.functions.invoke(fn, { body });
     if (error) return readError(error, "No se pudo completar la acción.");
     router.refresh();
@@ -90,16 +92,12 @@ export function BookingActions({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem asChild>
-            <Link href={`/turno/${bookingId}`}>
-              <ExternalLink />
-              Ver turno
-            </Link>
-          </DropdownMenuItem>
-          {canPay && (
-            <DropdownMenuItem onSelect={() => setDialog("paid")}>
-              <BanknoteArrowDown className="text-accent" />
-              Marcar pagado
+          {!block && (
+            <DropdownMenuItem asChild>
+              <Link href={`/turno/${bookingId}`}>
+                <ExternalLink />
+                Ver turno
+              </Link>
             </DropdownMenuItem>
           )}
           {canReschedule && (
@@ -123,24 +121,14 @@ export function BookingActions({
               </DropdownMenuItem>
             </>
           )}
+          {canUnblock && (
+            <DropdownMenuItem variant="destructive" onSelect={() => setDialog("unblock")}>
+              <LockOpen />
+              Liberar horario
+            </DropdownMenuItem>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
-
-      <ConfirmDialog
-        open={dialog === "paid"}
-        onOpenChange={(o) => setDialog(o ? "paid" : null)}
-        title="Registrar el pago"
-        description={
-          <>
-            {summary}. El turno queda <strong className="text-fg">confirmado</strong> y el
-            cliente recibe el aviso. Usalo cuando cobraste en efectivo o viste la
-            transferencia.
-          </>
-        }
-        confirmLabel="Sí, cobrado"
-        busyLabel="Registrando…"
-        onConfirm={() => run("paid")}
-      />
 
       <ConfirmDialog
         open={dialog === "no_show"}
@@ -181,6 +169,22 @@ export function BookingActions({
         busyLabel="Cancelando…"
         tone="danger"
         onConfirm={() => run("cancel")}
+      />
+
+      <ConfirmDialog
+        open={dialog === "unblock"}
+        onOpenChange={(o) => setDialog(o ? "unblock" : null)}
+        title="Liberar el horario"
+        description={
+          <>
+            {summary}. El bloqueo se quita y el horario vuelve a estar disponible para
+            reservar online.
+          </>
+        }
+        confirmLabel="Sí, liberar"
+        busyLabel="Liberando…"
+        tone="danger"
+        onConfirm={() => run("unblock")}
       />
 
       <Dialog open={dialog === "reschedule"} onOpenChange={(o) => setDialog(o ? "reschedule" : null)}>

@@ -36,7 +36,7 @@ Supabase client (anon key + RLS) for auth and reads.
 | `services` | Plans/cards: name, price (ARS), duration (shown to the client; the turno length is the sector's slot), active |
 | `profiles` | 1:1 with `auth.users`: name, WhatsApp, `is_admin` |
 | `bookings` | Appointments: time range, status, calendar event, hold expiry |
-| `payments` | Payments: provider (`talo`/`manual`/`cash`, legacy `mobbex` rows), status, Talo id + CVU/alias, receipt, `admin_flag` |
+| `payments` | Payments: provider (`talo`/`cash`, legacy `manual`/`mobbex` rows), status, Talo id + CVU/alias, `admin_flag` |
 | `whatsapp_messages` | Inbound message log + 24h window |
 | `settings` | Legacy singleton (timezone read by metrics/email); agenda moved to `sectors` |
 | `sectors` / `resources` | Areas (recovery, pilates) with their policies (incl. the client booking window); beds/places a turno occupies (active ones = turnos per slot) |
@@ -94,11 +94,11 @@ Booking lifecycle: `pending → awaiting_payment → confirmed` (or `cancelled` 
 5. `create-payment`:
    - **Talo** → inserts the payment row, mints a one-time CVU/alias (`external_id` = row id)
      and extends the booking hold to the CVU's expiry. The booking stays `pending`.
-   - **Manual** → records the uploaded receipt to Storage, sets `awaiting_payment`.
+   - No manual receipt since ADR 0014: cash at the desk is an admin slot block.
 6. Confirmation:
    - **Talo** → `talo-webhook` (or the `talo-reconcile` cron) re-fetches the payment from
      Talo, checks the amount actually received, confirms the booking, finalizes the event.
-   - **Manual** → admin reviews the receipt in `/admin` and approves (`admin-payment`).
+   - A Talo payment the settle path could not resolve (underpaid, reversed…) is flagged and shown at the top of the admin agenda (`admin-payment` to resolve).
 7. Client taps **"Confirmar por WhatsApp"** (`wa.me`): by messaging first, we can
    reply free within the 24h window. See [ADR 0002](adr/0002-whatsapp-client-initiated-window.md).
 
@@ -108,11 +108,11 @@ Booking lifecycle: `pending → awaiting_payment → confirmed` (or `cancelled` 
 |----------|-----|------|
 | `availability` | public | Computes free slots |
 | `create-booking` | user | Race-safe hold + tentative event |
-| `create-payment` | user | Talo CVU / manual receipt |
+| `create-payment` | user | Talo CVU (the only method) |
 | `talo-webhook` | public* | Notification → re-verify with Talo → settle (`_shared/talo-settle.ts`) |
 | `talo-reconcile` | cron* | Re-checks unsettled Talo payments through the same settle path |
 | `admin-payment` | admin | Approve / reject / dismiss a payment needing a human |
-| `admin-booking` | admin | Confirm by hand, no-show, reschedule; "Reintentar ahora" for notices |
+| `admin-booking` | admin | Block / unblock a slot under a name, no-show, reschedule (no manual confirm: ADR 0014) |
 | `cancel-booking` | user | Client or admin cancel (`cancel_booking` RPC + Talo/Google around it) |
 | `calendar-poll` | cron* | Google Calendar edits back to bookings |
 | `whatsapp-webhook` | public* | Meta verify + inbound logging |

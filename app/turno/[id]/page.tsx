@@ -131,9 +131,9 @@ export default async function TurnoPage({
   // The slot is held server-side until hold_expires_at; show the live countdown
   // only in the `pending` window. That window covers a Talo transfer too: the
   // booking stays `pending` (with the hold extended to the CVU's expiry) until
-  // Talo sees money, so an abandoned CVU is swept like any lapsed hold. Once a
-  // receipt is uploaded the status flips to awaiting_payment and the hold is
-  // kept until verification.
+  // Talo sees money, so an abandoned CVU is swept like any lapsed hold. Once
+  // Talo records money on its way the status flips to awaiting_payment and the hold is
+  // kept until it settles.
   const showHold =
     booking.status === "pending" && Boolean(booking.hold_expires_at);
   // Read the clock once, outside the render expression: calling Date.now() inline
@@ -233,7 +233,6 @@ export default async function TurnoPage({
       {!isClass && needsPayment && (
         <PaymentPanel
           target={{ booking_id: booking.id }}
-          receiptPrefix={booking.id}
           amount={price}
           awaiting={booking.status === "awaiting_payment"}
           talo={talo}

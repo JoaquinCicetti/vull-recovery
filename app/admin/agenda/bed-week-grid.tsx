@@ -14,6 +14,8 @@ export type GridBooking = {
   status: string;
   client: string;
   membership: { locked: boolean } | null;
+  /** An admin block (a name, no client): never a link to a turno page. */
+  block?: boolean;
 };
 
 // Who holds each bed this week. From `sm` up: beds down, weekdays across.
@@ -165,6 +167,17 @@ export function BedWeekGrid({
 }
 
 function Cell({ b, tz }: { b: GridBooking; tz: string }) {
+  if (b.block) {
+    return (
+      <span className="flex items-center gap-1 text-xs text-fg-muted" title="Horario bloqueado">
+        <span className="font-mono tabular-nums">{fmtTime(b.startsAt, tz)}</span>
+        <span className="truncate">{b.client}</span>
+        <span className="shrink-0 rounded border border-border px-1 font-mono text-[9px] uppercase tracking-wider text-fg-faint">
+          bloq.
+        </span>
+      </span>
+    );
+  }
   return (
     <Link
       href={`/turno/${b.id}`}

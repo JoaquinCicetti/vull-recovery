@@ -34,7 +34,6 @@ role (that lives in the Edge Functions).
 | `NEXT_PUBLIC_SUPABASE_URL` | `https://wjdiojyelthaumuzkfxt.supabase.co` | ✅ |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | `sb_publishable_...` | ✅ |
 | `NEXT_PUBLIC_SITE_URL` | `https://your-domain.com` | ✅ |
-| `NEXT_PUBLIC_TRANSFER_ALIAS` | bank alias/CBU | optional |
 | `NEXT_PUBLIC_WHATSAPP_BUSINESS_NUMBER` | intl number, no `+` | optional |
 | `NEXT_PUBLIC_BLUR_TEXT` | `false` | optional |
 

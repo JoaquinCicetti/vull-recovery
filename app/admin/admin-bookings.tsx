@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { MessageCircle } from "lucide-react";
+import { Lock, MessageCircle } from "lucide-react";
 import { fmtTime, fmtDayLabel, fmtDateParts, localDate } from "@/lib/format";
 import { formatARS } from "@/lib/site";
 import { StatusBadge } from "@/components/status-badge";
@@ -26,6 +26,22 @@ function groupByDay(rows: AdminBookingRow[]): { date: string; rows: AdminBooking
   return groups;
 }
 
+// A block holds the slot under a name: no client, no money, no status to
+// speak of beyond "taken". It gets its own neutral tag instead of a status.
+function BlockTag({ className }: { className?: string }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex h-auto items-center gap-1 rounded-md bg-surface-2 px-2.5 py-1 text-xs font-medium text-fg-muted",
+        className,
+      )}
+    >
+      <Lock className="size-3" aria-hidden />
+      Bloqueado
+    </span>
+  );
+}
+
 // One turno as a row, not a card: time | who · what | status | menu. The
 // status badge already says whether it is paid (confirmed = paid, there is
 // no other way to be confirmed), so nothing repeats it. On a phone the badge
@@ -34,11 +50,13 @@ function Row({ b, past }: { b: AdminBookingRow; past?: boolean }) {
   const wa = waHref(b.phone);
   const { weekday, day, month } = fmtDateParts(b.startsAt);
   const summary = `${weekday} ${day} ${month} · ${fmtTime(b.startsAt)} · ${b.client}`;
+  const isBlock = b.block != null;
+  const gone = !["pending", "awaiting_payment", "confirmed"].includes(b.status);
   return (
     <li
       className={cn(
         "flex items-start gap-3 px-3 py-3 sm:items-center sm:gap-4 sm:px-4",
-        past && "opacity-60",
+        (past || (isBlock && gone)) && "opacity-60",
       )}
     >
       <span className="w-12 shrink-0 pt-0.5 font-mono text-sm font-semibold tabular-nums text-fg sm:pt-0">
@@ -46,12 +64,16 @@ function Row({ b, past }: { b: AdminBookingRow; past?: boolean }) {
       </span>
       <div className="min-w-0 flex-1">
         <p className="flex min-w-0 items-center gap-2">
-          <Link
-            href={`/admin/clientes/${b.userId}`}
-            className="truncate font-medium text-fg underline-offset-4 hover:underline"
-          >
-            {b.client}
-          </Link>
+          {isBlock || !b.userId ? (
+            <span className="truncate font-medium text-fg">{b.client}</span>
+          ) : (
+            <Link
+              href={`/admin/clientes/${b.userId}`}
+              className="truncate font-medium text-fg underline-offset-4 hover:underline"
+            >
+              {b.client}
+            </Link>
+          )}
           {wa && (
             <a
               href={wa}
@@ -65,22 +87,43 @@ function Row({ b, past }: { b: AdminBookingRow; past?: boolean }) {
           )}
         </p>
         <p className="mt-0.5 truncate text-sm text-fg-muted">
-          {b.service}
-          {b.place && <span className="text-fg-faint"> · {b.place}</span>}
-          {b.membership ? (
-            <span className="text-fg-faint"> · Abono{b.membership.locked ? " fijo" : ""}</span>
+          {isBlock ? (
+            <>
+              Horario bloqueado
+              {b.place && <span className="text-fg-faint"> · {b.place}</span>}
+            </>
           ) : (
-            b.price != null && (
-              <span className="font-mono text-fg-faint"> · {formatARS(b.price)}</span>
-            )
+            <>
+              {b.service}
+              {b.place && <span className="text-fg-faint"> · {b.place}</span>}
+              {b.membership ? (
+                <span className="text-fg-faint"> · Abono{b.membership.locked ? " fijo" : ""}</span>
+              ) : (
+                b.price != null && (
+                  <span className="font-mono text-fg-faint"> · {formatARS(b.price)}</span>
+                )
+              )}
+            </>
           )}
         </p>
-        <StatusBadge status={b.status} className="mt-2 sm:hidden" />
+        {isBlock ? (
+          gone ? (
+            <StatusBadge status={b.status} className="mt-2 sm:hidden" />
+          ) : (
+            <BlockTag className="mt-2 sm:hidden" />
+          )
+        ) : (
+          <StatusBadge status={b.status} className="mt-2 sm:hidden" />
+        )}
         {b.membership && b.status === "pending" && (
           <p className="mt-1 text-xs text-amber-300">Cuota del mes sin pagar</p>
         )}
       </div>
-      <StatusBadge status={b.status} className="hidden shrink-0 sm:inline-flex" />
+      {isBlock && !gone ? (
+        <BlockTag className="hidden shrink-0 sm:inline-flex" />
+      ) : (
+        <StatusBadge status={b.status} className="hidden shrink-0 sm:inline-flex" />
+      )}
       <div className="-mr-1 shrink-0">
         <BookingActions
           bookingId={b.id}
@@ -88,6 +131,7 @@ function Row({ b, past }: { b: AdminBookingRow; past?: boolean }) {
           status={b.status}
           started={Boolean(past)}
           membership={Boolean(b.membership)}
+          block={isBlock}
           summary={summary}
         />
       </div>

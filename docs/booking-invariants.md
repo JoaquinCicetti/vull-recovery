@@ -114,15 +114,32 @@ once Talo records a transaction on its way (ADR 0010).
 
 An **abono signup** holds its whole schedule the same way. The membership and
 each of its pending classes carry the same `hold_expires_at`, and a Talo CVU
-extends both. Once money is detected, or a receipt is uploaded, the hold is
-cleared and the classes wait as `awaiting_payment`. A schedule an admin booked
-for a client has **no** hold: it never lapses on its own (it shows in the
-admin's overdue list instead).
+extends both. Once money is detected, the hold is cleared and the classes wait
+as `awaiting_payment`. A schedule an admin booked for a client has **no** hold:
+it never lapses on its own (it shows under "Con cuota vencida" instead).
 
-**Caveat:** `awaiting_payment` holds from an uploaded **manual receipt** still
-never auto-expire, so they hold their slot and day until approved, rejected, or
-cancelled. An expiry/SLA for unverified receipts is tracked in
-`docs/audit-and-roadmap.md`.
+There is **no manual receipt** and **no manual confirm** (ADR 0014): a turno is
+`confirmed` by its Talo payment or by a pack credit, or it is not confirmed.
+Legacy `awaiting_payment` rows from receipts uploaded before 2026-10-19 still
+hold their slot until an admin resolves them from the agenda's flagged list.
+
+## Admin slot blocks
+
+Cash at the desk, a walk-in, a repair: the admin **blocks** the slot under a
+name (`admin-booking` action `block`). A block is a `bookings` row with
+`user_id null`, `block_label`, `block_by` and `status confirmed` — nothing
+else about it is special, on purpose:
+
+- `bookings_no_overlap` arbitrates it against online bookings race-safely;
+  `availability`, `membership-availability` and the abono roll count it as
+  taken; the Google event is created like any turno.
+- `bookings_block_shape` enforces "a client or a label, never both, never
+  neither". `bookings_one_per_day` ignores it (NULLs are distinct).
+- Clients can never read it (`bookings_select_own`: `user_id = auth.uid()`
+  never matches null). The agenda shows it with a "Bloqueado" tag; its only
+  action is `unblock` (cancelled, no notice).
+- `cancel_booking` returns `'block'` without touching credits; the three
+  transition RPCs skip the client notice when `user_id` is null.
 
 ## Timezone assumption (UTC-3, no DST)
 

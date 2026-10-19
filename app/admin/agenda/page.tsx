@@ -4,7 +4,7 @@ import { MEMBERSHIP_ACTIVE } from "@/lib/booking-status";
 import { requireAdmin } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { fmtDate, localDate, STATUS_LABEL } from "@/lib/format";
-import { formatARS } from "@/lib/site";
+import { clientWaLink, formatARS } from "@/lib/site";
 import {
   dateLabel,
   MEMBERSHIP_STATUS_LABEL,
@@ -25,7 +25,9 @@ import { MembershipActions } from "@/components/admin/membership-actions";
 import { MembershipScheduleChips } from "@/components/membership/schedule-chips";
 import { Button } from "@/components/ui/button";
 import { PageShell } from "@/components/ui/page-shell";
+import { BlockSlotDialog } from "@/components/admin/block-slot-dialog";
 import { BedWeekGrid, type GridBooking } from "./bed-week-grid";
+import { FlaggedPayments } from "./flagged-payments";
 import { NewMembershipDialog } from "./new-membership-dialog";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -35,9 +37,10 @@ const ACTIVE = ["pending", "awaiting_payment", "confirmed"];
 const VIEWS = { proximos: "Próximos", pasados: "Pasados", todos: "Todos" } as const;
 type View = keyof typeof VIEWS;
 const STATUSES = Object.keys(STATUS_LABEL) as BookingStatus[];
-const ABONO_STATES = ["vigentes", "pending", "active", "cancelled", "expired"] as const;
+const ABONO_STATES = ["vigentes", "vencidas", "pending", "active", "cancelled", "expired"] as const;
 const ABONO_STATE_LABEL: Record<(typeof ABONO_STATES)[number], string> = {
   vigentes: "Vigentes",
+  vencidas: "Con cuota vencida",
   pending: "Pendientes de pago",
   active: "Activos",
   cancelled: "Dados de baja",
@@ -83,13 +86,16 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
   const supabase = await createClient();
   const loadErrors: string[] = [];
 
-  const [{ data: sectorsData, error: sectorsErr }, { data: monthlyData }] = await Promise.all([
-    supabase.from("sectors").select("id, slug, name, active, timezone").order("sort_order"),
-    supabase.from("services").select("*").eq("billing", "monthly").order("sort_order"),
-  ]);
+  const [{ data: sectorsData, error: sectorsErr }, { data: servicesData }, { data: bedsData }] =
+    await Promise.all([
+      supabase.from("sectors").select("id, slug, name, active, timezone").order("sort_order"),
+      supabase.from("services").select("*").order("sort_order"),
+      supabase.from("resources").select("id, sector_id").eq("active", true),
+    ]);
   if (sectorsErr) loadErrors.push(`Sectores: ${sectorsErr.message}`);
   const sectors = (sectorsData ?? []) as Sector[];
-  const monthlyPlans = (monthlyData ?? []) as Service[];
+  const services = (servicesData ?? []) as Service[];
+  const monthlyPlans = services.filter((p) => p.billing === "monthly");
   // A link straight to the abonos (from a client's page) names no sector: it
   // means the one that sells them.
   const wantsAbonos = ["abonos", "semana"].includes(one(sp.ver));
@@ -100,6 +106,19 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
     null;
   const sectorPlans = sector ? monthlyPlans.filter((p) => p.sector_id === sector.id) : [];
   const hasAbonos = sectorPlans.length > 0;
+  // "Bloquear horario" needs any plan of the sector (it names the sector and
+  // the calendar; the slot length is the grid's) — a per-session one first.
+  const blockService = sector
+    ? (services.find((p) => p.sector_id === sector.id && p.active && p.billing === "session") ??
+      services.find((p) => p.sector_id === sector.id))
+    : undefined;
+  const multiBed = sector
+    ? ((bedsData ?? []) as { sector_id: string }[]).filter((r) => r.sector_id === sector.id).length > 1
+    : false;
+  const blockButton =
+    sector && blockService ? (
+      <BlockSlotDialog serviceId={blockService.id} sectorName={sector.name} multiBed={multiBed} />
+    ) : null;
 
   // eslint-disable-next-line react-hooks/purity -- server component: renders once
   const nowISO = new Date(Date.now()).toISOString();
@@ -208,6 +227,8 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
               active: v === view,
             }))}
           />
+          <div className="flex flex-wrap items-center gap-2">
+          {blockButton}
           <FilterDialog
             basePath="/admin/agenda"
             keep={{ ...base, vista: params.vista }}
@@ -245,6 +266,7 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
             </FilterField>
             {clientId && <input type="hidden" name="cliente" value={clientId} />}
           </FilterDialog>
+          </div>
         </div>
 
         <p className="mt-5 font-mono text-xs text-fg-faint">
@@ -271,7 +293,7 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
       supabase
         .from("bookings")
         .select(
-          "id, starts_at, resource_id, status, membership_id, memberships(locked), profiles!user_id(full_name)",
+          "id, starts_at, resource_id, status, membership_id, block_label, memberships(locked), profiles!user_id(full_name)",
         )
         .eq("sector_id", sector.id)
         .in("status", ACTIVE)
@@ -281,7 +303,7 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
     ]);
     if (gridRes.error) loadErrors.push(`Semana: ${gridRes.error.message}`);
     const grid: GridBooking[] = ((gridRes.data ?? []) as any[]).map((b) => {
-      const parts = String(b.profiles?.full_name ?? "Cliente").trim().split(/\s+/);
+      const parts = String(b.profiles?.full_name ?? b.block_label ?? "Cliente").trim().split(/\s+/);
       return {
         id: b.id,
         startsAt: b.starts_at,
@@ -289,6 +311,7 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
         status: b.status,
         client: parts.length > 1 ? `${parts[0]} ${parts[1][0]}.` : parts[0],
         membership: b.membership_id ? { locked: Boolean(b.memberships?.locked) } : null,
+        block: Boolean(b.block_label),
       };
     });
     const weekHref = (w: string) => href({ ...base, semana: w });
@@ -301,7 +324,8 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
             {dateLabel(days[0])} – {dateLabel(days[6])}
             {thisWeek && <span className="font-normal text-fg-faint"> · esta semana</span>}
           </p>
-          <div className="flex gap-1.5">
+          <div className="flex flex-wrap gap-1.5">
+            {blockButton}
             <Button asChild size="sm" variant="outline">
               <Link href={weekHref(addDays(week, -7))} aria-label="Semana anterior">
                 <ChevronLeft aria-hidden />
@@ -323,7 +347,8 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
           <BedWeekGrid beds={(beds ?? []) as any[]} days={days} bookings={grid} today={today} tz={tz} />
         </div>
         <p className="mt-2 text-xs text-fg-faint">
-          Incluye turnos sueltos. El candado marca horarios fijos; en ámbar, cuotas sin pagar.
+          Incluye turnos sueltos y horarios bloqueados. El candado marca horarios fijos; en
+          ámbar, cuotas sin pagar.
         </p>
       </>
     );
@@ -337,6 +362,18 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
     const q = one(sp.q).replace(/[,()%*\\"]/g, " ").trim().slice(0, 60);
     const page = Math.max(1, Number.parseInt(one(sp.pagina), 10) || 1);
 
+    // "Con cuota vencida": live abonos with a pending cuota past its due day.
+    // Read first (a view, not a joinable embed), then filtered by id.
+    let overdueIds: string[] | null = null;
+    if (estado === "vencidas") {
+      const { data: od } = await supabase
+        .from("membership_periods_v")
+        .select("membership_id")
+        .eq("status", "pending")
+        .in("membership_status", MEMBERSHIP_ACTIVE)
+        .lt("due_on", today);
+      overdueIds = [...new Set(((od ?? []) as { membership_id: string }[]).map((p) => p.membership_id))];
+    }
     let listQ = supabase
       .from("memberships")
       .select(
@@ -346,7 +383,11 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
       .eq("sector_id", sector.id)
       .order("created_at", { ascending: false })
       .range((page - 1) * PAGE, page * PAGE - 1);
-    listQ = estado === "vigentes" ? listQ.in("status", MEMBERSHIP_ACTIVE) : listQ.eq("status", estado);
+    listQ =
+      estado === "vigentes" || estado === "vencidas"
+        ? listQ.in("status", MEMBERSHIP_ACTIVE)
+        : listQ.eq("status", estado);
+    if (overdueIds) listQ = listQ.in("id", overdueIds.length ? overdueIds : ["00000000-0000-0000-0000-000000000000"]);
     if (planFilter) listQ = listQ.eq("service_id", planFilter);
     if (fijo) listQ = listQ.eq("locked", true);
     if (q) {
@@ -496,6 +537,26 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
                       <p className={cn("mt-2 text-xs", due.is_late ? "text-amber-300" : "text-fg-faint")}>
                         Cuota de {monthLabel(due.period, false)}: {formatARS(due.amount_due_ars)} ·{" "}
                         {due.is_late ? "vencida" : `vence el ${dateLabel(due.due_on)}`}
+                        {due.is_late && (() => {
+                          const first = String(m.profiles?.full_name ?? "").split(" ")[0];
+                          const wa = clientWaLink(
+                            m.profiles?.whatsapp_phone,
+                            `Hola ${first}! Te escribimos de VULL: la cuota de ${monthLabel(due.period, false)} de tu abono (${formatARS(due.amount_due_ars)}) está pendiente. La podés pagar desde la app, en Mi abono.`,
+                          );
+                          return wa ? (
+                            <>
+                              {" · "}
+                              <a
+                                href={wa}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-accent underline-offset-4 hover:underline"
+                              >
+                                Recordar por WhatsApp
+                              </a>
+                            </>
+                          ) : null;
+                        })()}
                       </p>
                     )}
                     {m.roll_error && live && (
@@ -523,6 +584,7 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
   return (
     <PageShell size="wide" top="tight" eyebrow="Panel" title="Agenda">
       <LoadErrors errors={loadErrors} />
+      <FlaggedPayments />
       {sectors.length > 1 && <div className="mb-6">{sectorSwitch}</div>}
       {hasAbonos && (
         <div className="mb-5">
