@@ -641,7 +641,7 @@ const membershipCreatedByAdmin: Renderer = async (admin, row) => {
       rows,
       note: row.payload.new_account
         ? "No hace falta contraseña: al entrar te mandamos un código a este email."
-        : "Ya lo vas a ver en Mi plan, dentro de tu cuenta.",
+        : "Ya lo vas a ver en Mi abono, dentro de tu cuenta.",
       cta: appUrl()
         ? { label: "Entrar con mi email", url: `${appUrl()}/login?next=${encodeURIComponent("/cuenta/plan")}` }
         : undefined,

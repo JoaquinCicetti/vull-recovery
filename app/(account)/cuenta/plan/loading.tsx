@@ -3,7 +3,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export default function Loading() {
   return (
-    <PageShell size="wide" top="tight" eyebrow="Tu cuenta" title="Plan">
+    <PageShell size="wide" top="tight" eyebrow="Tu cuenta" title="Abono">
       <div aria-hidden="true">
         <Skeleton className="h-44 w-full rounded-lg" />
         <Skeleton className="mt-12 h-3 w-24" />

@@ -6,26 +6,36 @@ import { Bell, CalendarDays, CalendarRange, Ticket, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const TABS = [
-  { href: "/mis-turnos", label: "Turnos", icon: CalendarDays },
-  { href: "/cuenta/plan", label: "Plan", icon: CalendarRange },
-  { href: "/cuenta/sesiones", label: "Sesiones", icon: Ticket },
-  { href: "/cuenta/notificaciones", label: "Avisos", icon: Bell },
-  { href: "/cuenta", label: "Perfil", icon: User },
-];
+  { href: "/mis-turnos", label: "Turnos", icon: CalendarDays, key: "turnos" },
+  { href: "/cuenta/plan", label: "Abono", icon: CalendarRange, key: "plan" },
+  { href: "/cuenta/sesiones", label: "Sesiones", icon: Ticket, key: "sessions" },
+  { href: "/cuenta/notificaciones", label: "Avisos", icon: Bell, key: "notices" },
+  { href: "/cuenta", label: "Perfil", icon: User, key: "profile" },
+] as const;
 
-// The client's own area: one bar across turnos, abono, session balance,
-// notification settings and profile, so each page stays short and does one thing.
+// The client's own area: turnos, notification settings and profile always;
+// the abono (pilates) and the session balance (recovery packs) only when the
+// client has one — they are different products and never both by default.
 // Rendered once by app/(account)/layout.tsx, so it never re-mounts between pages.
-export function AccountTabs() {
+export function AccountTabs({
+  showPlan = false,
+  showSessions = false,
+}: {
+  showPlan?: boolean;
+  showSessions?: boolean;
+}) {
   const pathname = usePathname();
+  const tabs = TABS.filter(
+    (t) => (t.key !== "plan" || showPlan) && (t.key !== "sessions" || showSessions),
+  );
   return (
     <nav
       aria-label="Tu cuenta"
       className="flex border-b border-border sm:gap-1"
     >
-      {TABS.map(({ href, label, icon: Icon }) => {
+      {tabs.map(({ href, label, icon: Icon }) => {
         // "/cuenta" is the profile and only the profile; the others own their
-        // subtree (paying a cuota is still "Plan").
+        // subtree (paying a cuota is still the abono).
         const active =
           href === "/cuenta" ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
         return (
@@ -34,7 +44,7 @@ export function AccountTabs() {
             href={href}
             aria-current={active ? "page" : undefined}
             className={cn(
-              // Phone: five equal columns, icon over label (never scrolls or clips).
+              // Phone: equal columns, icon over label (never scrolls or clips).
               "-mb-px flex flex-1 flex-col items-center gap-1.5 border-b-2 px-1 py-2.5 text-xs transition-colors duration-150",
               "sm:flex-none sm:flex-row sm:gap-2 sm:px-3 sm:text-sm",
               active
