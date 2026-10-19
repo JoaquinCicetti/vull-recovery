@@ -218,7 +218,7 @@ export default async function PagarCuotaPage({
 
       <div className="mt-8 flex justify-center">
         <Link href="/cuenta/plan" className="text-sm text-fg-muted underline-offset-4 hover:underline">
-          Ir a Mi plan
+          Ir a Mi abono
         </Link>
       </div>
     </PageShell>

@@ -64,7 +64,7 @@ function OverdueItem({ row: r }: { row: OverdueRow }) {
   const first = r.client.split(" ")[0] || "";
   const wa = clientWaLink(
     r.phone,
-    `Hola ${first}! Te escribimos de VULL: la cuota de ${monthLabel(r.period, false)} de tu abono (${formatARS(r.amountDue)}) está pendiente. La podés pagar desde la app, en Mi plan.`,
+    `Hola ${first}! Te escribimos de VULL: la cuota de ${monthLabel(r.period, false)} de tu abono (${formatARS(r.amountDue)}) está pendiente. La podés pagar desde la app, en Mi abono.`,
   );
   const schedule = byWeekOrder(r.slots)
     .map((s) => `${WEEKDAY_SHORT[s.weekday]} ${hm(s.start_time)}`)

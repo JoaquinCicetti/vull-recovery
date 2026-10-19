@@ -128,7 +128,7 @@ export function NewMembershipForm({
       <div className="flex flex-col gap-3">
         <p className="font-semibold text-fg">Abono creado para {done.name} ✓</p>
         <p className="text-sm text-fg-muted">
-          {done.cash ? "La cuota quedó registrada como pagada en efectivo." : "La cuota queda pendiente: el cliente la paga desde Mi plan, o la marcás cuando cobres."}{" "}
+          {done.cash ? "La cuota quedó registrada como pagada en efectivo." : "La cuota queda pendiente: el cliente la paga desde Mi abono, o la marcás cuando cobres."}{" "}
           {done.created
             ? "Le creamos la cuenta y le mandamos un email para que entre con su email."
             : "Le mandamos un email con su horario."}
