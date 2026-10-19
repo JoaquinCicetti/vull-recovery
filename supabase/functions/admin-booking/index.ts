@@ -1,32 +1,36 @@
 // Authenticated, admin-only Edge Function: handle a turno beyond cancellation.
-//   action "confirm"    → manually confirm a pending/awaiting_payment turno (e.g.
-//                         paid in cash); clears the hold, resolves any pending
-//                         payment, finalizes the Google event, emails the client.
+//   action "block"      → hold a slot under a name (a cash client at the desk,
+//                         a walk-in, maintenance): a bookings row with no
+//                         client and a label, status confirmed, so every guard
+//                         that protects a turno protects the block (ADR 0014).
+//   action "unblock"    → free a block (cancelled; no notice, nobody to tell).
 //   action "no_show"    → mark a confirmed, already-started turno as a no-show.
 //   action "reschedule" → move the SAME booking to a new time (preserving id,
 //                         payment linkage, google_event_id); re-validates the
 //                         slot (grid, hours, lead — NOT the client booking
 //                         window: admins may book further ahead) and lets the
 //                         DB EXCLUDE / one-per-day arbitrate.
-// Cancellation stays in cancel-booking. Mirrors admin-payment's is_admin gate.
-// The client is told about a confirm or a reschedule (queued by the RPC with
+// There is NO manual confirm: a turno is confirmed by its payment (Talo) or
+// not at all. Cancellation stays in cancel-booking. Mirrors admin-payment's
+// is_admin gate. The client is told about a reschedule (queued by the RPC with
 // actor 'admin', so the other admins are not).
 import { responder, errMessage } from "../_shared/cors.ts";
 import { adminClient, userClient } from "../_shared/supabase.ts";
-import { getBusy, patchEventStatus, patchEventTime } from "../_shared/google.ts";
+import { createEvent, getBusy, patchEventStatus, patchEventTime } from "../_shared/google.ts";
+import { defer } from "../_shared/background.ts";
 import { type Busy, validateSlot } from "../_shared/booking-rules.ts";
 import { loadServiceWithSector, sectorCalendarId, sectorSettings } from "../_shared/sector.ts";
 import { kick } from "../_shared/notify.ts";
 
-const ACTIONS = ["confirm", "no_show", "reschedule"];
+const ACTIONS = ["block", "unblock", "no_show", "reschedule"];
 const ACTIVE = ["pending", "awaiting_payment", "confirmed"];
 
 Deno.serve(async (req) => {
   const { json, options } = responder(req);
   if (req.method === "OPTIONS") return options();
   try {
-    const { booking_id, action, starts_at, resource_id } = await req.json();
-    if (!booking_id || !ACTIONS.includes(action)) {
+    const { booking_id, action, starts_at, resource_id, service_id, label } = await req.json();
+    if (!ACTIONS.includes(action) || (action !== "block" && !booking_id)) {
       return json({ error: "Datos inválidos" }, 400);
     }
 
@@ -43,61 +47,101 @@ Deno.serve(async (req) => {
       .single();
     if (!me?.is_admin) return json({ error: "No autorizado" }, 403);
 
+    // ── block ─────────────────────────────────────────────────────────────────
+    if (action === "block") {
+      const name = typeof label === "string" ? label.trim() : "";
+      if (!service_id || !name || name.length > 60) {
+        return json({ error: "Datos inválidos" }, 400);
+      }
+      const start = new Date(starts_at);
+      if (isNaN(start.getTime())) return json({ error: "Fecha inválida" }, 400);
+      if (start.getTime() < Date.now()) return json({ error: "Ese horario ya pasó." }, 400);
+
+      // The service only names the sector (and the calendar): the slot length
+      // comes from the sector's grid like any turno.
+      const service = await loadServiceWithSector(admin, service_id);
+      if (!service) return json({ error: "Servicio no disponible" }, 404);
+      const settings = sectorSettings(service.sectors);
+      const calendar = sectorCalendarId(service.sectors);
+      const googleBusy = await getBusy(
+        start.toISOString(),
+        new Date(start.getTime() + 86400000).toISOString(),
+        calendar,
+      ).catch(() => []);
+      const busy: Busy[] = googleBusy.map((b) => ({
+        start: new Date(b.start).getTime(),
+        end: new Date(b.end).getTime(),
+      }));
+      const check = validateSlot({ startMs: start.getTime(), settings, busy, enforceWindow: false });
+      if (!check.ok) return json({ error: check.error }, 409);
+      const end = new Date(check.endMs);
+
+      const bed = typeof resource_id === "string" && resource_id ? resource_id : null;
+      const { data: block, error: insErr } = await admin
+        .from("bookings")
+        .insert({
+          user_id: null,
+          block_label: name,
+          block_by: user.id,
+          service_id,
+          resource_id: bed,
+          starts_at: start.toISOString(),
+          ends_at: end.toISOString(),
+          status: "confirmed",
+        })
+        .select("id, starts_at, ends_at")
+        .single();
+      if (insErr || !block) {
+        if (insErr?.code === "23P01") {
+          return json({ error: "Ese horario ya está ocupado. Elegí otro." }, 409);
+        }
+        return json({ error: insErr?.message ?? "No se pudo bloquear." }, 400);
+      }
+      defer(async () => {
+        const eventId = await createEvent({
+          summary: `Bloqueado — ${name}`,
+          description: `Bloqueo ${block.id} (${name})`,
+          start: block.starts_at,
+          end: block.ends_at,
+          status: "confirmed",
+          calendar,
+        });
+        if (eventId) {
+          await admin.from("bookings").update({ google_event_id: eventId }).eq("id", block.id);
+        }
+      });
+      return json({ ok: true, booking: block });
+    }
+
     const { data: booking } = await admin
       .from("bookings")
-      .select("id, status, starts_at, ends_at, service_id, google_event_id, membership_id")
+      .select("id, status, starts_at, ends_at, service_id, google_event_id, membership_id, block_label")
       .eq("id", booking_id)
       .single();
     if (!booking) return json({ error: "Turno no encontrado" }, 404);
 
-    if (action === "confirm") {
-      // An abono class is confirmed by paying its cuota (one payment for the
-      // whole month), never class by class.
-      if (booking.membership_id) {
-        return json(
-          { error: "Es una clase de un abono: registrá el pago de la cuota desde Abonos." },
-          409,
-        );
-      }
-      if (!["pending", "awaiting_payment"].includes(booking.status)) {
-        return json({ error: "Este turno no se puede confirmar." }, 409);
-      }
-      // confirm_booking re-asserts the status under a row lock: between the
-      // read above and the write the hold can lapse (the lazy sweep flips it to
-      // `expired`), and the row must not be confirmed back out of a terminal state.
-      const { data: res, error: updErr } = await admin.rpc("confirm_booking", {
-        p_booking: booking.id,
-        p_payment: null,
-        p_actor: "admin",
-      });
-      if (updErr || res !== "ok") {
-        return json(
-          {
-            error: updErr?.code === "23P01"
-              ? "Ese horario ya fue tomado por otro turno."
-              : res === "gone" || res === "already"
-              ? "Este turno no se puede confirmar."
-              : "No se pudo confirmar el turno.",
-          },
-          409,
-        );
-      }
-      // Settle only MANUAL receipts the client actually submitted. Approving every
-      // pending row would also mark an abandoned online checkout as paid.
-      await admin
-        .from("payments")
-        .update({ status: "approved" })
-        .eq("booking_id", booking.id)
-        .eq("provider", "manual")
-        .eq("status", "pending");
+    // ── unblock ───────────────────────────────────────────────────────────────
+    if (action === "unblock") {
+      if (!booking.block_label) return json({ error: "No es un bloqueo." }, 409);
+      if (!ACTIVE.includes(booking.status)) return json({ error: "Ya está liberado." }, 409);
+      const { error: upErr } = await admin
+        .from("bookings")
+        .update({
+          status: "cancelled",
+          cancelled_at: new Date().toISOString(),
+          cancelled_by: user.id,
+          cancellation_reason: "unblock",
+        })
+        .eq("id", booking.id)
+        .in("status", ACTIVE);
+      if (upErr) return json({ error: "No se pudo liberar." }, 409);
       if (booking.google_event_id) {
         try {
-          await patchEventStatus(booking.google_event_id, "confirmed");
+          await patchEventStatus(booking.google_event_id, "cancelled");
         } catch (_) {
           /* calendar best-effort */
         }
       }
-      kick(admin);
       return json({ ok: true });
     }
 

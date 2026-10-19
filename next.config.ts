@@ -16,6 +16,7 @@ const nextConfig: NextConfig = {
   async redirects() {
     return [
       { source: "/admin/turnos", destination: "/admin/agenda?ver=turnos", permanent: false },
+      { source: "/admin/pagos", destination: "/admin/agenda", permanent: false },
       { source: "/admin/abonos", destination: "/admin/agenda?ver=abonos", permanent: false },
       { source: "/admin/servicios", destination: "/admin/ajustes", permanent: false },
       { source: "/admin/configuracion", destination: "/admin/ajustes", permanent: false },

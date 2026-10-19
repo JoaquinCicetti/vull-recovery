@@ -38,7 +38,6 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon key from step 2>
 NEXT_PUBLIC_SITE_URL=http://localhost:3000
 # optional in dev:
 NEXT_PUBLIC_WHATSAPP_BUSINESS_NUMBER=
-NEXT_PUBLIC_TRANSFER_ALIAS=
 ```
 
 ## 4. Apply the schema
@@ -201,7 +200,7 @@ pnpm dlx supabase secrets set \
 
 **Frontend (Vercel):** import the repo and set `NEXT_PUBLIC_SUPABASE_URL`,
 `NEXT_PUBLIC_SUPABASE_ANON_KEY` (from the cloud project), `NEXT_PUBLIC_SITE_URL`
-(prod domain), `NEXT_PUBLIC_WHATSAPP_BUSINESS_NUMBER`, `NEXT_PUBLIC_TRANSFER_ALIAS`.
+(prod domain), `NEXT_PUBLIC_WHATSAPP_BUSINESS_NUMBER`.
 
 **keep-alive:** schedule a weekly GET to
 `${SUPABASE_URL}/functions/v1/keep-alive` (cron-job.org or a GitHub Actions cron)
@@ -233,7 +232,6 @@ ADR 0013). Without it, failed rows wait on /admin "Avisos no enviados" for a
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Frontend | same as above |
 | `NEXT_PUBLIC_SITE_URL` | Frontend | your site URL (`http://localhost:3000` in dev) |
 | `NEXT_PUBLIC_WHATSAPP_BUSINESS_NUMBER` | Frontend | business WhatsApp, intl format, no `+` |
-| `NEXT_PUBLIC_TRANSFER_ALIAS` | Frontend | alias/CBU shown for manual transfer |
 | `SUPABASE_URL` / `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` | Edge Function | **injected automatically** by Supabase — don't set manually |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | Edge Function | GCP service-account JSON key (step 8) |
 | `GOOGLE_CALENDAR_ID` | Edge Function | Google Calendar → Integrate calendar |

@@ -32,16 +32,11 @@ export const INSTAGRAM_URL = "https://instagram.com/vull.recovery";
 export const WHATSAPP_NUMBER =
   process.env.NEXT_PUBLIC_WHATSAPP_BUSINESS_NUMBER || CONTACT_WHATSAPP_NUMBER;
 
-// Alias/CBU shown to clients paying by manual bank transfer.
-export const TRANSFER_ALIAS = process.env.NEXT_PUBLIC_TRANSFER_ALIAS ?? "";
-
-// Automatic bank transfers via Talo (talo.com.ar). While this is false the
-// "se acredita solo" option is hidden entirely rather than shown and failing:
-// `create-payment` answers 503 "Pagos online no configurados" without the
-// TALO_* edge secrets, so the button would be a dead primary call to action.
-// Manual transfer + receipt stays the fallback either way. Flip
-// NEXT_PUBLIC_TALO_ENABLED=true once the TALO_* secrets are set (sandbox first:
-// TALO_TEST=true). See docs/adr/0010-payments-talo-transfers.md.
+// Automatic bank transfers via Talo (talo.com.ar): THE way to pay (ADR 0014,
+// no manual receipt any more). While this is false the pay button is replaced
+// by a "write us on WhatsApp" line rather than shown and failing: `create-payment`
+// answers 503 "Pagos online no configurados" without the TALO_* edge secrets.
+// Must be true in production. See docs/adr/0010-payments-talo-transfers.md.
 export const TALO_ENABLED = process.env.NEXT_PUBLIC_TALO_ENABLED === "true";
 
 // Dev mode: shows a "DEV" badge and a "Simular pago" button on Talo transfers

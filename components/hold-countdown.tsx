@@ -10,9 +10,9 @@ import { cn } from "@/lib/utils";
 // pre-payment `pending` window. The hold itself is enforced server-side
 // (bookings.hold_expires_at + the DB no-overlap constraint); this is purely the
 // realtime UI. Reads the server's hold_expires_at so it can't drift from the
-// actual hold. Once the receipt is uploaded the booking moves to
-// `awaiting_payment` and this stops showing (the slot is then held until an admin
-// verifies the transfer).
+// actual hold. Once Talo records a transfer on its way the booking moves to
+// `awaiting_payment` and this stops showing (the slot is then held until it
+// settles).
 function fmt(ms: number) {
   const total = Math.max(0, Math.ceil(ms / 1000));
   const m = Math.floor(total / 60);
