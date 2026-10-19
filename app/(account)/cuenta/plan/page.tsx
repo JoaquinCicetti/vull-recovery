@@ -67,7 +67,7 @@ export default async function PlanPage() {
   };
 
   return (
-    <PageShell top="tight" eyebrow="Tu cuenta" title="Plan">
+    <PageShell size="wide" top="tight" eyebrow="Tu cuenta" title="Plan">
       <PlanView data={data} />
     </PageShell>
   );

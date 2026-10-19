@@ -8,7 +8,7 @@ import { AccountTabs } from "@/components/account/account-tabs";
 export default function AccountLayout({ children }: { children: ReactNode }) {
   return (
     <>
-      <div className="mx-auto w-full max-w-2xl px-5 pt-10 sm:pt-12">
+      <div className="mx-auto w-full max-w-3xl px-5 pt-10 sm:pt-12">
         <AccountTabs />
       </div>
       {children}

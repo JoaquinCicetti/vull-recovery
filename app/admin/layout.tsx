@@ -8,7 +8,7 @@ import { AdminTabs } from "@/components/admin/admin-tabs";
 export default function AdminLayout({ children }: { children: ReactNode }) {
   return (
     <>
-      <div className="mx-auto w-full max-w-4xl px-5 pt-10 sm:pt-12">
+      <div className="mx-auto w-full max-w-3xl px-5 pt-10 sm:pt-12">
         <AdminTabs />
       </div>
       {children}

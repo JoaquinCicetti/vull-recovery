@@ -11,7 +11,7 @@ export default async function CuentaPage() {
   const name = profile?.full_name ?? null;
 
   return (
-    <PageShell top="tight" eyebrow="Tu cuenta" title="Perfil">
+    <PageShell size="wide" top="tight" eyebrow="Tu cuenta" title="Perfil">
       <div className="surface-card surface-lift animate-fade-up flex items-center gap-4 p-5">
         <UserAvatar seed={user!.id} size={56} />
         <div className="min-w-0">

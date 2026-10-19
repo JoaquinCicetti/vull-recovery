@@ -70,7 +70,7 @@ export default async function MisTurnosPage({
   const totalCredits = credits.reduce((n, c) => n + c.remaining, 0);
 
   return (
-    <PageShell top="tight" eyebrow="Tu cuenta" title="Mis turnos">
+    <PageShell size="wide" top="tight" eyebrow="Tu cuenta" title="Mis turnos">
       <TurnosView
         upcoming={upcoming}
         history={history}
