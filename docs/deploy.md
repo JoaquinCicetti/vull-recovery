@@ -127,15 +127,14 @@ cron (cron-job.org, GitHub Actions…) at each of these:
 
 | Endpoint | Every | Secret |
 |----------|-------|--------|
-| `POST ${SUPABASE_URL}/functions/v1/notify-dispatch?token=$NOTIFY_DISPATCH_TOKEN` | 5 min | `NOTIFY_DISPATCH_TOKEN` |
 | `POST ${SUPABASE_URL}/functions/v1/talo-reconcile?token=$TALO_RECONCILE_TOKEN` | ~10 min | `TALO_RECONCILE_TOKEN` |
-| `POST ${SUPABASE_URL}/functions/v1/membership-cycle?token=$MEMBERSHIP_CYCLE_TOKEN` | daily | `MEMBERSHIP_CYCLE_TOKEN` |
-| `POST ${SUPABASE_URL}/functions/v1/calendar-poll?token=$CALENDAR_POLL_TOKEN` | ~5 min (only with Google) | `CALENDAR_POLL_TOKEN` |
 | `GET ${SUPABASE_URL}/functions/v1/keep-alive` | weekly | — |
+| `POST ${SUPABASE_URL}/functions/v1/notify-dispatch?token=$NOTIFY_DISPATCH_TOKEN` | 5 min, optional | `NOTIFY_DISPATCH_TOKEN` |
 
-`notify-dispatch` sends what the notifications outbox still holds (ADR 0013);
-`membership-cycle` rolls recurring members into next month (ADR 0011). Details
-in `docs/setup.md`.
+Notifications are sent immediately; `notify-dispatch` only retries failed or
+lost rows (ADR 0013). Abonos need no cron: roll, surcharge and release are
+derived at query time (ADR 0011). `calendar-poll` is a manual sync, not a cron.
+Details in `docs/setup.md`.
 
 ---
 
