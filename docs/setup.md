@@ -207,23 +207,21 @@ pnpm dlx supabase secrets set \
 `${SUPABASE_URL}/functions/v1/keep-alive` (cron-job.org or a GitHub Actions cron)
 so the free project doesn't pause.
 
-**membership-cycle (abonos):** set `MEMBERSHIP_CYCLE_TOKEN` as a function secret
-and schedule a daily
-`POST ${SUPABASE_URL}/functions/v1/membership-cycle?token=$MEMBERSHIP_CYCLE_TOKEN`.
-It rolls recurring members into the next month and alerts the admins when a
-member's bed was taken next month. Optional: every booking/abono function runs
-the same maintenance lazily (see ADR 0011).
+**Abonos need no cron.** The monthly roll, the late surcharge and the bed
+release are derived from today's date at query time, and every booking/abono
+function runs the same housekeeping lazily (ADR 0011). `membership-cycle` is
+only a manual kick (`?token=MEMBERSHIP_CYCLE_TOKEN`) if you ever want to force
+it.
 
-**notify-dispatch (notifications):** set `NOTIFY_DISPATCH_TOKEN` and schedule,
-every 5 minutes,
-`POST ${SUPABASE_URL}/functions/v1/notify-dispatch?token=$NOTIFY_DISPATCH_TOKEN`.
-It sends whatever the notifications outbox still holds (see
-[Notifications](#notifications) and ADR 0013); /admin "Reintentar" calls the
-same function with the admin's session instead of the token.
+**notify-dispatch (optional):** notifications are sent immediately by the
+function that emits them. A cron every ~5 min at
+`POST ${SUPABASE_URL}/functions/v1/notify-dispatch?token=$NOTIFY_DISPATCH_TOKEN`
+only retries what failed or was lost (see [Notifications](#notifications) and
+ADR 0013). Without it, failed rows wait on /admin "Avisos no enviados" for a
+"Reintentar" (same function, admin session instead of the token).
 
-**External crons, all together:** `keep-alive` weekly, `membership-cycle`
-daily, `talo-reconcile` every ~10 min, `notify-dispatch` every 5 min,
-`calendar-poll` every ~5 min (only with Google configured).
+**External crons, all together:** `keep-alive` weekly, `talo-reconcile` every
+~10 min; optionally `notify-dispatch` every 5 min.
 
 ---
 
@@ -374,10 +372,11 @@ notifications order by created_at desc;` shows what was queued and sent.
 
 ## Google Calendar sync-back (optional)
 
-`calendar-poll` (cron-driven, own `?token=` secret, fail-closed) reconciles
+`calendar-poll` (own `?token=` secret, fail-closed) is a one-shot sync of
 external Google Calendar edits back to bookings: an event deleted/cancelled in
 Calendar cancels the matching booking; a paid booking whose event was moved is
 flagged to the owner (not silently moved); events with no matching booking are
-ignored (they already show as busy via freeBusy). Drive it from the same external
-cron as `keep-alive` (e.g. every 5 min). Needs `GOOGLE_*` configured +
-`CALENDAR_POLL_TOKEN`.
+ignored (they already show as busy via freeBusy). The calendar is not edited by
+hand in practice, so it is not scheduled: run it manually when needed
+(`POST …/functions/v1/calendar-poll?token=$CALENDAR_POLL_TOKEN`). Needs
+`GOOGLE_*` configured + `CALENDAR_POLL_TOKEN`.
