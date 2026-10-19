@@ -7,7 +7,6 @@ import { formatARS } from "@/lib/site";
 import { BookingList } from "../../admin-bookings";
 import { BOOKINGS_SELECT, mapBooking } from "../../bookings-select";
 import { AdminRoleToggle } from "@/components/admin/admin-role-toggle";
-import { AdminTabs } from "@/components/admin/admin-tabs";
 import { ClientContactForm } from "@/components/admin/client-contact-form";
 import { CreditAdjustForm } from "@/components/admin/credit-adjust-form";
 import { LoadErrors } from "@/components/admin/load-errors";
@@ -59,12 +58,17 @@ function waHref(phone: string | null): string | null {
 
 export default async function ClientePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { user: me } = await requireAdmin();
-  const { id } = await params;
+  const [{ id }, sp] = await Promise.all([params, searchParams]);
   if (!UUID_RE.test(id)) notFound();
+  // The client's turnos span both sectors, so they are read here (the agenda
+  // is one sector at a time). `?turnos=todos` lifts the preview limit.
+  const allBookings = sp.turnos === "todos";
 
   const nowISO = new Date().toISOString();
   const supabase = await createClient();
@@ -100,7 +104,7 @@ export default async function ClientePage({
         .select(BOOKINGS_SELECT, { count: "exact" })
         .eq("user_id", id)
         .order("starts_at", { ascending: false })
-        .limit(BOOKINGS_SHOWN),
+        .limit(allBookings ? 500 : BOOKINGS_SHOWN),
       supabase
         .from("services")
         .select("id, name")
@@ -203,7 +207,7 @@ export default async function ClientePage({
   return (
     <PageShell
       size="wide"
-      nav={<AdminTabs />}
+      top="tight"
       eyebrow="Cliente"
       title={
         <span className="flex items-center gap-3">
@@ -297,7 +301,7 @@ export default async function ClientePage({
           <SectionTitle>Abono</SectionTitle>
           {profile.email && (
             <Link
-              href={`/admin/abonos?email=${encodeURIComponent(profile.email)}`}
+              href={`/admin/agenda?ver=abonos&email=${encodeURIComponent(profile.email)}`}
               className="text-sm text-accent underline-offset-4 hover:underline"
             >
               Crear abono →
@@ -408,12 +412,12 @@ export default async function ClientePage({
         )}
       </section>
 
-      <section className="mt-12">
+      <section id="turnos" className="mt-12 scroll-mt-24">
         <div className="flex items-baseline justify-between gap-4">
           <SectionTitle>Turnos</SectionTitle>
           {bookingsTotal > bookings.length && (
             <Link
-              href={`/admin/turnos?vista=todos&cliente=${profile.id}`}
+              href={`/admin/clientes/${profile.id}?turnos=todos#turnos`}
               className="text-sm text-accent underline-offset-4 hover:underline"
             >
               Ver los {bookingsTotal} →

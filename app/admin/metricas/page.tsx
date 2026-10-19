@@ -2,7 +2,6 @@ import Link from "next/link";
 import { requireAdmin } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { formatARS } from "@/lib/site";
-import { AdminTabs } from "@/components/admin/admin-tabs";
 import { LoadErrors } from "@/components/admin/load-errors";
 import { SectionTitle, Stat } from "@/components/admin/stat";
 import { PageShell } from "@/components/ui/page-shell";
@@ -103,7 +102,7 @@ export default async function MetricasPage({
   const maxService = m ? Math.max(1, ...m.services.map((s) => s.count)) : 1;
 
   return (
-    <PageShell size="wide" nav={<AdminTabs />} eyebrow="Panel" title="Métricas">
+    <PageShell size="wide" top="tight" eyebrow="Panel" title="Métricas">
       <LoadErrors errors={error ? [`Métricas: ${error.message}`] : []} />
 
       <div className="flex flex-wrap gap-2">

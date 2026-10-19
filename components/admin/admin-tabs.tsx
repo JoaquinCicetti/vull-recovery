@@ -2,43 +2,48 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import {
+  BarChart3,
+  CalendarDays,
+  CircleDollarSign,
+  Settings2,
+  Users,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
+// The backoffice sections: what happens (Agenda, per sector), what is owed
+// (Pagos), who (Clientes), how it is going (Métricas) and how it is set up
+// (Ajustes). Rendered once by app/admin/layout.tsx so the bar never re-mounts
+// between pages. On a phone: five equal columns, icon over label.
 const TABS = [
-  { href: "/admin", label: "Inicio" },
-  { href: "/admin/turnos", label: "Turnos" },
-  { href: "/admin/clientes", label: "Clientes" },
-  { href: "/admin/abonos", label: "Abonos" },
-  { href: "/admin/metricas", label: "Métricas" },
-  { href: "/admin/servicios", label: "Planes" },
-  { href: "/admin/configuracion", label: "Disponibilidad" },
+  { href: "/admin/agenda", label: "Agenda", icon: CalendarDays },
+  { href: "/admin/pagos", label: "Pagos", icon: CircleDollarSign },
+  { href: "/admin/clientes", label: "Clientes", icon: Users },
+  { href: "/admin/metricas", label: "Métricas", icon: BarChart3 },
+  { href: "/admin/ajustes", label: "Ajustes", icon: Settings2 },
 ];
 
-// The backoffice sections. Rendered through PageShell's `nav` slot by every
-// admin page, so it sits in the same column as the page it belongs to.
 export function AdminTabs() {
   const pathname = usePathname();
   return (
-    <nav
-      aria-label="Secciones del panel"
-      className="-mx-5 flex gap-1 overflow-x-auto border-b border-border px-5"
-    >
-      {TABS.map((t) => {
-        const active =
-          t.href === "/admin" ? pathname === "/admin" : pathname.startsWith(t.href);
+    <nav aria-label="Secciones del panel" className="flex border-b border-border sm:gap-1">
+      {TABS.map(({ href, label, icon: Icon }) => {
+        const active = pathname === href || pathname.startsWith(`${href}/`);
         return (
           <Link
-            key={t.href}
-            href={t.href}
+            key={href}
+            href={href}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "-mb-px shrink-0 border-b-2 px-3 py-2.5 text-sm transition-colors",
+              "-mb-px flex flex-1 flex-col items-center gap-1.5 border-b-2 px-1 py-2.5 text-xs transition-colors duration-150",
+              "sm:flex-none sm:flex-row sm:gap-2 sm:px-3 sm:text-sm",
               active
                 ? "border-accent font-semibold text-fg"
                 : "border-transparent text-fg-muted hover:text-fg",
             )}
           >
-            {t.label}
+            <Icon className="size-4" aria-hidden />
+            {label}
           </Link>
         );
       })}

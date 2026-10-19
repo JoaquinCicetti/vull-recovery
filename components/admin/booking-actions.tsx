@@ -1,58 +1,46 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import {
+  BanknoteArrowDown,
+  CalendarClock,
+  ExternalLink,
+  MoreHorizontal,
+  UserX,
+  XCircle,
+} from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { readError } from "@/lib/read-error";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { ConfirmDialog } from "@/components/admin/confirm-dialog";
 import { ReschedulePanel } from "@/components/admin/reschedule-panel";
 import type { BookingStatus } from "@/lib/types";
 
-async function readError(error: unknown, fallback: string): Promise<string> {
-  try {
-    const ctx = (error as { context?: Response }).context;
-    if (ctx && typeof ctx.json === "function") {
-      const body = await ctx.json();
-      if (body?.error) return body.error as string;
-    }
-  } catch {
-    /* ignore */
-  }
-  return fallback;
-}
-
-type Action = "confirm" | "no_show" | "cancel";
-
-const META: Record<
-  Action,
-  { label: string; prompt: string; confirmLabel: string; busy: string; destructive: boolean }
-> = {
-  confirm: {
-    label: "Confirmar",
-    prompt: "¿Confirmar este turno manualmente (pago recibido)?",
-    confirmLabel: "Sí, confirmar",
-    busy: "Confirmando…",
-    destructive: false,
-  },
-  no_show: {
-    label: "No asistió",
-    prompt: "¿Marcar que el cliente no asistió?",
-    confirmLabel: "Sí, no asistió",
-    busy: "Guardando…",
-    destructive: true,
-  },
-  cancel: {
-    label: "Cancelar",
-    prompt: "¿Cancelar el turno de este cliente? Si ya pagó, recibe la sesión como crédito.",
-    confirmLabel: "Sí, cancelar",
-    busy: "Cancelando…",
-    destructive: true,
-  },
-};
+type Action = "paid" | "no_show" | "cancel";
 
 /**
- * Admin per-turno actions with inline two-step confirms (no modal). confirm /
- * no_show / reschedule go through the is_admin-gated `admin-booking` function;
- * cancel uses `cancel-booking`. Available actions depend on status/timing.
+ * Admin per-turno actions behind one menu, each with its own question before
+ * it runs. "Marcar pagado" is the only positive one (a turno is confirmed BY
+ * paying: there is no confirm without a payment). Cancel is red and says what
+ * the client loses; reschedule warns before the slot picker opens.
+ * paid / no_show / reschedule go through the is_admin-gated `admin-booking`
+ * function; cancel uses `cancel-booking`.
  */
 export function BookingActions({
   bookingId,
@@ -60,143 +48,161 @@ export function BookingActions({
   status,
   started,
   membership = false,
+  summary,
 }: {
   bookingId: string;
   serviceId: string;
   status: BookingStatus;
   started: boolean;
-  /** An abono class: confirmed by paying the month's cuota, not one by one. */
+  /** An abono class: paid with the month's cuota, never one by one. */
   membership?: boolean;
+  /** "Lun 20 oct · 10:00 · Juan Pérez": names the turno inside each dialog. */
+  summary: string;
 }) {
   const router = useRouter();
   const supabase = createClient();
-  const [pending, setPending] = useState<Action | null>(null);
-  const [rescheduling, setRescheduling] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [dialog, setDialog] = useState<Action | "reschedule" | null>(null);
 
   const isActive = ["pending", "awaiting_payment", "confirmed"].includes(status);
-  const available: Action[] = [];
-  if ((status === "pending" || status === "awaiting_payment") && !membership) {
-    available.push("confirm");
-  }
-  if (status === "confirmed" && started) available.push("no_show");
-  if (isActive) available.push("cancel");
+  const canPay = (status === "pending" || status === "awaiting_payment") && !membership;
+  const canNoShow = status === "confirmed" && started;
   const canReschedule = isActive && !started;
+  const canCancel = isActive;
 
-  if (available.length === 0 && !canReschedule) return null;
-
-  async function run(action: Action) {
-    setLoading(true);
-    setError(null);
+  async function run(action: Action): Promise<string | null> {
     const fn = action === "cancel" ? "cancel-booking" : "admin-booking";
     const body =
       action === "cancel"
         ? { booking_id: bookingId }
-        : { booking_id: bookingId, action };
+        : { booking_id: bookingId, action: action === "paid" ? "confirm" : action };
     const { error } = await supabase.functions.invoke(fn, { body });
-    setLoading(false);
-    if (error) {
-      setError(await readError(error, "No se pudo completar la acción."));
-      return;
-    }
-    setPending(null);
+    if (error) return readError(error, "No se pudo completar la acción.");
     router.refresh();
-  }
-
-  if (rescheduling) {
-    return (
-      <div className="flex flex-col items-end gap-2">
-        <ReschedulePanel
-          bookingId={bookingId}
-          serviceId={serviceId}
-          onDone={() => {
-            setRescheduling(false);
-            router.refresh();
-          }}
-        />
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="font-normal text-fg-faint"
-          onClick={() => setRescheduling(false)}
-        >
-          Volver
-        </Button>
-      </div>
-    );
-  }
-
-  if (pending) {
-    const m = META[pending];
-    return (
-      <div className="flex flex-col items-end gap-2">
-        <p className="text-sm text-fg-muted">{m.prompt}</p>
-        <div className="flex flex-wrap justify-end gap-2">
-          <Button
-            type="button"
-            variant={m.destructive ? "destructive" : "default"}
-            size="sm"
-            onClick={() => run(pending)}
-            disabled={loading}
-          >
-            {loading ? m.busy : m.confirmLabel}
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="font-normal text-fg-faint"
-            onClick={() => setPending(null)}
-            disabled={loading}
-          >
-            Volver
-          </Button>
-        </div>
-        {error && <p className="text-sm text-danger">{error}</p>}
-      </div>
-    );
+    return null;
   }
 
   return (
-    <div className="flex flex-col items-end gap-1.5">
-      <div className="flex flex-wrap justify-end gap-2">
-        {available.map((a) => (
-          <Button
-            key={a}
-            type="button"
-            variant="ghost"
-            size="sm"
-            className={
-              META[a].destructive
-                ? "font-normal text-fg-faint hover:text-danger"
-                : "font-normal text-accent hover:text-accent-hover"
-            }
-            onClick={() => {
-              setError(null);
-              setPending(a);
-            }}
-          >
-            {META[a].label}
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon-sm" aria-label={`Acciones: ${summary}`}>
+            <MoreHorizontal />
           </Button>
-        ))}
-        {canReschedule && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="font-normal text-fg-muted hover:text-fg"
-            onClick={() => {
-              setError(null);
-              setRescheduling(true);
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem asChild>
+            <Link href={`/turno/${bookingId}`}>
+              <ExternalLink />
+              Ver turno
+            </Link>
+          </DropdownMenuItem>
+          {canPay && (
+            <DropdownMenuItem onSelect={() => setDialog("paid")}>
+              <BanknoteArrowDown className="text-accent" />
+              Marcar pagado
+            </DropdownMenuItem>
+          )}
+          {canReschedule && (
+            <DropdownMenuItem onSelect={() => setDialog("reschedule")}>
+              <CalendarClock />
+              Reprogramar
+            </DropdownMenuItem>
+          )}
+          {canNoShow && (
+            <DropdownMenuItem onSelect={() => setDialog("no_show")}>
+              <UserX />
+              No asistió
+            </DropdownMenuItem>
+          )}
+          {canCancel && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem variant="destructive" onSelect={() => setDialog("cancel")}>
+                <XCircle />
+                Cancelar turno
+              </DropdownMenuItem>
+            </>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <ConfirmDialog
+        open={dialog === "paid"}
+        onOpenChange={(o) => setDialog(o ? "paid" : null)}
+        title="Registrar el pago"
+        description={
+          <>
+            {summary}. El turno queda <strong className="text-fg">confirmado</strong> y el
+            cliente recibe el aviso. Usalo cuando cobraste en efectivo o viste la
+            transferencia.
+          </>
+        }
+        confirmLabel="Sí, cobrado"
+        busyLabel="Registrando…"
+        onConfirm={() => run("paid")}
+      />
+
+      <ConfirmDialog
+        open={dialog === "no_show"}
+        onOpenChange={(o) => setDialog(o ? "no_show" : null)}
+        title="Marcar ausencia"
+        description={
+          <>
+            {summary}. El turno pasa a <strong className="text-fg">no asistió</strong>: la
+            sesión se da por consumida y no se devuelve.
+          </>
+        }
+        confirmLabel="Sí, no asistió"
+        busyLabel="Guardando…"
+        tone="danger"
+        onConfirm={() => run("no_show")}
+      />
+
+      <ConfirmDialog
+        open={dialog === "cancel"}
+        onOpenChange={(o) => setDialog(o ? "cancel" : null)}
+        title="Cancelar el turno"
+        description={
+          membership ? (
+            <>
+              {summary}. Se cancela la clase y el horario queda libre. Las clases del abono{" "}
+              <strong className="text-fg">no se devuelven</strong> como crédito. Si el
+              cliente puede ir otro día, es mejor que la mueva.
+            </>
+          ) : (
+            <>
+              {summary}. Se libera el horario y el cliente recibe el aviso. Si ya pagó, la
+              sesión le queda <strong className="text-fg">a favor</strong> para otro día.
+              Esto no se puede deshacer.
+            </>
+          )
+        }
+        confirmLabel="Sí, cancelar turno"
+        busyLabel="Cancelando…"
+        tone="danger"
+        onConfirm={() => run("cancel")}
+      />
+
+      <Dialog open={dialog === "reschedule"} onOpenChange={(o) => setDialog(o ? "reschedule" : null)}>
+        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Reprogramar</DialogTitle>
+            <DialogDescription>{summary}</DialogDescription>
+          </DialogHeader>
+          <p className="rounded-md border border-amber-400/25 bg-amber-400/5 px-3 py-2.5 text-sm text-amber-300">
+            Al elegir un horario el turno se mueve en el acto: el actual se libera y el
+            cliente recibe un aviso con el nuevo. Acordalo con él antes.
+          </p>
+          <ReschedulePanel
+            bookingId={bookingId}
+            serviceId={serviceId}
+            onDone={() => {
+              setDialog(null);
+              router.refresh();
             }}
-          >
-            Reprogramar
-          </Button>
-        )}
-      </div>
-      {error && <p className="text-sm text-danger">{error}</p>}
-    </div>
+          />
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
