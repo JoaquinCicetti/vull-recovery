@@ -113,7 +113,7 @@ export default async function PagarCuotaPage({
   const firstName = (profile?.full_name ?? "").split(" ")[0];
 
   return (
-    <PageShell top="tight" eyebrow="Tu abono" title={plan}>
+    <PageShell size="wide" top="tight" eyebrow="Tu abono" title={plan}>
       <div className="surface-card surface-lift p-6">
         <div className="flex items-start justify-between gap-4">
           <p className="text-sm text-fg-muted">

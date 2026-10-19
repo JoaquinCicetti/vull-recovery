@@ -23,7 +23,7 @@ export default async function NotificacionesPage() {
   }));
 
   return (
-    <PageShell top="tight" eyebrow="Tu cuenta" title="Avisos">
+    <PageShell size="wide" top="tight" eyebrow="Tu cuenta" title="Avisos">
       <NotificationCenter
         userId={user!.id}
         email={profile?.email ?? user!.email ?? null}

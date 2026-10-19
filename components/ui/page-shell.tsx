@@ -5,7 +5,7 @@ import { LocalAmbient } from "@/components/ui/local-ambient";
 const WIDTHS = {
   narrow: "max-w-md", // auth, single-column forms
   default: "max-w-2xl", // booking, detail, account
-  wide: "max-w-4xl", // admin lists / dashboards
+  wide: "max-w-3xl", // the signed-in areas: account and admin share one column
 } as const;
 
 type PageShellProps = {

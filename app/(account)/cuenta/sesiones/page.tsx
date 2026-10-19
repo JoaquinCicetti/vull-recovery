@@ -56,7 +56,7 @@ export default async function SesionesPage() {
   }));
 
   return (
-    <PageShell top="tight" eyebrow="Tu cuenta" title="Sesiones">
+    <PageShell size="wide" top="tight" eyebrow="Tu cuenta" title="Sesiones">
       <SesionesView balances={balances} movements={movements} />
     </PageShell>
   );
