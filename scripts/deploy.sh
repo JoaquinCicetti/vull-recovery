@@ -84,7 +84,7 @@ check_secrets() {
   local listed missing=() k
   if ! listed="$(pnpm exec supabase secrets list 2>/dev/null)"; then
     echo "⚠ could not list Supabase secrets (not linked / not logged in?); skipping the check" >&2
-    [ "$strict" = true ] && die "--strict: secrets not verified"
+    if [ "$strict" = true ]; then die "--strict: secrets not verified"; fi
     return 0
   fi
   for k in $(sed '/^# @optional/q' supabase/.env.secrets.example | grep -oE '^[A-Z0-9_]+=' | tr -d '='); do
@@ -92,14 +92,17 @@ check_secrets() {
   done
   if grep -qw EMAIL_SINK_URL <<<"$listed"; then
     echo "⚠ EMAIL_SINK_URL is set on the project: emails go to a dev sink. Unset it." >&2
-    [ "$strict" = true ] && die "--strict: EMAIL_SINK_URL must not be a deployed secret"
+    if [ "$strict" = true ]; then die "--strict: EMAIL_SINK_URL must not be a deployed secret"; fi
   fi
   if [ ${#missing[@]} -gt 0 ]; then
     echo "⚠ missing edge secrets: ${missing[*]} (see supabase/.env.secrets.example)" >&2
-    [ "$strict" = true ] && die "--strict: required secrets missing"
+    if [ "$strict" = true ]; then die "--strict: required secrets missing"; fi
   else
     echo "→ required edge secrets: all set"
   fi
+  # Warn mode never fails the deploy. (A bare `[ … ] && die` as the last command
+  # made this function return 1 and `set -e` abort the script.)
+  return 0
 }
 check_secrets
 

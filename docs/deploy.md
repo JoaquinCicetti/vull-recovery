@@ -112,7 +112,9 @@ users. Locally nothing is needed: OTP codes land in Mailpit (`:54324`).
 
 ### 4. Edge Functions must be deployed (separate from the frontend)
 Apply the migrations first (`pnpm exec supabase db push`): the functions call
-RPCs the migrations create.
+RPCs the migrations create. After `20261018120000_admin_slots_and_booking_window`
+every booking takes one slot of the sector's shortest plan length (ADR 0012):
+set the slot length in Disponibilidad (`/admin/configuracion`) right away.
 ```bash
 pnpm exec supabase functions deploy
 ```

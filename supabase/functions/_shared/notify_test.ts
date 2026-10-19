@@ -77,3 +77,23 @@ Deno.test("outcome: sent when delivered or nothing to deliver; failed only on er
     { sent: false, error: "email 403 domain not verified" },
   );
 });
+
+Deno.test("outcome: push wanted, no live device, nothing else → failed", () => {
+  // push on, email off, last device pruned (or none): reached nobody
+  assertEquals(
+    outcomeOf({ emails: 0, pushes: 0, errors: [], noDevice: true }),
+    { sent: false, error: "push_no_device" },
+  );
+  // a critical notice's email fallback went out → delivered
+  assertEquals(
+    outcomeOf({ emails: 1, pushes: 0, errors: [], noDevice: true, fallback: "email" }),
+    { sent: true, error: null },
+  );
+  // email was on too and got there → delivered
+  assertEquals(outcomeOf({ emails: 1, pushes: 0, errors: [], noDevice: true }), { sent: true, error: null });
+  // the fallback failed as well → both reasons recorded
+  assertEquals(
+    outcomeOf({ emails: 0, pushes: 0, errors: ["email 500 down"], noDevice: true, fallback: "email" }),
+    { sent: false, error: "email 500 down; push_no_device" },
+  );
+});

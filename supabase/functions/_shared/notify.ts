@@ -8,14 +8,17 @@
 //   claim (2-minute lease, skip locked) → render → fan out → record the result.
 //
 // A row is SENT when something was delivered, or when there was nothing to
-// deliver and nothing failed (e.g. a client with push on and no device yet). It
-// FAILS when nothing was delivered and something errored: the row keeps
+// deliver and nothing failed (e.g. an email-only notice to a push-only client).
+// It FAILS when nothing was delivered and something errored, or when the client
+// wanted it by push and has no live device (their last one was just pruned,
+// which also switched them to email, so the retry goes by email): the row keeps
 // `error`, is retried after the lease (up to 5 attempts), and shows on /admin
 // ("Avisos no enviados") until it goes out.
 //
 // Callers:
-//   kick(admin)            user-facing functions, after the response (defer)
-//   await dispatch(admin)  webhooks and crons, before they answer
+//   kick(admin)            user-facing functions and the Talo webhook, after
+//                          the response (defer)
+//   await dispatch(admin)  crons, before they answer
 //   notify-dispatch        the external cron every ~5 min: the safety net for
 //                          anything a kick lost
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
@@ -29,8 +32,9 @@ const BUDGET_MS = 20_000;
 /** Did this fan-out deliver, and if not, what to record? Pure (notify_test.ts). */
 export function outcomeOf(f: FanOut): { sent: boolean; error: string | null } {
   if (f.emails + f.pushes > 0) return { sent: true, error: null };
-  if (f.errors.length === 0) return { sent: true, error: null }; // nothing to deliver
-  return { sent: false, error: f.errors.join("; ").slice(0, 1000) };
+  const errors = f.noDevice ? [...f.errors, "push_no_device"] : f.errors;
+  if (errors.length === 0) return { sent: true, error: null }; // nothing to deliver
+  return { sent: false, error: errors.join("; ").slice(0, 1000) };
 }
 
 async function sendOne(admin: SupabaseClient, row: NotificationRow): Promise<boolean> {
@@ -64,6 +68,7 @@ async function sendOne(admin: SupabaseClient, row: NotificationRow): Promise<boo
     pushes: fan.pushes,
     ...(fan.errors.length ? { errors: fan.errors } : {}),
     ...(fan.fallback ? { fallback: fan.fallback } : {}),
+    ...(fan.noDevice ? { no_device: true } : {}),
     ...(skipped ? { skipped } : {}),
   };
   if (!sent) {

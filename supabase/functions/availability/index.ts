@@ -140,8 +140,12 @@ Deno.serve(async (req) => {
 
       const slots: OutSlot[] = [];
       for (const s of gridTimes(windows)) {
+        // The window, computed once above: rangeEnd is the client window's end
+        // (or the admin's longer horizon). validateSlot checks the rest; it
+        // would recompute the window per slot, so it is told not to.
+        // create-booking enforces the window again on the chosen slot.
         if (s >= rangeEnd) continue;
-        const check = validateSlot({ startMs: s, settings, busy, now, enforceWindow: !asAdmin });
+        const check = validateSlot({ startMs: s, settings, busy, now, enforceWindow: false });
         if (!check.ok) continue;
         const free = freeResources(s, check.endMs);
         if (free.length === 0) continue;

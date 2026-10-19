@@ -44,8 +44,10 @@ the next week opening on Sunday afternoon.
 
 ## Consequences
 - The migration backfills each range's `slot_minutes` with the sector's
-  shortest active plan duration, so nothing visibly changes until an admin
-  edits Disponibilidad.
+  shortest active plan duration. From then on every booking takes one slot of
+  that length, so longer plans book shorter turnos (and more per range) until an
+  admin sets the slot length in Disponibilidad, which should happen right after
+  apply.
 - Editing `slot_minutes` doesn't move existing turnos. A turno booked on the
   old grid stays valid; a reschedule must land on the new one.
 - Clients see a shorter horizon in recovery (one week, two from Sunday 14:00).

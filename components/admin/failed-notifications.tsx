@@ -36,8 +36,8 @@ const KIND_LABEL: Record<string, string> = {
 
 // Notices that could not be delivered (email rejected, push down, nothing
 // configured…). "Reintentar" puts them back in the queue and sends right away
-// through admin-booking's dispatch_notifications; the notify-dispatch cron
-// would pick them up too.
+// through notify-dispatch (with the admin's session; the 5-minute cron of the
+// same function would pick them up too).
 export function FailedNotifications({ rows }: { rows: FailedNotification[] }) {
   const router = useRouter();
   const supabase = createClient();
@@ -55,9 +55,7 @@ export function FailedNotifications({ rows }: { rows: FailedNotification[] }) {
         return;
       }
     }
-    const { error: fnErr } = await supabase.functions.invoke("admin-booking", {
-      body: { action: "dispatch_notifications" },
-    });
+    const { error: fnErr } = await supabase.functions.invoke("notify-dispatch");
     setBusy(false);
     if (fnErr) setError(await readError(fnErr, "Quedaron en la cola; se envían en unos minutos."));
     router.refresh();
