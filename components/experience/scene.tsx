@@ -87,12 +87,16 @@ export default function Scene({
       frameloop={active ? "always" : "never"}
       dpr={dpr}
       gl={{
-        antialias: false,
+        // Desktop AA is the composer's SMAA pass; mobile has no composer (see
+        // <Effects/> below), so it needs the hardware MSAA buffer instead.
+        antialias: isMobile,
         alpha: true,
         powerPreference: "high-performance",
-        toneMapping: THREE.ACESFilmicToneMapping,
-        // Near-neutral exposure: ACES gives the soft highlight rolloff; shadow
-        // detail is preserved rather than crushed.
+        // Desktop: the EffectComposer forces NoToneMapping on mount, so the
+        // lighting was tuned against raw linear output. Mobile renders straight
+        // to the canvas, where this setting WOULD apply — keep it off there too
+        // so both devices show the same grade.
+        toneMapping: isMobile ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping,
         toneMappingExposure: 0.95,
       }}
       // Long lens (~85mm equiv) on desktop: compressed perspective, shallow-focus
@@ -136,7 +140,11 @@ export default function Scene({
       </SceneBoundary>
       <Spheres count={count} />
       {debugCam ? <OrbitControls makeDefault target={[0, -1, -6]} /> : <Rig portrait={portrait} />}
-      <Effects dof={!isMobile} />
+      {/* The post stack (bloom, CA, vignette, grain, SMAA) renders every pass
+          into full-screen targets. On phones that was enough to stall the frame
+          loop as the mark assembled — the scene read as frozen at the logo — so
+          mobile renders straight to the canvas with hardware MSAA instead. */}
+      {!isMobile && <Effects />}
       {/* Throttle raycasting/events while scrolling; DPR stays full for crispness. */}
       <AdaptiveEvents />
     </Canvas>

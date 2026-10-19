@@ -170,17 +170,30 @@ export function ExperienceClient() {
     const current = { v: target.v };
     let cta = false;
     let raf = 0;
-    const tick = () => {
+    let lastT = 0;
+    // Exponential ease toward the target, frame-rate independent (≈9%/frame at
+    // 60 Hz). The settle threshold is far below anything the scene can show: an
+    // earlier 0.0006 snap landed the last step ~10× larger than the frames before
+    // it, which read as a tiny jump every time the wheel stopped.
+    const RATE = 5.6; // 1/s
+    const SETTLE = 0.00002;
+    const tick = (now: number) => {
       raf = 0;
       if (cta) return; // the CTA tween owns progress while it runs
+      const dt = lastT ? Math.min((now - lastT) / 1000, 0.05) : 1 / 60;
+      lastT = now;
       const diff = target.v - current.v;
-      current.v += diff * 0.09;
-      if (Math.abs(diff) < 0.0006) current.v = target.v;
+      current.v += diff * (1 - Math.exp(-RATE * dt));
+      if (Math.abs(diff) < SETTLE) current.v = target.v;
       setProgress(current.v);
       if (current.v !== target.v) raf = requestAnimationFrame(tick);
+      else lastT = 0;
     };
     const kick = () => {
-      if (!raf && !cta) raf = requestAnimationFrame(tick);
+      if (!raf && !cta) {
+        lastT = 0;
+        raf = requestAnimationFrame(tick);
+      }
     };
     const nudge = (d: number) => {
       target.v = clamp01(target.v + d);
@@ -192,12 +205,12 @@ export function ExperienceClient() {
     const atEnd = () => target.v >= 1 - 1e-4;
     const atStart = () => target.v <= 1e-4;
 
-    // Sticky anchor at the crafted logo: once the mark assembles, downward
-    // scrolling first accumulates against this budget (the scene holds — a beat
-    // on the finished logo), and only then releases to the native page.
-    // Scrolling back up re-arms it.
+    // Sticky anchor at the crafted logo (wheel only): once the mark assembles,
+    // downward scrolling first accumulates against this budget (the scene holds —
+    // a beat on the finished logo), and only then releases to the native page.
+    // Scrolling back up re-arms it. Touch has no anchor: on a phone the held
+    // swipe read as the page hanging, not as a beat.
     const STICK_WHEEL = 420; // wheel px to hold before releasing
-    const STICK_TOUCH = 260; // touch px
     let stick = 0;
 
     const onWheel = (e: WheelEvent) => {
@@ -217,25 +230,38 @@ export function ExperienceClient() {
     };
 
     let touchY = 0;
+    // Has this gesture already been preventDefault()ed? Once a touchmove in a
+    // gesture is cancelled, iOS will not start a native scroll for the rest of
+    // that gesture — so when the ride reaches the end mid-swipe we scroll the
+    // page by hand for the remainder instead of letting the finger go dead. A
+    // fresh swipe that starts at the end is left to the browser (momentum intact).
+    let hijacked = false;
     const onTouchStart = (e: TouchEvent) => {
       touchY = e.touches[0]?.clientY ?? 0;
+      hijacked = false;
     };
     const onTouchMove = (e: TouchEvent) => {
       if (!sceneAlive) return;
-      if (window.scrollY > 2) return;
       const y = e.touches[0]?.clientY ?? 0;
       const dy = touchY - y; // swipe up = progress forward
       touchY = y;
-      if (dy < 0) stick = 0;
-      if (atEnd() && dy > 0) {
-        if (stick < STICK_TOUCH) {
-          stick += dy;
+      if (window.scrollY > 2) {
+        if (hijacked && e.cancelable) {
           e.preventDefault();
-          return;
+          window.scrollBy(0, dy);
         }
         return;
       }
+      if (atEnd() && dy > 0) {
+        if (hijacked && e.cancelable) {
+          e.preventDefault();
+          window.scrollBy(0, dy);
+        }
+        return; // scene finished → straight into the plans, no hold
+      }
+      if (!e.cancelable) return;
       e.preventDefault();
+      hijacked = true;
       nudge(dy * TOUCH_SENS);
     };
 
