@@ -238,8 +238,17 @@ otp_length = 8
 # Number of seconds before the email OTP expires (defaults to 1 hour).
 otp_expiry = 3600
 
-# Email OTP: send a 6-digit code (not just a magic link) for "light login".
+# Email OTP: send the code, never a link. signInWithOtp() picks the template by
+# WHO is signing in — "magic_link" for an existing user, "confirmation" for a
+# brand-new one (shouldCreateUser) — so both must be the code-only template, or
+# every first sign-in gets Supabase's default "Confirm your signup" link while
+# the app says "te enviamos un código". The hosted project only gets these
+# after `pnpm exec supabase config push` (see docs/deploy.md §3).
 [auth.email.template.magic_link]
+subject = "Tu código de acceso"
+content_path = "./supabase/templates/magic_link.html"
+
+[auth.email.template.confirmation]
 subject = "Tu código de acceso"
 content_path = "./supabase/templates/magic_link.html"
 

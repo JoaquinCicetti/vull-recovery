@@ -12,7 +12,7 @@ export default async function LoginPage({
       size="narrow"
       eyebrow="Acceso"
       title="Ingresá a tu cuenta"
-      description="Te enviamos un código de 6 dígitos por email. Sin contraseñas."
+      description="Te enviamos un código de 8 dígitos por email. Sin contraseñas."
     >
       <div className="surface-card surface-lift animate-fade-up p-6">
         <LoginForm next={next ?? "/"} />

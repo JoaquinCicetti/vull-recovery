@@ -105,6 +105,15 @@ from your own domain. Free tier: 3,000 emails/month, 100/day, one domain.
 
    (Same values live commented in `supabase/config.toml` under
    `[auth.email.smtp]` — they stay commented so local dev keeps using Mailpit.)
+5. **Code-only email templates** — the hosted project ships Supabase's default
+   templates, which send a *link*, while the login page promises a code. Push the
+   repo's templates (`magic_link` for returning users, `confirmation` for first
+   sign-ins, both `supabase/templates/magic_link.html`) and the 8-digit OTP length:
+   ```bash
+   pnpm exec supabase config push
+   ```
+   Re-run it whenever `[auth.*]` in `supabase/config.toml` changes; nothing applies
+   it automatically.
 
 Without this, hosted Auth falls back to Supabase's built-in SMTP, which is
 rate-limited to a handful of emails per hour — fine for a quick test, not for real
