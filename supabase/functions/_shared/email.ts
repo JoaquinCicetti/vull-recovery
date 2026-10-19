@@ -201,6 +201,9 @@ export type FanOut = {
   errors: string[];
   /** Set when a critical notice went by email because nothing else could. */
   fallback?: "email";
+  /** The user wants push for this notice but has no live device to take it
+   *  (none subscribed, or every one was just pruned as gone). */
+  noDevice?: true;
 };
 
 /**
@@ -219,13 +222,15 @@ export function needsEmailFallback(o: {
   return o.critical && !o.emailAttempted && o.pushDelivered === 0 && o.hasEmail;
 }
 
-/** Push to each subscription; prune the gone ones (404/410). */
+/** Push to each subscription; prune the gone ones (404/410). Returns how many
+ *  were pruned. */
 async function pushAll(
   admin: SupabaseClient,
   subs: (PushSub & { id: string })[],
   payload: string,
   out: FanOut,
-): Promise<void> {
+): Promise<number> {
+  let pruned = 0;
   await Promise.all(subs.map(async (s) => {
     try {
       const status = await sendPush(
@@ -238,6 +243,7 @@ async function pushAll(
       }
       if (status === 404 || status === 410) {
         await admin.from("push_subscriptions").delete().eq("id", s.id);
+        pruned++;
         return; // a device that left is not a failure to retry
       }
       out.errors.push(status === 0 ? "push_not_configured" : `push ${status}`);
@@ -245,6 +251,23 @@ async function pushAll(
       out.errors.push(`push ${String(e).slice(0, 200)}`);
     }
   }));
+  return pruned;
+}
+
+/** The user's last device just left: push "on" now reaches nobody, so switch
+ *  them to email (both columns in one update: profiles_one_channel holds). */
+async function pushToEmail(admin: SupabaseClient, userId: string): Promise<void> {
+  const { count } = await admin
+    .from("push_subscriptions")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId);
+  if (count !== 0) return; // another device subscribed meanwhile (or the count failed)
+  const { error } = await admin
+    .from("profiles")
+    .update({ notify_push: false, notify_email: true })
+    .eq("id", userId);
+  if (error) console.error("[notify] could not switch user to email", { userId, error: error.message });
+  else console.warn("[notify] last push device gone; user switched to email", { userId });
 }
 
 async function mail(to: string, msg: Msg, out: FanOut): Promise<void> {
@@ -257,6 +280,9 @@ async function mail(to: string, msg: Msg, out: FanOut): Promise<void> {
 // user's own preference (profiles.notify_email / notify_push; the DB keeps at
 // least one on). `critical` adds the email safety net (needsEmailFallback);
 // `forceEmail` ignores notify_email (a desk sale to a brand-new account).
+// When the user's last device is pruned, they are switched to email for next
+// time (pushToEmail), and the fan-out reports `noDevice` so the notice counts
+// as undelivered (outcomeOf) and its retry goes by email.
 export async function fanOutToUser(
   admin: SupabaseClient,
   userId: string,
@@ -284,7 +310,14 @@ export async function fanOutToUser(
       .from("push_subscriptions")
       .select("id, endpoint, p256dh, auth")
       .eq("user_id", userId);
-    jobs.push(pushAll(admin, (subs ?? []) as (PushSub & { id: string })[], JSON.stringify(msg.push), out));
+    const list = (subs ?? []) as (PushSub & { id: string })[];
+    jobs.push(
+      pushAll(admin, list, JSON.stringify(msg.push), out).then(async (pruned) => {
+        if (list.length - pruned > 0) return;
+        out.noDevice = true;
+        if (pruned > 0) await pushToEmail(admin, userId);
+      }),
+    );
   }
   await Promise.all(jobs);
 

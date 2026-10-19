@@ -2,9 +2,10 @@
 // The owner can cancel their own future booking; an admin can cancel any.
 // Setting status='cancelled' frees the slot (the no-overlap EXCLUDE constraint
 // ignores cancelled rows). The write, the credit and the notices are one RPC
-// (cancel_booking); around it, the Talo CVU kill and the Google Calendar event.
+// (cancel_booking); only once it committed, the Talo CVU kill and the Google
+// Calendar event.
 import { responder, errMessage } from "../_shared/cors.ts";
-import { killLiveTaloPayments } from "../_shared/talo-settle.ts";
+import { expireTaloPayments, liveTaloPaymentIds } from "../_shared/talo-settle.ts";
 import { adminClient, userClient } from "../_shared/supabase.ts";
 import { patchEventStatus } from "../_shared/google.ts";
 import { kick } from "../_shared/notify.ts";
@@ -64,9 +65,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Kill any live Talo CVU FIRST, so a cancelled turno cannot keep quietly
-    // accepting the client's money.
-    if (!booking.membership_id) await killLiveTaloPayments(admin, booking.id);
+    // The live Talo CVUs, read now: cancel_booking rejects their rows. They are
+    // killed only after it succeeds; a failed cancel leaves the turno active
+    // and its CVU still able to take the client's money.
+    const liveCvus = booking.membership_id ? [] : await liveTaloPaymentIds(admin, booking.id);
 
     // cancel_booking: the guarded UPDATE, pending payments rejected, a paid
     // turno back as one credit (always when an admin cancels, with notice when
@@ -80,6 +82,9 @@ Deno.serve(async (req) => {
     });
     if (rpcErr) return json({ error: rpcErr.message }, 400);
     if (credit === "gone") return json({ error: "Este turno no se puede cancelar." }, 409);
+
+    // A cancelled turno must not keep quietly accepting the client's money.
+    await expireTaloPayments(liveCvus);
 
     // Cancel the calendar event (best-effort).
     if (booking.google_event_id) {

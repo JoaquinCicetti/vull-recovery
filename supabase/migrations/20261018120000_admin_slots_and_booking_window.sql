@@ -18,8 +18,12 @@
 -- the window depends on now(), and a grid trigger would tie existing rows to
 -- config an admin can edit. Overlap and one-per-day stay the HARD invariants.
 --
--- Nothing visibly changes on apply: every range gets the shortest active plan
--- duration of its sector as its slot length, which is the grid it had.
+-- On apply every range gets the shortest active plan duration of its sector as
+-- its slot length (the closest default to the 30-minute grid the owner wants).
+-- From then on EVERY booking takes one slot of that length: a sector whose plans
+-- are longer than its shortest one books those plans as shorter turnos, with
+-- more of them per range. Set the slot length in Disponibilidad right after
+-- applying.
 -- Additive only; the new columns are covered by the existing RLS policies
 -- (sectors_read / sectors_admin_write, sector_hours_read /
 -- sector_hours_admin_write are row-level, not column-level).

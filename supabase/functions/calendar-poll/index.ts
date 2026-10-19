@@ -14,7 +14,7 @@
 //     silently move a possibly-paid client).
 //   • event with no matching booking (owner's personal block) → ignore.
 import { json, errMessage } from "../_shared/cors.ts";
-import { killLiveTaloPayments } from "../_shared/talo-settle.ts";
+import { expireTaloPayments, liveTaloPaymentIds } from "../_shared/talo-settle.ts";
 import { adminClient } from "../_shared/supabase.ts";
 import { listEvents } from "../_shared/google.ts";
 import { dispatch, emitAdminAlert } from "../_shared/notify.ts";
@@ -70,18 +70,22 @@ Deno.serve(async (req) => {
       if (!booking || !ACTIVE.includes(booking.status)) continue;
 
       if (ev.status === "cancelled") {
-        // A cancelled turno must not leave a live CVU behind.
-        await killLiveTaloPayments(admin, booking.id);
+        // Live CVUs read first (cancel_booking rejects their rows), killed only
+        // once the cancel committed — same order as cancel-booking.
+        const liveCvus = await liveTaloPaymentIds(admin, booking.id);
         // Cancelled by the centre → a paid turno always comes back as a credit,
         // and the client is told (critical: it goes out even if their channels
         // can't deliver). Same RPC as cancel-booking.
-        const { data: res } = await admin.rpc("cancel_booking", {
+        const { data: res, error: rpcErr } = await admin.rpc("cancel_booking", {
           p_booking: booking.id,
           p_by: null,
           p_reason: "Cancelado en Google Calendar",
           p_by_admin: true,
         });
-        if (res && res !== "gone") cancelled++;
+        if (rpcErr || !res || res === "gone") continue;
+        cancelled++;
+        // A cancelled turno must not leave a live CVU behind.
+        await expireTaloPayments(liveCvus);
       } else {
         const evStart = ev.start?.dateTime
           ? new Date(ev.start.dateTime).getTime()

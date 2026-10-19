@@ -10,8 +10,10 @@
 // allowed once Talo confirms nothing was received (or it was refunded).
 //
 // Notices (ADR 0013): approving queues the client's confirmation inside the
-// RPC with actor 'admin', so the other admins are not told; rejecting queues
-// payment_rejected for the client. kick() sends them after the response.
+// RPC with actor 'admin', so the other admins are not told (approving on a
+// turno that was already confirmed queues the client's receipt here, keyed on
+// the payment); rejecting a manual receipt queues payment_rejected for the
+// client. kick() sends them after the response.
 import { responder, errMessage } from "../_shared/cors.ts";
 import { adminClient, userClient } from "../_shared/supabase.ts";
 import { patchEventStatus } from "../_shared/google.ts";
@@ -105,17 +107,20 @@ Deno.serve(async (req) => {
       if (pay.kind === "membership" && pay.membership_period_id) {
         await reopenSignupHold(admin, pay.membership_period_id);
       }
-      // The client hears why their payment didn't go through (was silent).
-      await emit(admin, {
-        kind: "payment_rejected",
-        subject: pay.id,
-        audience: "user",
-        actor: "admin",
-        // deno-lint-ignore no-explicit-any
-        user: pay.user_id ?? (pay.bookings as any)?.user_id ?? null,
-        payload: { kind: pay.kind },
-      });
-      kick(admin);
+      // The client hears why their receipt didn't go through (was silent). Only
+      // a manual receipt: the copy is "no pudimos verificar el comprobante", and
+      // a rejected Talo CVU (no money moved) has nothing to tell the client.
+      if (pay.provider === "manual") {
+        await emit(admin, {
+          kind: "payment_rejected",
+          subject: pay.id,
+          audience: "user",
+          actor: "admin",
+          user: payUser(pay),
+          payload: { kind: pay.kind },
+        });
+        kick(admin);
+      }
       return json({ ok: true });
     }
 
@@ -201,10 +206,8 @@ Deno.serve(async (req) => {
 
     if (booking.status === "confirmed") {
       // Already confirmed by another path (manual confirm) — just settle the money.
-      await admin
-        .from("payments")
-        .update({ status: "approved", admin_flag: null })
-        .eq("id", payment_id);
+      await approveOnConfirmed(admin, pay);
+      kick(admin);
       return json({ ok: true });
     }
 
@@ -236,12 +239,7 @@ Deno.serve(async (req) => {
         409,
       );
     }
-    if (res === "already") {
-      await admin
-        .from("payments")
-        .update({ status: "approved", admin_flag: null })
-        .eq("id", payment_id);
-    }
+    if (res === "already") await approveOnConfirmed(admin, pay);
 
     if (booking.google_event_id) {
       try {
@@ -256,6 +254,30 @@ Deno.serve(async (req) => {
     return json({ error: errMessage(e) }, 500);
   }
 });
+
+// deno-lint-ignore no-explicit-any
+const payUser = (pay: any): string | null => pay.user_id ?? pay.bookings?.user_id ?? null;
+
+// The turno was already confirmed (manual confirm, or a race confirm_booking
+// reported as 'already'): settle this payment and still give the client the
+// "pago acreditado" receipt. Keyed on the payment, so it never collides with
+// the turno's own confirmation row and a double click queues one.
+// deno-lint-ignore no-explicit-any
+async function approveOnConfirmed(admin: any, pay: any) {
+  await admin
+    .from("payments")
+    .update({ status: "approved", admin_flag: null })
+    .eq("id", pay.id);
+  await emit(admin, {
+    kind: "booking_confirmed",
+    subject: pay.booking_id,
+    audience: "user",
+    actor: "admin",
+    user: payUser(pay),
+    payload: { funded: "payment", payment_id: pay.id },
+    dedup: pay.id,
+  });
+}
 
 // deno-lint-ignore no-explicit-any
 async function reopenSignupHold(admin: any, periodId: string) {

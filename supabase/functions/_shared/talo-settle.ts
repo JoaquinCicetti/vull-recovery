@@ -533,6 +533,15 @@ export async function killLiveTaloPayments(
   admin: SupabaseClient,
   bookingId: string,
 ): Promise<void> {
+  await expireTaloPayments(await liveTaloPaymentIds(admin, bookingId));
+}
+
+/** The Talo ids of a booking's still-pending CVUs. Read BEFORE a transition
+ *  that rejects the rows (cancel_booking), expire them after it committed. */
+export async function liveTaloPaymentIds(
+  admin: SupabaseClient,
+  bookingId: string,
+): Promise<string[]> {
   const { data } = await admin
     .from("payments")
     .select("talo_payment_id")
@@ -540,8 +549,11 @@ export async function killLiveTaloPayments(
     .eq("provider", "talo")
     .eq("status", "pending")
     .not("talo_payment_id", "is", null);
+  return ((data ?? []) as { talo_payment_id: string }[]).map((r) => r.talo_payment_id);
+}
+
+/** Expire these CVUs a minute from now (best-effort on the Talo side). */
+export async function expireTaloPayments(ids: string[]): Promise<void> {
   const soon = new Date(Date.now() + 60_000).toISOString();
-  for (const r of (data ?? []) as { talo_payment_id: string }[]) {
-    await setTaloExpiration(r.talo_payment_id, soon);
-  }
+  for (const id of ids) await setTaloExpiration(id, soon);
 }

@@ -47,20 +47,23 @@ one channel always on.
    with the renderer for its (kind, audience) (`_shared/notify-render.ts`), sends
    it through `fanOutToAdmins` / `fanOutToUser` (`_shared/email.ts`, transport
    only) and records `sent_at` + `channels`, or `error`. User-facing functions
-   `kick()` it after their response; webhooks and crons `await` it before
-   answering; the `notify-dispatch` cron (every 5 min) is the safety net.
+   and the Talo webhook `kick()` it after their response; crons `await` it
+   before answering; the `notify-dispatch` cron (every 5 min) is the safety net.
 4. **Failures are visible.** Transport functions return what happened
    (`sendMail → {ok, status, body}`, fan-outs → `{emails, pushes, errors}`) and
    log every failure with `[notify]`. A row that delivered nothing and errored
    stays on /admin "Avisos no enviados" until a retry sends it
-   (`retry_notification`, then `admin-booking` `dispatch_notifications`).
+   (`retry_notification`, then `notify-dispatch` called with the admin's JWT
+   instead of the cron token).
 5. **At least one channel, push only when real.** `profiles_one_channel`
    requires `notify_email or notify_push`. Push turns on only after the browser
    verified support (and, on iOS, the installed app) and stored a subscription;
    it now defaults to off. A critical notice (the centre cancelled or moved the
    turno) that reached nobody falls back to email and records
    `channels.fallback = "email"`. A desk sale ignores the email preference: the
-   account may be brand new.
+   account may be brand new. Pruning a user's last device (404/410) switches
+   them to email; a notice that wanted push and found no live device counts as
+   not sent (`push_no_device`), so it shows on /admin and its retry goes by email.
 6. **Mobbex is gone.** `mobbex-webhook` was the fourth copy of "confirm a
    booking". It, `_shared/mobbex.ts` and the Mobbex branch of `create-payment`
    are deleted, as ADR 0010 planned.

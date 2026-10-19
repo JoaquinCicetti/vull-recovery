@@ -218,7 +218,8 @@ the same maintenance lazily (see ADR 0011).
 every 5 minutes,
 `POST ${SUPABASE_URL}/functions/v1/notify-dispatch?token=$NOTIFY_DISPATCH_TOKEN`.
 It sends whatever the notifications outbox still holds (see
-[Notifications](#notifications) and ADR 0013).
+[Notifications](#notifications) and ADR 0013); /admin "Reintentar" calls the
+same function with the admin's session instead of the token.
 
 **External crons, all together:** `keep-alive` weekly, `membership-cycle`
 daily, `talo-reconcile` every ~10 min, `notify-dispatch` every 5 min,
@@ -333,7 +334,8 @@ preferences.
   live subscription).
 
 **Delivery.** The function that queued a notice sends it right after its
-response (`kick`); webhooks and crons send before answering. The
+response (`kick`, the Talo webhook included: Talo must not wait); crons send
+before answering. The
 `notify-dispatch` cron (every 5 min) sends whatever is left. A row that fails
 (e.g. Resend rejects `EMAIL_FROM`) keeps its `error`, is retried up to 5 times,
 and is listed on **/admin → Avisos no enviados** with a "Reintentar" button.

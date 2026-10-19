@@ -8,8 +8,6 @@
 //                         slot (grid, hours, lead — NOT the client booking
 //                         window: admins may book further ahead) and lets the
 //                         DB EXCLUDE / one-per-day arbitrate.
-//   action "dispatch_notifications" → send the notifications outbox now (the
-//                         /admin "Reintentar ahora" button; ADR 0013).
 // Cancellation stays in cancel-booking. Mirrors admin-payment's is_admin gate.
 // The client is told about a confirm or a reschedule (queued by the RPC with
 // actor 'admin', so the other admins are not).
@@ -18,7 +16,7 @@ import { adminClient, userClient } from "../_shared/supabase.ts";
 import { getBusy, patchEventStatus, patchEventTime } from "../_shared/google.ts";
 import { type Busy, validateSlot } from "../_shared/booking-rules.ts";
 import { loadServiceWithSector, sectorCalendarId, sectorSettings } from "../_shared/sector.ts";
-import { dispatch, kick } from "../_shared/notify.ts";
+import { kick } from "../_shared/notify.ts";
 
 const ACTIONS = ["confirm", "no_show", "reschedule"];
 const ACTIVE = ["pending", "awaiting_payment", "confirmed"];
@@ -28,7 +26,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return options();
   try {
     const { booking_id, action, starts_at, resource_id } = await req.json();
-    if (action !== "dispatch_notifications" && (!booking_id || !ACTIONS.includes(action))) {
+    if (!booking_id || !ACTIONS.includes(action)) {
       return json({ error: "Datos inválidos" }, 400);
     }
 
@@ -44,10 +42,6 @@ Deno.serve(async (req) => {
       .eq("id", user.id)
       .single();
     if (!me?.is_admin) return json({ error: "No autorizado" }, 403);
-
-    if (action === "dispatch_notifications") {
-      return json({ ok: true, ...(await dispatch(admin)) });
-    }
 
     const { data: booking } = await admin
       .from("bookings")
