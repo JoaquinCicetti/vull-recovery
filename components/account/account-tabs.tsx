@@ -15,6 +15,7 @@ const TABS = [
 
 // The client's own area: one bar across turnos, abono, session balance,
 // notification settings and profile, so each page stays short and does one thing.
+// Rendered once by app/(account)/layout.tsx, so it never re-mounts between pages.
 export function AccountTabs() {
   const pathname = usePathname();
   return (
@@ -23,7 +24,10 @@ export function AccountTabs() {
       className="flex border-b border-border sm:gap-1"
     >
       {TABS.map(({ href, label, icon: Icon }) => {
-        const active = pathname === href;
+        // "/cuenta" is the profile and only the profile; the others own their
+        // subtree (paying a cuota is still "Plan").
+        const active =
+          href === "/cuenta" ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
         return (
           <Link
             key={href}

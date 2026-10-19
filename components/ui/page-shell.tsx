@@ -17,6 +17,11 @@ type PageShellProps = {
   /** Right-aligned header content (links, secondary actions). */
   actions?: ReactNode;
   size?: keyof typeof WIDTHS;
+  /**
+   * "tight" drops the top padding: for pages inside a layout that already
+   * renders a persistent nav (the account and admin tabs) above them.
+   */
+  top?: "default" | "tight";
   /** Center the column contents (used by auth). */
   center?: boolean;
   /** Render a hero-like particle + glow band behind the header. */
@@ -37,6 +42,7 @@ export function PageShell({
   nav,
   actions,
   size = "default",
+  top = "default",
   center = false,
   ambient = false,
   className,
@@ -46,7 +52,8 @@ export function PageShell({
   return (
     <div
       className={cn(
-        "mx-auto w-full px-5 py-14 sm:py-16",
+        "mx-auto w-full px-5",
+        top === "tight" ? "pt-6 pb-14 sm:pt-8 sm:pb-16" : "py-14 sm:py-16",
         WIDTHS[size],
         center && "flex flex-col items-center text-center",
         ambient && "relative isolate",

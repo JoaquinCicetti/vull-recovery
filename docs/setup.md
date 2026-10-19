@@ -71,7 +71,7 @@ update public.profiles set is_admin = true
 where id = (select id from auth.users where email = 'you@example.com');
 ```
 
-Then `/admin` and `/admin/servicios` unlock.
+Then `/admin` (the agenda) and `/admin/ajustes` unlock.
 
 ## 7. Edge Function secrets (local)
 

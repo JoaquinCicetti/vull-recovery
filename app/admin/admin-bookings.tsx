@@ -1,20 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { fmtTime, fmtDayLabel, localDate } from "@/lib/format";
+import { MessageCircle } from "lucide-react";
+import { fmtTime, fmtDayLabel, fmtDateParts, localDate } from "@/lib/format";
 import { formatARS } from "@/lib/site";
 import { StatusBadge } from "@/components/status-badge";
 import { BookingActions } from "@/components/admin/booking-actions";
+import { cn } from "@/lib/utils";
 import type { AdminBookingRow } from "./bookings-select";
-import type { BookingStatus } from "@/lib/types";
-
-// A confirmed turno reads as paid; the pre-confirm states show their payment step.
-function paymentHint(status: BookingStatus): string | null {
-  if (status === "confirmed") return "Pagado";
-  if (status === "awaiting_payment") return "Pago a verificar";
-  if (status === "pending") return "Sin pagar";
-  return null;
-}
 
 function waHref(phone: string | null): string | null {
   if (!phone) return null;
@@ -33,84 +26,78 @@ function groupByDay(rows: AdminBookingRow[]): { date: string; rows: AdminBooking
   return groups;
 }
 
+// One turno as a row, not a card: time | who · what | status | menu. The
+// status badge already says whether it is paid (confirmed = paid, there is
+// no other way to be confirmed), so nothing repeats it. On a phone the badge
+// drops under the text; the menu stays at the right edge.
 function Row({ b, past }: { b: AdminBookingRow; past?: boolean }) {
   const wa = waHref(b.phone);
-  const hint =
-    b.membership && b.status === "pending" ? "Cuota sin pagar" : paymentHint(b.status);
+  const { weekday, day, month } = fmtDateParts(b.startsAt);
+  const summary = `${weekday} ${day} ${month} · ${fmtTime(b.startsAt)} · ${b.client}`;
   return (
     <li
-      className={`surface-card surface-lift flex flex-wrap items-start justify-between gap-4 p-5 ${
-        past ? "opacity-60" : ""
-      }`}
+      className={cn(
+        "flex items-start gap-3 px-3 py-3 sm:items-center sm:gap-4 sm:px-4",
+        past && "opacity-60",
+      )}
     >
-      <div className="flex min-w-0 gap-4">
-        <span className="font-mono text-sm tabular-nums text-fg-muted">
-          {fmtTime(b.startsAt)}
-        </span>
-        <div className="min-w-0">
-          <p className="font-semibold text-fg">
-            {b.service}
-            {b.membership ? (
-              <span className="ml-2 rounded border border-border px-1 align-middle font-mono text-[10px] font-normal uppercase tracking-wider text-fg-faint">
-                Abono{b.membership.locked && " · fijo"}
-              </span>
-            ) : (
-              b.price != null && (
-                <span className="ml-2 font-mono text-sm font-normal text-fg-faint">
-                  {formatARS(b.price)}
-                </span>
-              )
-            )}
-          </p>
-          {b.place && <p className="text-xs text-fg-muted">{b.place}</p>}
-          <p className="mt-1 text-sm">
-            <Link
-              href={`/admin/clientes/${b.userId}`}
-              className="text-fg underline-offset-4 hover:underline"
+      <span className="w-12 shrink-0 pt-0.5 font-mono text-sm font-semibold tabular-nums text-fg sm:pt-0">
+        {fmtTime(b.startsAt)}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="flex min-w-0 items-center gap-2">
+          <Link
+            href={`/admin/clientes/${b.userId}`}
+            className="truncate font-medium text-fg underline-offset-4 hover:underline"
+          >
+            {b.client}
+          </Link>
+          {wa && (
+            <a
+              href={wa}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={`WhatsApp a ${b.client}`}
+              className="shrink-0 text-fg-faint transition-colors hover:text-accent"
             >
-              {b.client}
-            </Link>
-          </p>
-          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 font-mono text-xs text-fg-faint">
-            {b.email && <span className="truncate">{b.email}</span>}
-            {wa ? (
-              <a
-                href={wa}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-accent underline-offset-4 hover:underline"
-              >
-                {b.phone}
-              </a>
-            ) : (
-              b.phone && <span>· {b.phone}</span>
-            )}
-          </p>
-        </div>
+              <MessageCircle className="size-3.5" aria-hidden />
+            </a>
+          )}
+        </p>
+        <p className="mt-0.5 truncate text-sm text-fg-muted">
+          {b.service}
+          {b.place && <span className="text-fg-faint"> · {b.place}</span>}
+          {b.membership ? (
+            <span className="text-fg-faint"> · Abono{b.membership.locked ? " fijo" : ""}</span>
+          ) : (
+            b.price != null && (
+              <span className="font-mono text-fg-faint"> · {formatARS(b.price)}</span>
+            )
+          )}
+        </p>
+        <StatusBadge status={b.status} className="mt-2 sm:hidden" />
+        {b.membership && b.status === "pending" && (
+          <p className="mt-1 text-xs text-amber-300">Cuota del mes sin pagar</p>
+        )}
       </div>
-      <div className="flex shrink-0 flex-col items-end gap-2">
-        <StatusBadge status={b.status} />
-        {hint && <span className="text-xs text-fg-faint">{hint}</span>}
-        <Link
-          href={`/turno/${b.id}`}
-          className="text-sm text-accent underline-offset-4 hover:underline"
-        >
-          Ver turno
-        </Link>
+      <StatusBadge status={b.status} className="hidden shrink-0 sm:inline-flex" />
+      <div className="-mr-1 shrink-0">
         <BookingActions
           bookingId={b.id}
           serviceId={b.serviceId}
           status={b.status}
           started={Boolean(past)}
           membership={Boolean(b.membership)}
+          summary={summary}
         />
       </div>
     </li>
   );
 }
 
-// Turnos grouped by local day. A turno whose time has passed is dimmed and gets
-// the "after the fact" actions (no-show) instead of the live ones.
+// Turnos grouped by local day, in time order. Each day is one bordered list
+// with its date and count as the header; a turno whose time has passed is
+// dimmed and gets the "after the fact" action (no-show) instead of the live ones.
 export function BookingList({
   rows,
   nowISO,
@@ -121,22 +108,38 @@ export function BookingList({
   empty?: string;
 }) {
   if (rows.length === 0) {
-    return <p className="mt-4 text-sm text-fg-faint">{empty}</p>;
+    return (
+      <p className="rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-fg-faint">
+        {empty}
+      </p>
+    );
   }
   const now = new Date(nowISO).getTime();
+  const today = localDate(nowISO);
   return (
-    <div className="mt-3 flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
       {groupByDay(rows).map((g) => (
-        <div key={g.date}>
-          <p className="sticky top-0 z-[1] bg-bg/90 py-1 text-sm font-medium capitalize text-fg-muted backdrop-blur">
-            {fmtDayLabel(g.date)}
-          </p>
-          <ul className="mt-2 flex flex-col gap-3">
+        <section key={g.date}>
+          <h3 className="sticky top-0 z-[1] flex items-baseline justify-between gap-3 bg-bg/90 py-1.5 backdrop-blur">
+            <span
+              className={cn(
+                "text-sm font-semibold capitalize",
+                g.date === today ? "text-accent" : "text-fg",
+              )}
+            >
+              {fmtDayLabel(g.date)}
+              {g.date === today && <span className="font-normal"> · hoy</span>}
+            </span>
+            <span className="font-mono text-xs tabular-nums text-fg-faint">
+              {g.rows.length} {g.rows.length === 1 ? "turno" : "turnos"}
+            </span>
+          </h3>
+          <ul className="surface-card mt-1.5 divide-y divide-border">
             {g.rows.map((b) => (
               <Row key={b.id} b={b} past={new Date(b.startsAt).getTime() < now} />
             ))}
           </ul>
-        </div>
+        </section>
       ))}
     </div>
   );

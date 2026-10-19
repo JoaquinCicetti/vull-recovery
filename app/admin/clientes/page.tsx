@@ -1,14 +1,15 @@
 import Link from "next/link";
+import { Search } from "lucide-react";
 import { requireAdmin } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { fmtDate } from "@/lib/format";
-import { AdminTabs } from "@/components/admin/admin-tabs";
 import { LoadErrors } from "@/components/admin/load-errors";
 import { Pager } from "@/components/admin/pager";
 import { FIELD } from "@/components/admin/stat";
+import { FilterDialog, FilterField, type ActiveFilter } from "@/components/admin/filter-dialog";
 import { PageShell } from "@/components/ui/page-shell";
-import { Button } from "@/components/ui/button";
 import { UserAvatar } from "@/components/ui/user-avatar";
+import { cn } from "@/lib/utils";
 
 const PAGE = 25;
 const SORTS = {
@@ -37,7 +38,16 @@ type ClientRow = {
 function one(v: string | string[] | undefined): string {
   return (Array.isArray(v) ? v[0] : v) ?? "";
 }
+function href(params: Record<string, string | undefined>) {
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) if (v) qs.set(k, v);
+  const s = qs.toString();
+  return s ? `/admin/clientes?${s}` : "/admin/clientes";
+}
 
+// Every client as one line: who, how to reach them, how many turnos and what
+// they have to their favour. The search box is the main control; order and
+// the balance filter live in the dialog.
 export default async function ClientesPage({
   searchParams,
 }: {
@@ -61,89 +71,105 @@ export default async function ClientesPage({
   const rows = (data ?? []) as ClientRow[];
   const total = rows[0]?.total_count ?? 0;
 
+  const params = {
+    q: q || undefined,
+    saldo: onlyBalance ? "1" : undefined,
+    orden: sort === "recent" ? undefined : sort,
+  };
+  const active: ActiveFilter[] = [];
+  if (onlyBalance) active.push({ key: "saldo", label: "Con saldo", clearHref: href({ ...params, saldo: undefined }) });
+  if (sort !== "recent") active.push({ key: "orden", label: SORTS[sort], clearHref: href({ ...params, orden: undefined }) });
+
   return (
-    <PageShell size="wide" nav={<AdminTabs />} eyebrow="Panel" title="Clientes">
+    <PageShell size="wide" top="tight" eyebrow="Panel" title="Clientes">
       <LoadErrors errors={error ? [`Clientes: ${error.message}`] : []} />
 
-      <form method="get" className="surface-card flex flex-wrap items-end gap-3 p-4">
-        <label className="flex min-w-40 flex-1 flex-col gap-1.5 text-xs text-fg-muted">
-          Buscar
+      <div className="flex flex-wrap items-center gap-2">
+        <form method="get" action="/admin/clientes" className="relative min-w-0 flex-1 basis-56">
+          {onlyBalance && <input type="hidden" name="saldo" value="1" />}
+          {sort !== "recent" && <input type="hidden" name="orden" value={sort} />}
+          <Search
+            className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-fg-faint"
+            aria-hidden
+          />
           <input
             type="search"
             name="q"
             defaultValue={q}
             placeholder="Nombre, email o teléfono"
-            className={FIELD}
+            aria-label="Buscar cliente"
+            className={cn(FIELD, "w-full pl-9")}
           />
-        </label>
-        <label className="flex flex-col gap-1.5 text-xs text-fg-muted">
-          Orden
-          <select name="orden" defaultValue={sort} className={FIELD}>
-            {Object.entries(SORTS).map(([k, label]) => (
-              <option key={k} value={k}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex h-10 items-center gap-2 text-sm text-fg">
-          <input
-            type="checkbox"
-            name="saldo"
-            value="1"
-            defaultChecked={onlyBalance}
-            className="size-4 accent-[var(--color-accent)]"
-          />
-          Solo con saldo
-        </label>
-        <Button type="submit">Filtrar</Button>
-        {(q || onlyBalance) && (
-          <Button asChild variant="ghost">
-            <Link href="/admin/clientes">Limpiar</Link>
-          </Button>
-        )}
-      </form>
+        </form>
+        <FilterDialog
+          basePath="/admin/clientes"
+          keep={{ q: q || undefined }}
+          active={active}
+          clearHref={href({ q: q || undefined })}
+        >
+          <FilterField label="Orden" htmlFor="f-orden">
+            <select id="f-orden" name="orden" defaultValue={sort} className={FIELD}>
+              {Object.entries(SORTS).map(([k, label]) => (
+                <option key={k} value={k === "recent" ? "" : k}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </FilterField>
+          <label className="flex items-center gap-2 text-sm text-fg">
+            <input
+              type="checkbox"
+              name="saldo"
+              value="1"
+              defaultChecked={onlyBalance}
+              className="size-4 accent-[var(--color-accent)]"
+            />
+            Solo con sesiones a favor
+          </label>
+        </FilterDialog>
+      </div>
 
-      <p className="mt-6 font-mono text-xs text-fg-faint">
+      <p className="mt-5 font-mono text-xs text-fg-faint">
         {total} {total === 1 ? "cliente" : "clientes"}
-        {onlyBalance && " con saldo"}
+        {q && ` para “${q}”`}
       </p>
 
       {rows.length === 0 ? (
-        <p className="mt-4 text-sm text-fg-faint">
+        <p className="mt-2 rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-fg-faint">
           {error ? "—" : "No hay clientes con esos filtros."}
         </p>
       ) : (
-        <ul className="mt-3 flex flex-col gap-3">
+        <ul className="surface-card mt-2 divide-y divide-border">
           {rows.map((c) => (
             <li key={c.id}>
               <Link
                 href={`/admin/clientes/${c.id}`}
-                className="surface-card surface-lift flex flex-wrap items-center justify-between gap-4 p-5"
+                className="flex items-center gap-3 px-3 py-3 transition-colors hover:bg-surface-2/60 sm:gap-4 sm:px-4"
               >
-                <div className="flex min-w-0 items-center gap-3">
-                  <UserAvatar seed={c.id} size={40} />
-                  <div className="min-w-0">
-                    <p className="font-semibold text-fg">
-                      {c.full_name || "Sin nombre"}
-                      {c.is_admin && (
-                        <span className="ml-2 rounded-md bg-secondary px-1.5 py-0.5 font-mono text-[11px] uppercase tracking-wide text-fg-muted">
-                          Admin
-                        </span>
-                      )}
-                    </p>
-                    <p className="mt-0.5 truncate font-mono text-xs text-fg-faint">
-                      {[c.email, c.whatsapp_phone].filter(Boolean).join(" · ") || "Sin contacto"}
-                    </p>
-                    <p className="mt-1 text-xs text-fg-faint">
-                      Alta {fmtDate(c.created_at)}
-                      {c.last_booking_at && ` · último turno ${fmtDate(c.last_booking_at)}`}
-                    </p>
-                  </div>
+                <UserAvatar seed={c.id} size={36} />
+                <div className="min-w-0 flex-1">
+                  <p className="flex items-center gap-2 font-medium text-fg">
+                    <span className="truncate">{c.full_name || "Sin nombre"}</span>
+                    {c.is_admin && (
+                      <span className="shrink-0 rounded-md bg-secondary px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wide text-fg-muted">
+                        Admin
+                      </span>
+                    )}
+                  </p>
+                  <p className="mt-0.5 truncate font-mono text-xs text-fg-faint">
+                    {[c.email, c.whatsapp_phone].filter(Boolean).join(" · ") || "Sin contacto"}
+                  </p>
+                  <p className="mt-0.5 text-xs text-fg-faint sm:hidden">
+                    {c.bookings_total} {c.bookings_total === 1 ? "turno" : "turnos"}
+                    {c.bookings_upcoming > 0 && ` · ${c.bookings_upcoming} próximos`}
+                    {c.credits > 0 && (
+                      <span className="text-accent"> · {c.credits} a favor</span>
+                    )}
+                  </p>
                 </div>
-                <dl className="flex shrink-0 gap-6 text-right">
+                <dl className="hidden shrink-0 gap-6 text-right sm:flex">
                   <div>
-                    <dt className="text-xs text-fg-faint">Turnos</dt>
+                    <dt className="text-[11px] text-fg-faint">Turnos</dt>
                     <dd className="font-mono text-sm tabular-nums text-fg">
                       {c.bookings_total}
                       {c.bookings_upcoming > 0 && (
@@ -152,13 +178,20 @@ export default async function ClientesPage({
                     </dd>
                   </div>
                   <div>
-                    <dt className="text-xs text-fg-faint">Saldo</dt>
+                    <dt className="text-[11px] text-fg-faint">A favor</dt>
                     <dd
-                      className={`font-mono text-sm tabular-nums ${
-                        c.credits > 0 ? "font-semibold text-accent" : "text-fg-faint"
-                      }`}
+                      className={cn(
+                        "font-mono text-sm tabular-nums",
+                        c.credits > 0 ? "font-semibold text-accent" : "text-fg-faint",
+                      )}
                     >
                       {c.credits}
+                    </dd>
+                  </div>
+                  <div className="w-24">
+                    <dt className="text-[11px] text-fg-faint">Último turno</dt>
+                    <dd className="font-mono text-xs tabular-nums text-fg-muted">
+                      {c.last_booking_at ? fmtDate(c.last_booking_at) : "—"}
                     </dd>
                   </div>
                 </dl>
@@ -167,21 +200,8 @@ export default async function ClientesPage({
           ))}
         </ul>
       )}
-      <p className="mt-4 text-xs text-fg-faint">
-        Turnos: realizados (y +próximos). Saldo: sesiones a favor sin usar.
-      </p>
 
-      <Pager
-        basePath="/admin/clientes"
-        params={{
-          q: q || undefined,
-          saldo: onlyBalance ? "1" : undefined,
-          orden: sort === "recent" ? undefined : sort,
-        }}
-        page={page}
-        pageSize={PAGE}
-        total={total}
-      />
+      <Pager basePath="/admin/clientes" params={params} page={page} pageSize={PAGE} total={total} />
     </PageShell>
   );
 }

@@ -53,22 +53,19 @@ export function HeaderNav() {
     <nav className="flex items-center gap-1 text-sm">
       {auth.status === "in" ? (
         <>
-          <Link
-            href="/mis-turnos"
-            className="rounded-lg px-3 py-2 text-fg-muted transition-colors hover:text-fg"
-          >
-            Mis turnos
-          </Link>
           {auth.isAdmin && (
             <Link
-              href="/admin"
+              href="/admin/agenda"
               className="rounded-lg px-3 py-2 text-fg-muted transition-colors hover:text-fg"
             >
-              Admin
+              Panel
             </Link>
           )}
+          {/* One door into the account area (it opens on the turnos; profile,
+              plan and sessions are tabs inside). Two links to the same place
+              read as two places. */}
           <Button asChild variant="outline" className="ml-1">
-            <Link href="/cuenta">Mi cuenta</Link>
+            <Link href="/mis-turnos">Mi cuenta</Link>
           </Button>
         </>
       ) : (

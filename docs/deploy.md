@@ -114,7 +114,7 @@ users. Locally nothing is needed: OTP codes land in Mailpit (`:54324`).
 Apply the migrations first (`pnpm exec supabase db push`): the functions call
 RPCs the migrations create. After `20261018120000_admin_slots_and_booking_window`
 every booking takes one slot of the sector's shortest plan length (ADR 0012):
-set the slot length in Disponibilidad (`/admin/configuracion`) right away.
+set the slot length in Ajustes → Disponibilidad (`/admin/ajustes`) right away.
 ```bash
 pnpm exec supabase functions deploy
 ```
@@ -141,7 +141,7 @@ Details in `docs/setup.md`.
 ## Smoke test on the live domain
 1. Load `https://your-domain.com` — landing renders, logo shows.
 2. **Log in with Google** — redirects out and back, you land signed in.
-3. As an admin, open **/admin/servicios** — create a plan; it appears on the landing.
+3. As an admin, open **/admin/ajustes** — create a plan; it appears on the landing.
 4. Click **Reservar** → pick a slot from live availability → booking holds at `/turno/[id]`.
 
 If login fails with a redirect error, the Redirect URL in step 1 above is almost always the cause.
