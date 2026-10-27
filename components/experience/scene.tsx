@@ -19,6 +19,34 @@ import { RoomProps } from "./scene/props";
 import { Steam } from "./scene/steam";
 import { SceneBoundary } from "./scene-boundary";
 
+// A weak GPU — an integrated laptop chip, a software renderer, a mobile GPU in
+// a desktop viewport — cannot fill the post stack at 1.5× DPR AND shade 1,000
+// lit spheres 60 times a second; the ride stuttered hardest at the finale,
+// when the camera closes on the lit floor and bath while the mark assembles.
+// Decided once at mount (the composer tree and the sphere count are fixed for
+// the scene's life): such a device gets DPR 1, no depth-of-field pass, fewer
+// spheres and no steam. The PerformanceMonitor still steps DPR down further
+// if even that slips.
+function detectLowEnd(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const nav = navigator as Navigator & { deviceMemory?: number };
+    if ((nav.hardwareConcurrency ?? 8) <= 4) return true;
+    if ((nav.deviceMemory ?? 8) <= 4) return true;
+    const probe = document.createElement("canvas");
+    const gl = probe.getContext("webgl2") ?? probe.getContext("webgl");
+    if (!gl) return true;
+    const ext = gl.getExtension("WEBGL_debug_renderer_info");
+    const renderer = ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) : "";
+    gl.getExtension("WEBGL_lose_context")?.loseContext();
+    return /Intel|SwiftShader|llvmpipe|Mali|Adreno|PowerVR|Radeon\(TM\) (Vega|Graphics)/i.test(
+      renderer,
+    );
+  } catch {
+    return false;
+  }
+}
+
 // WebGL layer: spheres rise from the bottom, then morph into the logo silhouette.
 // Transparent background so it composites over the static hero. ssr:false.
 // `active` pauses the render loop (frameloop "never") when the hero scrolls
@@ -49,7 +77,8 @@ export default function Scene({
     isMobile &&
     typeof window !== "undefined" &&
     window.innerHeight > window.innerWidth;
-  const count = isMobile ? 440 : 1000;
+  const [lowEnd] = useState(() => !isMobile && detectLowEnd());
+  const count = isMobile ? 440 : lowEnd ? 600 : 1000;
   // Free-camera debug mode (?debugcam): OrbitControls instead of the scripted
   // Rig, plus a button that alerts the current camera position/direction — for
   // finding framings by hand. Combine with ?debugcam&p=0.6 to freeze a beat
@@ -62,7 +91,10 @@ export default function Scene({
   // cheapest lever under load. Start at 1.5 (SMAA handles the edges) and let
   // PerformanceMonitor drop us to 1 if the frame budget slips. We never climb
   // back — re-inclining thrashes the render targets.
-  const [dpr, setDpr] = useState(isMobile ? 1 : 1.5);
+  const [dpr, setDpr] = useState(isMobile || lowEnd ? 1 : 1.5);
+  // Under sustained load a weak GPU goes below native resolution: softer, but
+  // the ride keeps moving. A strong one just loses the 1.5× supersampling.
+  const declineDpr = lowEnd ? 0.75 : 1;
 
   return (
     <>
@@ -117,8 +149,8 @@ export default function Scene({
       <fog attach="fog" args={["#050608", 24, 130]} />
       <PerformanceMonitor
         flipflops={3}
-        onDecline={() => setDpr(1)}
-        onFallback={() => setDpr(1)}
+        onDecline={() => setDpr(declineDpr)}
+        onFallback={() => setDpr(declineDpr)}
       />
       <Lighting />
       <SceneBoundary>
@@ -136,7 +168,7 @@ export default function Scene({
           scene instead of taking the canvas down. */}
       <SceneBoundary>
         <RoomProps />
-        {!isMobile && <Steam />}
+        {!isMobile && !lowEnd && <Steam />}
       </SceneBoundary>
       <Spheres count={count} />
       {debugCam ? <OrbitControls makeDefault target={[0, -1, -6]} /> : <Rig portrait={portrait} />}
@@ -144,7 +176,7 @@ export default function Scene({
           into full-screen targets. On phones that was enough to stall the frame
           loop as the mark assembled — the scene read as frozen at the logo — so
           mobile renders straight to the canvas with hardware MSAA instead. */}
-      {!isMobile && <Effects />}
+      {!isMobile && <Effects dof={!lowEnd} />}
       {/* Throttle raycasting/events while scrolling; DPR stays full for crispness. */}
       <AdaptiveEvents />
     </Canvas>
