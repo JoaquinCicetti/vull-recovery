@@ -1,0 +1,74 @@
+# Checks on every push and PR. The deploy job (edge functions + Worker in prod
+# mode through scripts/deploy.sh) is switched off for now: deploys are manual
+# (`pnpm deploy`). To turn it back on, drop `false &&` from its `if`.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Superseded PR runs are cancelled; main runs queue, so a deploy is never cut off.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  web:
+    name: Web (types + lint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec tsc --noEmit
+      - run: pnpm lint
+
+  functions:
+    name: Edge functions (types + tests)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: supabase/functions
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - run: deno check */index.ts _shared/*.ts
+      - run: deno test _shared/
+
+  deploy:
+    name: Deploy (prod)
+    needs: [web, functions]
+    if: false && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec supabase link --project-ref "${{ vars.SUPABASE_PROJECT_REF }}"
+      # deploy.sh reads the browser config (NEXT_PUBLIC_* lines) from this file.
+      - run: printf '%s\n' "$ENV_PRODUCTION" > .env.production
+        env:
+          ENV_PRODUCTION: ${{ secrets.ENV_PRODUCTION }}
+      - run: scripts/deploy.sh prod --functions
+        env:
+          SKIP_SECRETS: "1"
