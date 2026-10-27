@@ -128,6 +128,23 @@ pnpm exec supabase functions deploy
 ```
 The frontend calls these via `supabase.functions.invoke(...)`; they live on Supabase, not Vercel.
 
+**On push to `main`** (`.github/workflows/ci.yml`) — *currently disabled
+(`if: false && …` on the `deploy` job); deploys are manual until it's turned
+back on.* Once the type checks, lint and Deno tests pass, CI runs `SKIP_SECRETS=1 scripts/deploy.sh prod --functions`,
+which deploys every edge function and then the Worker. It refuses, and deploys
+nothing, when a migration in `supabase/migrations` isn't applied yet (run
+`pnpm exec supabase db push` and re-run the job) or when Supabase is in dev
+mode (run `pnpm deploy` to switch back). GitHub settings (Settings → Secrets
+and variables → Actions):
+
+| Name | Kind | Value |
+|------|------|-------|
+| `SUPABASE_ACCESS_TOKEN` | secret | Supabase → Account → Access Tokens |
+| `CLOUDFLARE_API_TOKEN` | secret | Cloudflare → API Tokens → "Edit Cloudflare Workers" template, scoped to the account and the `vull.com.ar` zone |
+| `ENV_PRODUCTION` | secret | The `NEXT_PUBLIC_*` lines of `.env.production` (prod values) |
+| `SUPABASE_PROJECT_REF` | variable | `wjdiojyelthaumuzkfxt` |
+| `CLOUDFLARE_ACCOUNT_ID` | variable | Cloudflare dashboard → Account ID |
+
 ### 5. Crons and their secrets
 Every edge secret is listed in `supabase/.env.secrets.example`; `scripts/deploy.sh`
 warns when a required one is missing (`--strict` fails). Then point an external

@@ -7,6 +7,14 @@
 #   SKIP_SECRETS=1 scripts/deploy.sh …   → Worker only, leave Supabase alone
 #   scripts/deploy.sh [mode] --strict    → fail (instead of warn) when a
 #                                           required edge secret is missing
+#   scripts/deploy.sh [mode] --functions → also deploy every edge function
+#                                           before the Worker (CI does this)
+#
+# Before anything is deployed, every migration in supabase/migrations must
+# already be applied to the project (`supabase db push` stays manual), so the
+# site never ships ahead of the schema it reads. With SKIP_SECRETS=1 the
+# project's DEV_MODE secret must also match the mode being built, so a prod
+# site never runs against sandbox secrets (or the reverse).
 #
 # The mode is two things switched together, so they can never disagree:
 #   1. Supabase secrets ← supabase/.env.<mode>   (Talo keys, TALO_TEST, DEV_MODE)
@@ -34,11 +42,13 @@ cd "$(dirname "$0")/.."
 
 mode=prod
 strict=false
+functions=false
 for arg in "$@"; do
   case "$arg" in
     prod|dev) mode="$arg" ;;
     --strict) strict=true ;;
-    *) echo "usage: $0 [prod|dev] [--strict]" >&2; exit 1 ;;
+    --functions) functions=true ;;
+    *) echo "usage: $0 [prod|dev] [--strict] [--functions]" >&2; exit 1 ;;
   esac
 done
 case "$mode" in
@@ -62,6 +72,36 @@ case "${NEXT_PUBLIC_SITE_URL:-}" in
   https://*) ;;
   *) die "NEXT_PUBLIC_SITE_URL must be an https URL" ;;
 esac
+
+# ── Migrations applied? ─────────────────────────────────────────────────────
+applied="$(pnpm exec supabase db query --linked -o json \
+  "select version from supabase_migrations.schema_migrations" 2>/dev/null)" \
+  || die "could not read the project's migrations (not linked / not logged in?)"
+missing=()
+for f in supabase/migrations/*.sql; do
+  v="$(basename "$f" | cut -d_ -f1)"
+  grep -q "\"$v\"" <<<"$applied" || missing+=("$v")
+done
+[ ${#missing[@]} -eq 0 ] \
+  || die "migrations not applied to the project: ${missing[*]} (run: pnpm exec supabase db push)"
+echo "→ migrations: all applied"
+
+# ── Supabase in the same mode? ──────────────────────────────────────────────
+# Only when this run doesn't set the mode secrets itself. `secrets list` shows
+# sha256 digests, so compare against the digest of "true"/"false"; an unset
+# DEV_MODE means false.
+if [ "${SKIP_SECRETS:-}" = 1 ]; then
+  digest="$(pnpm exec supabase secrets list -o json 2>/dev/null | node -e '
+    let s = ""; process.stdin.on("data", (d) => (s += d)).on("end", () => {
+      const r = JSON.parse(s).find((x) => x.name === "DEV_MODE");
+      process.stdout.write(r ? r.value : "");
+    });')" || die "could not read the project's secrets"
+  want="$(printf %s "$dev" | shasum -a 256 | cut -d' ' -f1)"
+  if [ "$dev" = false ] && [ -z "$digest" ]; then digest="$want"; fi
+  [ "$digest" = "$want" ] \
+    || die "Supabase is not in $mode mode (DEV_MODE differs); run scripts/deploy.sh $mode without SKIP_SECRETS first"
+  echo "→ Supabase mode: $mode"
+fi
 
 # ── Supabase secrets ────────────────────────────────────────────────────────
 if [ "${SKIP_SECRETS:-}" != 1 ]; then
@@ -105,6 +145,13 @@ check_secrets() {
   return 0
 }
 check_secrets
+
+# ── Edge functions ──────────────────────────────────────────────────────────
+# Before the Worker, so the new site never calls a function version it predates.
+if [ "$functions" = true ]; then
+  echo "→ Edge functions"
+  pnpm exec supabase functions deploy --use-api
+fi
 
 # ── Worker ──────────────────────────────────────────────────────────────────
 echo "→ Worker ($mode mode): DEV_MODE=$dev TALO=${NEXT_PUBLIC_TALO_ENABLED:-false} SITE_URL=$NEXT_PUBLIC_SITE_URL"

@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Cloudflare build output (scripts/deploy.sh, `pnpm preview`).
+    ".open-next/**",
+    ".wrangler/**",
     // Supabase Edge Functions are Deno code, linted/typechecked separately.
     "supabase/**",
     // Third-party tooling (Claude Code skills, etc.).
