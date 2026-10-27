@@ -12,8 +12,13 @@
   "services": [{ "binding": "WORKER_SELF_REFERENCE", "service": "app" }],
   // next/image → Cloudflare Images (free plan: 5,000 unique transformations/month).
   "images": { "binding": "IMAGES" },
-  // Run the worker close to Supabase (us-west-2) instead of near the visitor:
-  "placement": { "mode": "smart" },
+  // Run the Worker next to Supabase (AWS us-west-2) instead of near the visitor.
+  // A page makes several database round trips in a row; from Buenos Aires each
+  // one was ~300 ms, from Oregon ~5 ms. The visitor pays one long hop instead.
+  // `mode: "smart"` never kicked in (cf-placement stayed local-EZE: it needs
+  // steady traffic from several locations to decide), so the region is explicit.
+  // Static assets and prerendered pages are still served from the nearest edge.
+  "placement": { "region": "aws:us-west-2" },
   "routes": [{ "pattern": "www.vull.com.ar", "custom_domain": true }],
   "workers_dev": false,
   "observability": { "enabled": true }

@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { AdminPayments } from "../admin-payments";
 import { SectionTitle } from "@/components/admin/stat";
 
@@ -8,9 +8,12 @@ import { SectionTitle } from "@/components/admin/stat";
 // unverifiable, paid without a slot, reversed…), plus any legacy receipt still
 // waiting. Rendered on the agenda only when there is something to look at:
 // with Talo settling everything, this is usually nothing.
-export async function FlaggedPayments() {
-  const supabase = await createClient();
-  const { data, count, error } = await supabase
+//
+// The read is issued by the page inside its first Promise.all (an async
+// component here would only start after the page's own awaits, adding a
+// round trip to every agenda load); this component just renders the result.
+export function loadFlaggedPayments(supabase: SupabaseClient) {
+  return supabase
     .from("payments")
     .select(
       // `profiles!user_id` disambiguates bookings' two FKs to profiles.
@@ -21,6 +24,12 @@ export async function FlaggedPayments() {
     .or("admin_flag.not.is.null,reversed_at.not.is.null,and(provider.eq.manual,status.eq.pending)")
     .order("created_at", { ascending: true })
     .limit(50);
+}
+
+type FlaggedResult = { data: any[] | null; count: number | null; error: { message: string } | null };
+
+export function FlaggedPayments({ result }: { result: FlaggedResult }) {
+  const { data, count, error } = result;
   if (error) {
     return (
       <p className="mb-6 rounded-md border border-danger/30 bg-danger/5 px-4 py-3 text-sm text-danger">

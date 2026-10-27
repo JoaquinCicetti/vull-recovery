@@ -1,6 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { getService } from "@/lib/services";
-import { getUserAndProfile } from "@/lib/auth";
+import { getSessionUser, getUserAndProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { getMyBalances } from "@/lib/credits";
 import { isMonthly, isPack } from "@/lib/types";
@@ -15,31 +15,37 @@ export default async function ReservarPage({
   params: Promise<{ serviceId: string }>;
 }) {
   const { serviceId } = await params;
-  const service = await getService(serviceId);
+  // The session is verified locally, so everything the page needs — the plan,
+  // the profile, the user's active turnos, their credits — is ONE round trip.
+  // (Four in a row before: this page gates the booking flow, so it shows.)
+  const session = await getSessionUser();
+  const supabase = await createClient();
+  const [service, { user, profile }, bookingsRes, balances] = await Promise.all([
+    getService(serviceId),
+    getUserAndProfile(),
+    session
+      ? supabase
+          .from("bookings")
+          .select("starts_at, sector_id")
+          .eq("user_id", session.id)
+          .in("status", ["pending", "awaiting_payment", "confirmed"])
+          .gte("starts_at", new Date().toISOString())
+      : Promise.resolve({ data: [] as { starts_at: string; sector_id: string }[] }),
+    session ? getMyBalances() : Promise.resolve({} as Record<string, number>),
+  ]);
   if (!service || !service.active) notFound();
   // A monthly plan is a weekly schedule, not a single turno.
   if (isMonthly(service)) redirect(`/abono/${service.id}`);
 
-  const { user, profile } = await getUserAndProfile();
-
   // Days the user already has an active turno on IN THIS SECTOR — one turno per
   // day per sector is enforced server-side; surfacing it here disables those days
   // before the round-trip.
-  let bookedDays: string[] = [];
-  let credits = 0;
-  if (user) {
-    const supabase = await createClient();
-    const { data } = await supabase
-      .from("bookings")
-      .select("starts_at")
-      .eq("user_id", user.id)
-      .eq("sector_id", service.sector_id)
-      .in("status", ["pending", "awaiting_payment", "confirmed"])
-      .gte("starts_at", new Date().toISOString());
-    bookedDays = (data ?? []).map((b) => localDate(b.starts_at));
-    const balances = await getMyBalances();
-    credits = balances[service.id] ?? 0;
-  }
+  const bookedDays = user
+    ? (bookingsRes.data ?? [])
+        .filter((b) => b.sector_id === service.sector_id)
+        .map((b) => localDate(b.starts_at))
+    : [];
+  const credits = user ? (balances[service.id] ?? 0) : 0;
 
   // A pack's price_ars buys the WHOLE pack. Booking it without a credit would take
   // the ordinary paid path and charge that full price for a single session, so send

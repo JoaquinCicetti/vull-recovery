@@ -111,15 +111,28 @@ async function mintAccessToken(sa: ServiceAccount): Promise<CachedToken> {
   return { token: data.access_token as string, expiresAtMs: Date.now() + ttlSec * 1000 };
 }
 
+// Per-isolate freeBusy cache, keyed by calendar + range end (the range start
+// is "now", which changes every call; a block that ended since is in the past
+// and harmless). Only callers that pass `maxAgeMs` read it: the availability
+// grid does, the booking/blocking paths always read fresh.
+type BusyBlock = { start: string; end: string };
+const busyCache = new Map<string, { at: number; busy: BusyBlock[] }>();
+
 // `cal` is the sector's calendar (see sectorCalendarId); null = the sector has
 // none, so there is nothing busy outside the DB.
 export async function getBusy(
   timeMin: string,
   timeMax: string,
   cal: string | null = calendarId(),
-): Promise<{ start: string; end: string }[]> {
+  maxAgeMs = 0,
+): Promise<BusyBlock[]> {
   const sa = loadSA();
   if (!sa || !cal) return [];
+  const key = `${cal}|${timeMax}`;
+  if (maxAgeMs > 0) {
+    const hit = busyCache.get(key);
+    if (hit && Date.now() - hit.at < maxAgeMs) return hit.busy;
+  }
   const token = await getAccessToken(sa);
   const res = await fetch("https://www.googleapis.com/calendar/v3/freeBusy", {
     method: "POST",
@@ -128,7 +141,12 @@ export async function getBusy(
   });
   if (!res.ok) throw new Error(`freeBusy error ${res.status}: ${await res.text()}`);
   const data = await res.json();
-  return data.calendars?.[cal]?.busy ?? [];
+  const busy: BusyBlock[] = data.calendars?.[cal]?.busy ?? [];
+  if (maxAgeMs > 0) {
+    if (busyCache.size > 32) busyCache.clear();
+    busyCache.set(key, { at: Date.now(), busy });
+  }
+  return busy;
 }
 
 // deno-lint-ignore no-explicit-any

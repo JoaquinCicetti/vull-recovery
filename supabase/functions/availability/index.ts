@@ -14,6 +14,7 @@
 // `scope: "admin"` (admins only) ignores the client window, for rescheduling:
 // it shows the next `rolling_days` days, or the client window if that is longer.
 import { adminClient, userClient } from "../_shared/supabase.ts";
+import { defer } from "../_shared/background.ts";
 import { responder, errMessage } from "../_shared/cors.ts";
 import { getBusy } from "../_shared/google.ts";
 import { housekeeping } from "../_shared/membership.ts";
@@ -34,6 +35,7 @@ import {
 } from "../_shared/sector.ts";
 
 const ACTIVE = ["pending", "awaiting_payment", "confirmed"];
+const BUSY_MAX_AGE_MS = 60_000;
 
 type OutSlot = {
   starts_at: string;
@@ -54,12 +56,15 @@ Deno.serve(async (req) => {
     const supabase = adminClient();
 
     // Lazy maintenance (no cron needed): free lapsed holds, expire lapsed abono
-    // signups and keep recurring members' next month materialized, so the
-    // bookings read below sees every bed that is really taken.
-    const [, service] = await Promise.all([
-      housekeeping(supabase),
-      loadServiceWithSector(supabase, service_id),
-    ]);
+    // signups and keep recurring members' next month materialized. It runs in
+    // the BACKGROUND (EdgeRuntime.waitUntil): it is a write pass over every
+    // membership and it was most of this function's time, on every grid load.
+    // The one thing it sweeps that this read must not trust is a lapsed hold,
+    // and the bookings query below excludes those itself; the rest (an abono
+    // signup that lapsed a minute ago, next month's classes) is right on the
+    // next call, and create-booking re-validates the chosen slot anyway.
+    defer(() => housekeeping(supabase));
+    const service = await loadServiceWithSector(supabase, service_id);
     if (!service || !service.active) {
       return json({ error: "Servicio no disponible" }, 404);
     }
@@ -84,12 +89,12 @@ Deno.serve(async (req) => {
     // The last slot may run past rangeEnd: read busy blocks a day further.
     const readEnd = new Date(rangeEnd + 86400000).toISOString();
 
+    const nowISO = new Date(now).toISOString();
     const [googleBusy, { data: resources }, { data: bookings }] = await Promise.all([
-      getBusy(
-        new Date(now).toISOString(),
-        readEnd,
-        sectorCalendarId(sector),
-      ).catch(() => []),
+      // Busy blocks may be up to a minute old here: this is a picker, and the
+      // booking itself re-reads the calendar. Saves a Google round trip on
+      // every grid load while the isolate is warm.
+      getBusy(nowISO, readEnd, sectorCalendarId(sector), BUSY_MAX_AGE_MS).catch(() => []),
       supabase
         .from("resources")
         .select("id, name")
@@ -102,8 +107,11 @@ Deno.serve(async (req) => {
         .select("resource_id,starts_at,ends_at")
         .eq("sector_id", sector.id)
         .in("status", ACTIVE)
+        // A lapsed hold no longer takes the bed (housekeeping above expires it
+        // in the background; this read does not wait for that).
+        .or(`status.neq.pending,hold_expires_at.is.null,hold_expires_at.gt.${nowISO}`)
         .lt("starts_at", readEnd)
-        .gt("ends_at", new Date(now).toISOString()),
+        .gt("ends_at", nowISO),
     ]);
 
     // Google busy blocks the whole sector; a turno blocks only its resource.

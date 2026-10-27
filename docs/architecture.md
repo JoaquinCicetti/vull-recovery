@@ -125,3 +125,14 @@ Booking lifecycle: `pending → awaiting_payment → confirmed` (or `cancelled` 
 | `notify-dispatch` | cron* | Sends the notifications outbox every ~5 min (safety net for `kick()`) |
 
 \* Webhooks authenticate via their own secret/token, not a Supabase JWT.
+
+## Latency (ADR 0015)
+
+The database and Auth are in AWS `us-west-2`; Argentina is ~250 ms away. Three
+rules keep that to one hop per page: the Worker is placed next to the database
+(`wrangler.jsonc` → `placement.region`; check the `cf-placement` response header
+says `remote-…`), the session is verified locally (`lib/auth.ts` → `getClaims()`,
+never `getUser()` on a page), and every page issues its reads — the admin/user
+check included — in one `Promise.all`. Edge Functions are pinned to the same
+region from the browser (`x-region`). The structural fix is a project in
+`sa-east-1`: `docs/runbooks/supabase-region-move.md`.

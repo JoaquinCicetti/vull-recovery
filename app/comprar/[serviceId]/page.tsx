@@ -11,11 +11,9 @@ export default async function ComprarPage({
   params: Promise<{ serviceId: string }>;
 }) {
   const { serviceId } = await params;
-  const pack = await getService(serviceId);
+  const [pack, { user }] = await Promise.all([getService(serviceId), getUserAndProfile()]);
   // Only packs (multi-session plans) are purchasable here.
   if (!pack || !pack.active || pack.sessions_included <= 1) notFound();
-
-  const { user } = await getUserAndProfile();
 
   return (
     <PageShell

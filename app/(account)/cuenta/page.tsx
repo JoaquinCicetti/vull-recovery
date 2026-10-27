@@ -18,7 +18,7 @@ export default async function CuentaPage() {
           <p className="truncate text-lg font-semibold text-fg">{name || "Sin nombre"}</p>
           <p className="truncate font-mono text-sm text-fg-muted">{email}</p>
           <p className="mt-1 text-xs text-fg-faint">
-            Cliente desde el {fmtDate(user!.created_at)}
+            {profile?.created_at && <>Cliente desde el {fmtDate(profile.created_at)}</>}
             {profile?.is_admin && " · Administrador"}
           </p>
         </div>
