@@ -74,6 +74,10 @@ function urlBase64ToUint8Array(base64: string): Uint8Array {
   return out;
 }
 
+function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
+  return a.length === b.length && a.every((x, i) => x === b[i]);
+}
+
 /**
  * Verify, ask permission, subscribe and STORE this device's subscription
  * (push_subscriptions, own-row RLS). Only an `ok` result means the server can
@@ -91,9 +95,15 @@ export async function subscribeThisDevice(
     if (perm !== "granted") {
       return { ok: false, problem: perm === "denied" ? "denied" : "dismissed" };
     }
+    const key = urlBase64ToUint8Array(VAPID!);
+    // A subscription made under an older VAPID key can't be reused (the server
+    // can't sign for it) and blocks subscribe() with InvalidStateError: drop it.
+    const old = await reg.pushManager.getSubscription();
+    const oldKey = old?.options.applicationServerKey;
+    if (old && (!oldKey || !sameBytes(new Uint8Array(oldKey), key))) await old.unsubscribe();
     const sub = await reg.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(VAPID!) as BufferSource,
+      applicationServerKey: key as BufferSource,
     });
     const json = sub.toJSON();
     if (!json.keys) return { ok: false, problem: "failed" };
