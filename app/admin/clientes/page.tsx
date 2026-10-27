@@ -53,7 +53,6 @@ export default async function ClientesPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requireAdmin();
   const sp = await searchParams;
   const q = one(sp.q).trim().slice(0, 60);
   const onlyBalance = one(sp.saldo) === "1";
@@ -61,13 +60,17 @@ export default async function ClientesPage({
   const page = Math.max(1, Number.parseInt(one(sp.pagina), 10) || 1);
 
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc("admin_user_list", {
-    p_search: q || null,
-    p_only_balance: onlyBalance,
-    p_sort: sort,
-    p_limit: PAGE,
-    p_offset: (page - 1) * PAGE,
-  });
+  // Admin check and the list in one round trip (the RPC is admin-gated itself).
+  const [, { data, error }] = await Promise.all([
+    requireAdmin(),
+    supabase.rpc("admin_user_list", {
+      p_search: q || null,
+      p_only_balance: onlyBalance,
+      p_sort: sort,
+      p_limit: PAGE,
+      p_offset: (page - 1) * PAGE,
+    }),
+  ]);
   const rows = (data ?? []) as ClientRow[];
   const total = rows[0]?.total_count ?? 0;
 

@@ -63,7 +63,6 @@ export default async function ClientePage({
   params: Promise<{ id: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { user: me } = await requireAdmin();
   const [{ id }, sp] = await Promise.all([params, searchParams]);
   if (!UUID_RE.test(id)) notFound();
   // The client's turnos span both sectors, so they are read here (the agenda
@@ -73,8 +72,10 @@ export default async function ClientePage({
   const nowISO = new Date().toISOString();
   const supabase = await createClient();
 
-  // All admin-readable through RLS (is_admin()); independent, so one round trip.
+  // All admin-readable through RLS (is_admin()); independent of each other and
+  // of the admin check itself, so one round trip for the lot.
   const [
+    { user: me },
     profileRes,
     creditsRes,
     ledgerRes,
@@ -84,6 +85,7 @@ export default async function ClientePage({
     bookingPayRes,
     membershipsRes,
   ] = await Promise.all([
+      requireAdmin(),
       supabase
         .from("profiles")
         .select("id, full_name, email, whatsapp_phone, is_admin, created_at")

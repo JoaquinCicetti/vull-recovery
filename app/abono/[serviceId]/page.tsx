@@ -1,9 +1,8 @@
 import { notFound, redirect } from "next/navigation";
 import { MEMBERSHIP_ACTIVE } from "@/lib/booking-status";
-import { getService } from "@/lib/services";
-import { getUserAndProfile } from "@/lib/auth";
+import { getSessionUser, getUserAndProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { isMonthly, type Sector } from "@/lib/types";
+import { isMonthly, type Sector, type Service } from "@/lib/types";
 import { formatARS } from "@/lib/site";
 import { localDate } from "@/lib/format";
 import { PageShell } from "@/components/ui/page-shell";
@@ -18,31 +17,42 @@ export default async function AbonoPage({
   params: Promise<{ serviceId: string }>;
 }) {
   const { serviceId } = await params;
-  const service = await getService(serviceId);
-  if (!service || !service.active || !isMonthly(service)) notFound();
-
+  const session = await getSessionUser();
   const supabase = await createClient();
-  const [{ user, profile }, { data: sector }] = await Promise.all([
-    getUserAndProfile(),
+  // One round trip: the plan with its sector, the profile, and the user's live
+  // abonos (filtered to this sector below, once the plan is known).
+  const [{ data: svc }, { user, profile }, { data: mine }] = await Promise.all([
     supabase
-      .from("sectors")
-      .select("id, name, timezone, due_day, late_fee_pct, release_day, hold_minutes")
-      .eq("id", service.sector_id)
-      .single<Pick<Sector, "id" | "name" | "timezone" | "due_day" | "late_fee_pct" | "release_day" | "hold_minutes">>(),
+      .from("services")
+      .select("*, sectors(id, name, timezone, due_day, late_fee_pct, release_day, hold_minutes)")
+      .eq("id", serviceId)
+      .maybeSingle<
+        Service & {
+          sectors: Pick<
+            Sector,
+            "id" | "name" | "timezone" | "due_day" | "late_fee_pct" | "release_day" | "hold_minutes"
+          > | null;
+        }
+      >(),
+    getUserAndProfile(),
+    session
+      ? supabase
+          .from("memberships")
+          .select("id, status, sector_id, membership_periods(id, status)")
+          .eq("user_id", session.id)
+          .in("status", MEMBERSHIP_ACTIVE)
+          .order("created_at", { ascending: false })
+      : Promise.resolve({ data: [] as never[] }),
   ]);
+  if (!svc || !svc.active || !isMonthly(svc)) notFound();
+  const { sectors: sector, ...service } = svc;
   if (!sector) notFound();
 
   // One abono per sector: someone who already has one goes to it.
   if (user) {
-    const { data: current } = await supabase
-      .from("memberships")
-      .select("id, status, membership_periods(id, status)")
-      .eq("user_id", user.id)
-      .eq("sector_id", service.sector_id)
-      .in("status", MEMBERSHIP_ACTIVE)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    const current = ((mine ?? []) as { id: string; status: string; sector_id: string; membership_periods: { id: string; status: string }[] | null }[]).find(
+      (m) => m.sector_id === service.sector_id,
+    );
     if (current) {
       const unpaid = (current.membership_periods as { id: string; status: string }[] | null)?.find(
         (p) => p.status === "pending",

@@ -1,4 +1,4 @@
-import { requireUser } from "@/lib/auth";
+import { requireSession } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { getMyCredits } from "@/lib/credits";
 import { isActiveStatus } from "@/lib/booking-status";
@@ -23,7 +23,9 @@ export default async function MisTurnosPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { user } = await requireUser("/mis-turnos");
+  // The session is verified locally (no profile needed here), so the three
+  // reads below are this page's only round trip.
+  const user = await requireSession("/mis-turnos");
   const showAll = (await searchParams).historial === "todo";
 
   const supabase = await createClient();
@@ -34,7 +36,7 @@ export default async function MisTurnosPage({
         "id, starts_at, status, hold_expires_at, membership_id, services(name), sectors(slug, name), resources(name)",
       )
       // Explicit: RLS lets an admin read EVERY booking, and this page is "mine".
-      .eq("user_id", user!.id)
+      .eq("user_id", user.id)
       .order("starts_at", { ascending: true }),
     getMyCredits(),
     supabase.rpc("my_swap_requests"),

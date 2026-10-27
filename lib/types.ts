@@ -6,6 +6,8 @@ export type Profile = {
   is_admin: boolean;
   notify_email: boolean;
   notify_push: boolean;
+  /** Present when read through lib/auth (the account page's "cliente desde"). */
+  created_at?: string;
 };
 
 // An area of the business with its own agenda and policies (recovery, pilates…).

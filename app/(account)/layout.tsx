@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { getUserAndProfile } from "@/lib/auth";
+import { getSessionUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { AccountTabs } from "@/components/account/account-tabs";
 
@@ -12,7 +12,9 @@ import { AccountTabs } from "@/components/account/account-tabs";
 // who has neither gets neither tab. The pages themselves stay reachable by
 // URL (each explains how to get one). Pages still gate with requireUser().
 export default async function AccountLayout({ children }: { children: ReactNode }) {
-  const { user } = await getUserAndProfile();
+  // The session only (verified locally): the two counts are the layout's one
+  // round trip, and they run alongside the page's own reads.
+  const user = await getSessionUser();
   let hasPlan = false;
   let hasSessions = false;
   if (user) {

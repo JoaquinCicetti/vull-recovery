@@ -26,12 +26,14 @@ export default async function AjustesPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requireAdmin();
-  const sp = await searchParams;
   const supabase = await createClient();
   const loadErrors: string[] = [];
 
-  const [sectorsRes, resourcesRes, hoursRes, servicesRes, notifRes] = await Promise.all([
+  // The admin check (one profile read) and the five reads go out together:
+  // this page is one round trip to the database.
+  const [, sp, sectorsRes, resourcesRes, hoursRes, servicesRes, notifRes] = await Promise.all([
+    requireAdmin(),
+    searchParams,
     supabase.from("sectors").select("*").order("sort_order", { ascending: true }),
     supabase
       .from("resources")

@@ -1,4 +1,4 @@
-import { requireUser } from "@/lib/auth";
+import { requireSession } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { PlanView, type PlanData } from "@/components/account/plan-view";
 import { PageShell } from "@/components/ui/page-shell";
@@ -8,7 +8,7 @@ import type { MembershipPeriod, SwapRequestRow } from "@/lib/membership";
 
 // The client's abono: schedule, renewal, cuotas, swap offers, history.
 export default async function PlanPage() {
-  const { user } = await requireUser("/cuenta/plan");
+  const user = await requireSession("/cuenta/plan");
   const supabase = await createClient();
 
   // Own rows through RLS; the user filter is explicit because an admin's RLS
@@ -19,7 +19,7 @@ export default async function PlanPage() {
       .select(
         "id, status, locked, starts_on, ends_on, hold_expires_at, service_id, created_at, services(name, price_ars, classes_per_week), sectors(name, timezone, due_day, late_fee_pct, release_day, change_notice_hours), membership_slots(weekday, start_time, resources(name))",
       )
-      .eq("user_id", user!.id)
+      .eq("user_id", user.id)
       .order("created_at", { ascending: false })
       .limit(6),
     supabase.rpc("my_swap_requests"),

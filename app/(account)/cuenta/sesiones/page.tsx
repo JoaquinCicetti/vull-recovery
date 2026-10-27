@@ -1,4 +1,4 @@
-import { requireUser } from "@/lib/auth";
+import { requireSession } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import {
   SesionesView,
@@ -10,7 +10,7 @@ import { PageShell } from "@/components/ui/page-shell";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 export default async function SesionesPage() {
-  const { user } = await requireUser("/cuenta/sesiones");
+  const user = await requireSession("/cuenta/sesiones");
   const supabase = await createClient();
 
   // Both tables are readable own-row through RLS. The user filter is explicit
@@ -19,11 +19,11 @@ export default async function SesionesPage() {
     supabase
       .from("user_credits")
       .select("service_id, remaining, expires_at, services(name, active)")
-      .eq("user_id", user!.id),
+      .eq("user_id", user.id),
     supabase
       .from("credit_ledger")
       .select("id, delta, reason, note, created_at, services(name)")
-      .eq("user_id", user!.id)
+      .eq("user_id", user.id)
       .order("created_at", { ascending: false })
       .limit(25),
   ]);

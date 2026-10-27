@@ -27,7 +27,7 @@ import { Button } from "@/components/ui/button";
 import { PageShell } from "@/components/ui/page-shell";
 import { BlockSlotDialog } from "@/components/admin/block-slot-dialog";
 import { BedWeekGrid, type GridBooking } from "./bed-week-grid";
-import { FlaggedPayments } from "./flagged-payments";
+import { FlaggedPayments, loadFlaggedPayments } from "./flagged-payments";
 import { NewMembershipDialog } from "./new-membership-dialog";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -81,17 +81,32 @@ function href(params: Record<string, string | undefined>) {
 // abonos. Sectors never share a screen: the switch at the top is the first
 // thing to read.
 export default async function AgendaPage({ searchParams }: { searchParams: Promise<Params> }) {
-  await requireAdmin();
-  const sp = await searchParams;
   const supabase = await createClient();
   const loadErrors: string[] = [];
 
-  const [{ data: sectorsData, error: sectorsErr }, { data: servicesData }, { data: bedsData }] =
-    await Promise.all([
-      supabase.from("sectors").select("id, slug, name, active, timezone").order("sort_order"),
-      supabase.from("services").select("*").order("sort_order"),
-      supabase.from("resources").select("id, sector_id").eq("active", true),
-    ]);
+  // Round trip 1, everything that does not depend on the chosen view: the
+  // admin check (a profile read), the sectors/plans/beds, the lazy abono
+  // maintenance (expire lapsed signups, roll recurring members into next
+  // month — admin-gated in SQL, idempotent, so it can run before the check
+  // resolves) and the Talo payments that need a look. The view's own query is
+  // round trip 2. This page used to make up to nine in a row.
+  const [
+    ,
+    sp,
+    { data: sectorsData, error: sectorsErr },
+    { data: servicesData },
+    { data: bedsData },
+    ,
+    flagged,
+  ] = await Promise.all([
+    requireAdmin(),
+    searchParams,
+    supabase.from("sectors").select("id, slug, name, active, timezone").order("sort_order"),
+    supabase.from("services").select("*").order("sort_order"),
+    supabase.from("resources").select("id, sector_id").eq("active", true),
+    supabase.rpc("admin_membership_cycle"),
+    loadFlaggedPayments(supabase),
+  ]);
   if (sectorsErr) loadErrors.push(`Sectores: ${sectorsErr.message}`);
   const sectors = (sectorsData ?? []) as Sector[];
   const services = (servicesData ?? []) as Service[];
@@ -154,10 +169,6 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
       </PageShell>
     );
   }
-
-  // Lazy abono maintenance (expire lapsed signups, roll recurring members into
-  // next month) so the week and the list below are current.
-  if (hasAbonos) await supabase.rpc("admin_membership_cycle");
 
   let body: React.ReactNode;
 
@@ -584,7 +595,7 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
   return (
     <PageShell size="wide" top="tight" eyebrow="Panel" title="Agenda">
       <LoadErrors errors={loadErrors} />
-      <FlaggedPayments />
+      <FlaggedPayments result={flagged} />
       {sectors.length > 1 && <div className="mb-6">{sectorSwitch}</div>}
       {hasAbonos && (
         <div className="mb-5">

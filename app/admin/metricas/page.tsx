@@ -89,13 +89,16 @@ export default async function MetricasPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requireAdmin();
   const sp = await searchParams;
   const raw = Number.parseInt(String(sp.dias ?? ""), 10);
   const days = PERIODS.some((p) => p.days === raw) ? raw : 30;
 
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc("admin_metrics", { p_days: days });
+  // Admin check and the metrics in one round trip (the RPC is admin-gated itself).
+  const [, { data, error }] = await Promise.all([
+    requireAdmin(),
+    supabase.rpc("admin_metrics", { p_days: days }),
+  ]);
   const m = data as Metrics | null;
 
   const held = m ? m.bookings.attended + m.bookings.no_show : 0;
