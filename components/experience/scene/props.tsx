@@ -11,6 +11,7 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import { RectAreaLightUniformsLib } from "three/examples/jsm/lights/RectAreaLightUniformsLib.js";
 import { useProgressStore } from "../progress-store";
+import { roomLevel } from "@/lib/experience/config";
 import { makeMat } from "./volumetric";
 
 // The studio around the bath: a sauna cabin, compression boots on a bench, a
@@ -487,6 +488,15 @@ function PanelLights() {
   useEffect(() => {
     PANELS.forEach((p, i) => refs.current[i]?.lookAt(p.aim[0], p.aim[1], p.aim[2]));
   }, []);
+  // The panels dim with their props (ROOM_OFF). Intensity only: the lights stay
+  // mounted, so the light count — and every lit shader — is unchanged.
+  useFrame(() => {
+    const k = roomLevel(useProgressStore.getState().progress);
+    PANELS.forEach((p, i) => {
+      const l = refs.current[i];
+      if (l) l.intensity = p.intensity * k;
+    });
+  });
   return (
     <>
       {PANELS.map((p, i) => (
@@ -683,10 +693,10 @@ export function RoomProps() {
 
   // Fog is camera-relative and the camera travels ~102u toward these props, so
   // they DE-fog over the ride: haziest under the hero copy, crispest exactly when
-  // the VULL mark should own the frame. Dissolve them over the assembly window.
+  // the VULL mark should own the frame. They dim out with the room (ROOM_OFF).
   useFrame(() => {
     const p = useProgressStore.getState().progress;
-    const k = 1 - Math.min(1, Math.max(0, (p - 0.86) / 0.1));
+    const k = roomLevel(p);
     for (const g of groups) g.mat.opacity = k;
     for (const e of emissives) e.mat.opacity = k;
     glows.forEach((g, i) => (g.mat.uniforms.uOpacity.value = baseGlow[i] * k));

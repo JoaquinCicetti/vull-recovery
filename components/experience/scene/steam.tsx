@@ -7,6 +7,7 @@
 import { useMemo } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useProgressStore } from "../progress-store";
+import { roomLevel } from "@/lib/experience/config";
 import { NOISE_GLSL, makeMat } from "./volumetric";
 
 // Steam escaping the top of the sauna tent. Same fake-volumetric language as
@@ -61,10 +62,9 @@ export function Steam() {
 
   useFrame((state) => {
     mat.uniforms.uTime.value = state.clock.elapsedTime;
-    // Dissolve with the props over the assembly window, for the same reason:
-    // the plume de-fogs as the camera closes in, and the finale belongs to the mark.
-    const p = useProgressStore.getState().progress;
-    const k = 1 - Math.min(1, Math.max(0, (p - 0.86) / 0.1));
+    // Dims with the rest of the room (ROOM_OFF): the plume de-fogs as the
+    // camera closes in, and the finale belongs to the mark.
+    const k = roomLevel(useProgressStore.getState().progress);
     mat.uniforms.uOpacity.value = BASE_OPACITY * k;
   });
 

@@ -74,10 +74,11 @@ export function makeSphereMaterial(): {
           float s = max(0.0001, length(instanceMatrix[0].xyz));
 
           // idle drift + scroll rise
-          // Slow, weightless drift — cinematic calm, not particle jitter.
+          // Weightless drift, lively enough that the scene visibly breathes while
+          // the scroll is held — still smooth, never particle jitter.
           float phase = aRandom.x * 6.2831853;
-          float speed = 0.12 + aRandom.y * 0.2;
-          float sway  = 0.16 + aRandom.z * 0.34;
+          float speed = 0.3 + aRandom.y * 0.4;
+          float sway  = 0.25 + aRandom.z * 0.45;
           vec3 drift = vec3(
             sin(uTime * speed + phase) * sway,
             cos(uTime * speed * 0.8 + phase * 1.3) * sway * 0.6,
@@ -115,6 +116,9 @@ export function makeSphereMaterial(): {
           float ap = clamp((uAssembly - aDelay * 0.55) / 0.6, 0.0, 1.0);
           ap = 1.0 - pow(1.0 - ap, 5.0);
           vec3 worldPos = mix(driftPos, aTarget, ap);
+          // The assembled mark keeps a faint bob of the same drift, so it reads
+          // as balls holding a shape rather than a frozen render.
+          worldPos += drift * 0.1 * ap;
 
           // Shrink each sphere as it lands so the assembled mark reads crisp.
           float shrink = mix(1.0, 0.6, ap);
