@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { Canvas } from "@react-three/fiber";
 import {
   AdaptiveEvents,
@@ -78,7 +78,9 @@ export default function Scene({
     typeof window !== "undefined" &&
     window.innerHeight > window.innerWidth;
   const [lowEnd] = useState(() => !isMobile && detectLowEnd());
-  const count = isMobile ? 440 : lowEnd ? 600 : 1000;
+  // Between the old particle cloud (1,000 at 0.04–0.22) and a handful of big
+  // balls: enough to trace the mark, each one big enough to read as a ball.
+  const count = isMobile ? 260 : 400;
   // Free-camera debug mode (?debugcam): OrbitControls instead of the scripted
   // Rig, plus a button that alerts the current camera position/direction — for
   // finding framings by hand. Combine with ?debugcam&p=0.6 to freeze a beat
@@ -87,20 +89,28 @@ export default function Scene({
     typeof window !== "undefined" &&
     window.location.search.includes("debugcam");
   const camRef = useRef<THREE.Camera | null>(null);
-  // Every post pass and render target is allocated at dpr², so this is the
-  // cheapest lever under load. Start at 1.5 (SMAA handles the edges) and let
-  // PerformanceMonitor drop us to 1 if the frame budget slips. We never climb
-  // back — re-inclining thrashes the render targets.
-  const [dpr, setDpr] = useState(isMobile || lowEnd ? 1 : 1.5);
-  // Under sustained load a weak GPU goes below native resolution: softer, but
-  // the ride keeps moving. A strong one just loses the 1.5× supersampling.
-  const declineDpr = lowEnd ? 0.75 : 1;
+  // A soft canvas next to crisp DOM type reads as pixelated, so desktop renders
+  // at the display's own density (capped at 2) and KEEPS it: changing DPR at
+  // runtime resizes the renderer and drops a black frame, which read as a blink.
+  // Only the weak tiers get the PerformanceMonitor's one-way step-down, and only
+  // after the first seconds (shader compiles and the entrance hitch are not
+  // "the GPU can't keep up").
+  const nativeDpr = typeof window === "undefined" ? 1 : Math.min(2, window.devicePixelRatio || 1);
+  const [dpr, setDpr] = useState(isMobile || lowEnd ? 1 : nativeDpr);
+  const declineDpr = 0.75;
+  const [monitor, setMonitor] = useState(false);
+  useEffect(() => {
+    if (!(isMobile || lowEnd)) return;
+    const id = window.setTimeout(() => setMonitor(true), 5000);
+    return () => window.clearTimeout(id);
+  }, [isMobile, lowEnd]);
 
   return (
     <>
     <Canvas
       onCreated={(state) => {
         camRef.current = state.camera;
+        state.gl.setClearColor("#000000", 1);
         onAlive?.(true);
         // A GPU reset (thermal throttling on a phone, driver hiccup) otherwise
         // leaves a permanently black hero AND a scroll lock, with nothing thrown
@@ -122,7 +132,12 @@ export default function Scene({
         // Desktop AA is the composer's SMAA pass; mobile has no composer (see
         // <Effects/> below), so it needs the hardware MSAA buffer instead.
         antialias: isMobile,
-        alpha: true,
+        // OPAQUE. With alpha the composer's output left large regions at alpha 0
+        // (up to half the canvas, varying per frame with camera and fog), and the
+        // browser showed the bg-black page through them: black rectangles and
+        // black ball silhouettes flashing on scroll. Cleared to black below, the
+        // same colour the page was showing anyway.
+        alpha: false,
         powerPreference: "high-performance",
         // Desktop: the EffectComposer forces NoToneMapping on mount, so the
         // lighting was tuned against raw linear output. Mobile renders straight
@@ -147,11 +162,13 @@ export default function Scene({
       {/* Almost-black (not pure) neutral falloff: the haze gives light visible
           depth while distant geometry sinks into near-black. */}
       <fog attach="fog" args={["#050608", 24, 130]} />
-      <PerformanceMonitor
-        flipflops={3}
-        onDecline={() => setDpr(declineDpr)}
-        onFallback={() => setDpr(declineDpr)}
-      />
+      {monitor && (
+        <PerformanceMonitor
+          flipflops={3}
+          onDecline={() => setDpr(declineDpr)}
+          onFallback={() => setDpr(declineDpr)}
+        />
+      )}
       <Lighting />
       <SceneBoundary>
         <Suspense fallback={null}>
@@ -176,7 +193,7 @@ export default function Scene({
           into full-screen targets. On phones that was enough to stall the frame
           loop as the mark assembled — the scene read as frozen at the logo — so
           mobile renders straight to the canvas with hardware MSAA instead. */}
-      {!isMobile && <Effects dof={!lowEnd} />}
+      {!isMobile && <Effects />}
       {/* Throttle raycasting/events while scrolling; DPR stays full for crispness. */}
       <AdaptiveEvents />
     </Canvas>

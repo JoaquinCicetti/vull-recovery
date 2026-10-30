@@ -39,8 +39,7 @@ function localBounds(root: THREE.Object3D): THREE.Box3 {
 // The recovery-bath centerpiece, treated like a premium product shot: mostly
 // dark, but its curves always readable — never a flat black silhouette. The
 // texture is washed toward a deep anodized tone (local contrast survives), with
-// micro-roughness variation so speculars feel like matte metal/polymer instead
-// of perfect CGI, and a faint COOL fresnel lift as silhouette insurance (green
+// a faint COOL fresnel lift as silhouette insurance (green
 // is reserved for the scattered light and particles, not the product).
 export function Bath() {
   const { scene } = useGLTF("/model-bath-2.glb");
@@ -63,16 +62,9 @@ export function Bath() {
              // surface detail (local contrast without global brightness).
              diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.05, 0.055, 0.05), 0.6);`,
           )
-          .replace(
-            "#include <lights_physical_fragment>",
-            `// Micro-roughness variation: hashed per facing direction, breaks the
-             // too-perfect specular into subtle patchiness (anodized read).
-             {
-               float rJit = fract(sin(dot(floor(normal.xy * 60.0), vec2(12.9898, 78.233))) * 43758.5453);
-               roughnessFactor = clamp(roughnessFactor * (0.86 + 0.28 * rJit), 0.05, 1.0);
-             }
-             #include <lights_physical_fragment>`,
-          )
+          // No roughness jitter. It hashed the VIEW-space normal, and this GLB is
+          // flat-shaded, so every camera move re-rolled whole faces darker or
+          // lighter: blocky patches flickering across the tub on scroll.
           .replace(
             "#include <opaque_fragment>",
             `#include <opaque_fragment>
