@@ -357,6 +357,9 @@ export function ExperienceClient() {
       >
         <SceneLayer />
       </SceneBoundary>
+      {/* Vignette over the canvas — static CSS, so it costs nothing per frame
+          (it used to be a pass in the WebGL post stack). */}
+      <div className="pointer-events-none absolute inset-0 z-[11] shadow-[inset_0_0_220px_60px_rgba(0,0,0,0.55)]" />
       <HeroIntro />
       <Captions />
       <Wordmark />

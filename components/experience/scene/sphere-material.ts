@@ -155,7 +155,11 @@ export function makeSphereMaterial(): {
         "#include <opaque_fragment>",
         `#include <opaque_fragment>
         float fres = pow(1.0 - clamp(dot(normalize(vNormal), normalize(vViewPosition)), 0.0, 1.0), 3.5);
-        gl_FragColor.rgb += uAccent * fres * 0.10;`,
+        gl_FragColor.rgb += uAccent * fres * 0.10;
+        // Never hand the composer a NaN or an Inf: Bloom's mip chain turns one
+        // bad pixel into black rectangles across the frame.
+        if (any(isnan(gl_FragColor.rgb))) gl_FragColor.rgb = vec3(0.0);
+        gl_FragColor.rgb = min(gl_FragColor.rgb, vec3(16.0));`,
       );
   };
 
