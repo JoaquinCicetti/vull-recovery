@@ -128,8 +128,8 @@ export function Spheres({ count = 1600 }: { count?: number }) {
         bases[i * 3 + 1] = -3.9 + (Math.random() * 2 - 1) * 0.4;
         bases[i * 3 + 2] = -6 + (Math.random() * 2 - 1) * 1.8;
       }
-      // Power-law sizes: mostly fine particles, a few large hero spheres.
-      scales[i] = 0.035 + Math.pow(Math.random(), 1.7) * 0.19;
+      // Real balls: a spread of sizes, the biggest a handful.
+      scales[i] = 0.07 + Math.pow(Math.random(), 1.5) * 0.3;
       aRandom[i * 4] = Math.random();
       aRandom[i * 4 + 1] = Math.random();
       aRandom[i * 4 + 2] = Math.random();

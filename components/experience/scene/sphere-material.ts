@@ -116,8 +116,8 @@ export function makeSphereMaterial(): {
           ap = 1.0 - pow(1.0 - ap, 5.0);
           vec3 worldPos = mix(driftPos, aTarget, ap);
 
-          // Shrink each sphere as it lands so the assembled logo reads crisp.
-          float shrink = mix(1.0, 0.46, ap);
+          // Shrink each sphere as it lands so the assembled mark reads crisp.
+          float shrink = mix(1.0, 0.6, ap);
           transformed = transformed * shrink + (worldPos - base) / s;
           vTint = mix(vec3(1.0), aTint, ap);
 

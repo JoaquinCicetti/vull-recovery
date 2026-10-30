@@ -200,7 +200,12 @@ export function ExperienceClient() {
       kick();
     };
 
-    const WHEEL_SENS = 0.00085; // progress per wheel pixel — slower, calmer ride
+    // ~3,300 wheel px for the whole ride. Each event is also capped: a Mac
+    // trackpad flick fires momentum events of 100+ px (~1,700 px per flick), and
+    // one or two flicks used to end the story. Capped, a hard flick moves about a
+    // third of the ride.
+    const WHEEL_SENS = 0.0003; // progress per wheel pixel
+    const WHEEL_MAX = 32; // px per event that count toward progress
     const TOUCH_SENS = 0.0013; // progress per touch pixel
     const atEnd = () => target.v >= 1 - 1e-4;
     const atStart = () => target.v <= 1e-4;
@@ -226,7 +231,9 @@ export function ExperienceClient() {
         return; // anchor spent → release to the plans
       }
       e.preventDefault();
-      nudge(e.deltaY * WHEEL_SENS);
+      // deltaMode 1 = lines (Firefox mouse wheels): ~16 px per line.
+      const px = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+      nudge(Math.max(-WHEEL_MAX, Math.min(WHEEL_MAX, px)) * WHEEL_SENS);
     };
 
     let touchY = 0;
