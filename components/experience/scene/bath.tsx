@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import * as THREE from "three";
 import { useGLTF } from "@react-three/drei";
+import { Water } from "./water";
 
 // The floor plane in lighting.tsx.
 const FLOOR_Y = -5;
@@ -109,13 +110,15 @@ export function Bath() {
   // STATIC: the bath rests on the floor, sharing the ground with the room props.
   // The CAMERA does all the traveling — it orbits from a distant 30° view up to
   // the bath's zenith (see rig.tsx).
+  //
+  // The group carries the transform so <Water/> can live in the tub's local
+  // space. The cached GLB root is pinned to identity: an earlier mount may have
+  // left the old position/scale written onto it.
   return (
-    <primitive
-      object={prepared}
-      position={[0, groundY, -6]}
-      scale={SCALE}
-      rotation={[0, 0, 0]}
-    />
+    <group position={[0, groundY, -6]} scale={SCALE}>
+      <primitive object={prepared} position={[0, 0, 0]} scale={1} rotation={[0, 0, 0]} />
+      <Water />
+    </group>
   );
 }
 

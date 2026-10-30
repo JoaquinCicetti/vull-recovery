@@ -219,9 +219,9 @@ export function Spheres({ count = 1600 }: { count?: number }) {
     uniforms.uTime.value = state.clock.elapsedTime;
     uniforms.uRise.value = riseVal;
     // Conveyor parameter: scroll scrubs the flux, and a slow time term keeps it
-    // flowing forever while the user holds mid-scene. Kept LOW — the flux should
-    // read as calm, weightless travel, not a jet.
-    uniforms.uFlow.value = p * 1.1 + state.clock.elapsedTime * 0.012;
+    // flowing while the user holds mid-scene — fast enough to read as a current,
+    // still calm travel rather than a jet.
+    uniforms.uFlow.value = p * 1.1 + state.clock.elapsedTime * 0.035;
     uniforms.uAssembly.value = targetsReady.current
       ? phaseLocal(p, PHASES.assembly)
       : 0;

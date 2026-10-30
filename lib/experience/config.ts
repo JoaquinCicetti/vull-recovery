@@ -15,6 +15,18 @@ export const PHASES = {
 
 export type PhaseRange = readonly [number, number];
 
+// The room going dark for the finale: props, their panel lights, steam and the
+// room lights all follow ONE eased envelope, starting as the mark begins to
+// assemble. It used to be a linear 0.86→0.96 dissolve with the panel lights
+// left on — about one trackpad flick, so it read as a switch, not a dimmer.
+export const ROOM_OFF: PhaseRange = [0.74, 0.98];
+
+/** 1 while the room is up, easing to 0 across ROOM_OFF (smoothstep). */
+export function roomLevel(p: number): number {
+  const t = phaseLocal(p, ROOM_OFF);
+  return 1 - t * t * (3 - 2 * t);
+}
+
 /** Map global progress to a phase's local 0→1 (clamped). */
 export function phaseLocal(p: number, [a, b]: PhaseRange): number {
   if (b === a) return 0;

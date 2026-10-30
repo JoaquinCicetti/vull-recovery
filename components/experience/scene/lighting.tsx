@@ -6,7 +6,7 @@ import { useFrame } from "@react-three/fiber";
 import { Environment, Lightformer } from "@react-three/drei";
 import { RectAreaLightUniformsLib } from "three/examples/jsm/lights/RectAreaLightUniformsLib.js";
 import { useProgressStore } from "../progress-store";
-import { PHASES, phaseLocal } from "@/lib/experience/config";
+import { PHASES, phaseLocal, roomLevel } from "@/lib/experience/config";
 import { E } from "@/lib/experience/easing";
 import { LIGHTS, introSeconds, stage } from "@/lib/experience/intro";
 
@@ -27,6 +27,12 @@ const BASE = {
   key: 5.5,
   rim: 2.6,
 } as const;
+
+/** Room lights for the finale: they ease down with the props (ROOM_OFF) to a
+ *  floor, not to zero — the tub keeps its key/rim and the mark its RevealKey. */
+function roomDim(): number {
+  return 0.3 + 0.7 * roomLevel(useProgressStore.getState().progress);
+}
 
 /** Seconds into the entrance, read non-reactively (never drive useFrame off state). */
 function introT(): number {
@@ -119,7 +125,8 @@ function StageSpot() {
   // fader being pushed. It is the beat the rest of the entrance hangs off.
   useFrame(() => {
     if (ref.current) {
-      ref.current.intensity = BASE.spot * E.backOut(stage(introT(), LIGHTS.spot));
+      ref.current.intensity =
+        BASE.spot * E.backOut(stage(introT(), LIGHTS.spot)) * roomDim();
     }
   });
 
@@ -150,8 +157,9 @@ export function Lighting() {
   // before the spot strikes over them.
   useFrame(() => {
     const t = introT();
-    const bleed = E.expoOut(stage(t, LIGHTS.fill));
-    const glow = E.expoOut(stage(t, LIGHTS.underglow));
+    const dim = roomDim();
+    const bleed = E.expoOut(stage(t, LIGHTS.fill)) * dim;
+    const glow = E.expoOut(stage(t, LIGHTS.underglow)) * dim;
     if (ambientRef.current) ambientRef.current.intensity = BASE.ambient * bleed;
     if (fillRef.current) fillRef.current.intensity = BASE.fill * bleed;
     if (underglowRef.current) {
