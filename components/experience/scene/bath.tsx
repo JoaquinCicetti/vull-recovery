@@ -65,6 +65,17 @@ export function Bath() {
           // No roughness jitter. It hashed the VIEW-space normal, and this GLB is
           // flat-shaded, so every camera move re-rolled whole faces darker or
           // lighter: blocky patches flickering across the tub on scroll.
+          //
+          // NaN guard. With no vertex normals, three derives each pixel's normal
+          // from cross(dFdx, dFdy) of the view position; on a sliver or edge-on
+          // triangle that cross is zero and normalize() returns NaN. One NaN
+          // pixel is enough: Bloom's mip chain spreads it into big black
+          // rectangles for that frame — the black squares flashing on scroll.
+          .replace(
+            "#include <normal_fragment_begin>",
+            `#include <normal_fragment_begin>
+             if (any(isnan(normal)) || dot(normal, normal) < 1e-8) normal = vec3(0.0, 0.0, 1.0);`,
+          )
           .replace(
             "#include <opaque_fragment>",
             `#include <opaque_fragment>
@@ -73,7 +84,10 @@ export function Bath() {
              // normal_fragment_begin (NOT the vNormal varying: this GLB may ship
              // without vertex normals -> flat shading -> vNormal undeclared).
              float rim = pow(1.0 - clamp(dot(normalize(normal), normalize(vViewPosition)), 0.0, 1.0), 3.0);
-             gl_FragColor.rgb += vec3(0.5, 0.58, 0.56) * rim * 0.2;`,
+             gl_FragColor.rgb += vec3(0.5, 0.58, 0.56) * rim * 0.2;
+             // Backstop: never hand the composer a NaN or an Inf.
+             if (any(isnan(gl_FragColor.rgb))) gl_FragColor.rgb = vec3(0.0);
+             gl_FragColor.rgb = min(gl_FragColor.rgb, vec3(16.0));`,
           );
       };
       mat.needsUpdate = true;

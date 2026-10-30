@@ -12,7 +12,6 @@ import { INTRO_FROM } from "@/lib/experience/intro";
 import { Spheres } from "./scene/spheres";
 import { Lighting } from "./scene/lighting";
 import { Rig } from "./scene/rig";
-import { Effects } from "./scene/effects";
 import { Bath } from "./scene/bath";
 import { Atmosphere } from "./scene/atmosphere";
 import { RoomProps } from "./scene/props";
@@ -48,11 +47,11 @@ function detectLowEnd(): boolean {
 }
 
 // WebGL layer: spheres rise from the bottom, then morph into the logo silhouette.
-// Transparent background so it composites over the static hero. ssr:false.
+// Opaque canvas over the static hero (which shows while loading). ssr:false.
 // `active` pauses the render loop (frameloop "never") when the hero scrolls
 // offscreen or the tab is hidden — the scene stops burning the GPU while the user
-// reads the plans below. Full DPR is kept while in view (crisp); anti-aliasing is
-// the EffectComposer's multisampling (canvas antialias off would be redundant).
+// reads the plans below. DPR is fixed while in view; anti-aliasing is the
+// canvas's hardware MSAA.
 export default function Scene({
   active = true,
   onAlive,
@@ -89,13 +88,15 @@ export default function Scene({
     typeof window !== "undefined" &&
     window.location.search.includes("debugcam");
   const camRef = useRef<THREE.Camera | null>(null);
-  // A soft canvas next to crisp DOM type reads as pixelated, so desktop renders
-  // at the display's own density (capped at 2) and KEEPS it: changing DPR at
-  // runtime resizes the renderer and drops a black frame, which read as a blink.
+  // Desktop renders at the display's density, capped at 1.5, and KEEPS it:
+  // changing DPR at runtime resizes the renderer and drops a black frame, which
+  // read as a blink. The cap is not 2: on a Retina Mac that is ~1.8× the pixels
+  // through every post pass, and under Chrome's 30 fps energy-saver cap it
+  // stalled the GPU (hitches, half-presented frames on scroll).
   // Only the weak tiers get the PerformanceMonitor's one-way step-down, and only
   // after the first seconds (shader compiles and the entrance hitch are not
   // "the GPU can't keep up").
-  const nativeDpr = typeof window === "undefined" ? 1 : Math.min(2, window.devicePixelRatio || 1);
+  const nativeDpr = typeof window === "undefined" ? 1 : Math.min(1.5, window.devicePixelRatio || 1);
   const [dpr, setDpr] = useState(isMobile || lowEnd ? 1 : nativeDpr);
   const declineDpr = 0.75;
   const [monitor, setMonitor] = useState(false);
@@ -129,9 +130,9 @@ export default function Scene({
       frameloop={active ? "always" : "never"}
       dpr={dpr}
       gl={{
-        // Desktop AA is the composer's SMAA pass; mobile has no composer (see
-        // <Effects/> below), so it needs the hardware MSAA buffer instead.
-        antialias: isMobile,
+        // No post stack on any device (see below), so AA is the canvas's own
+        // hardware MSAA.
+        antialias: true,
         // OPAQUE. With alpha the composer's output left large regions at alpha 0
         // (up to half the canvas, varying per frame with camera and fog), and the
         // browser showed the bg-black page through them: black rectangles and
@@ -139,11 +140,9 @@ export default function Scene({
         // same colour the page was showing anyway.
         alpha: false,
         powerPreference: "high-performance",
-        // Desktop: the EffectComposer forces NoToneMapping on mount, so the
-        // lighting was tuned against raw linear output. Mobile renders straight
-        // to the canvas, where this setting WOULD apply — keep it off there too
-        // so both devices show the same grade.
-        toneMapping: isMobile ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping,
+        // The lighting was tuned against raw linear output (the old composer
+        // forced NoToneMapping), so keep it off now that we render direct.
+        toneMapping: THREE.NoToneMapping,
         toneMappingExposure: 0.95,
       }}
       // Long lens (~85mm equiv) on desktop: compressed perspective, shallow-focus
@@ -189,11 +188,11 @@ export default function Scene({
       </SceneBoundary>
       <Spheres count={count} />
       {debugCam ? <OrbitControls makeDefault target={[0, -1, -6]} /> : <Rig portrait={portrait} />}
-      {/* The post stack (bloom, CA, vignette, grain, SMAA) renders every pass
-          into full-screen targets. On phones that was enough to stall the frame
-          loop as the mark assembled — the scene read as frozen at the logo — so
-          mobile renders straight to the canvas with hardware MSAA instead. */}
-      {!isMobile && <Effects />}
+      {/* No post stack. Bloom/CA/grade/SMAA rendered every pass into
+          full-screen half-float targets: on phones it froze the loop at the logo,
+          and on desktop it brought hitches and one-frame black rectangles on
+          scroll (a single bad pixel blown up by Bloom's mip chain). Everything
+          renders straight to the canvas with hardware MSAA, as mobile did. */}
       {/* Throttle raycasting/events while scrolling; DPR stays full for crispness. */}
       <AdaptiveEvents />
     </Canvas>
