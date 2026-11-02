@@ -728,40 +728,44 @@ export function RoomProps() {
     for (const e of emissives) e.mat.opacity = k;
     glows.forEach((g, i) => (g.mat.uniforms.uOpacity.value = baseGlow[i] * k));
     for (const c of contacts) c.mat.uniforms.uOpacity.value = CONTACT_BASE * k;
+    // Meshes only. A light under a hidden parent drops out of the light count, and
+    // that recompiles every lit material mid-ride, so <PanelLights/> stays outside.
     if (group.current) group.current.visible = k > 0.001;
   });
 
   return (
-    <group ref={group}>
+    <>
       <PanelLights />
-      {contacts.map((c, i) => (
-        <mesh
-          key={`c${i}`}
-          rotation={[-Math.PI / 2, 0, 0]}
-          position={c.pos}
-          material={c.mat}
-          renderOrder={2}
-        >
-          <planeGeometry args={c.size} />
-        </mesh>
-      ))}
-      {groups.map((g, i) => (
-        <mesh key={`g${i}`} geometry={g.geo} material={g.mat} />
-      ))}
-      {emissives.map((e, i) => (
-        <mesh key={`e${i}`} geometry={e.geo} material={e.mat} />
-      ))}
-      {glows.map((g, i) => (
-        <mesh
-          key={`w${i}`}
-          position={g.pos}
-          rotation={[0, g.rotY ?? 0, 0]}
-          material={g.mat}
-          renderOrder={1}
-        >
-          <planeGeometry args={g.size} />
-        </mesh>
-      ))}
-    </group>
+      <group ref={group}>
+        {contacts.map((c, i) => (
+          <mesh
+            key={`c${i}`}
+            rotation={[-Math.PI / 2, 0, 0]}
+            position={c.pos}
+            material={c.mat}
+            renderOrder={2}
+          >
+            <planeGeometry args={c.size} />
+          </mesh>
+        ))}
+        {groups.map((g, i) => (
+          <mesh key={`g${i}`} geometry={g.geo} material={g.mat} />
+        ))}
+        {emissives.map((e, i) => (
+          <mesh key={`e${i}`} geometry={e.geo} material={e.mat} />
+        ))}
+        {glows.map((g, i) => (
+          <mesh
+            key={`w${i}`}
+            position={g.pos}
+            rotation={[0, g.rotY ?? 0, 0]}
+            material={g.mat}
+            renderOrder={1}
+          >
+            <planeGeometry args={g.size} />
+          </mesh>
+        ))}
+      </group>
+    </>
   );
 }
