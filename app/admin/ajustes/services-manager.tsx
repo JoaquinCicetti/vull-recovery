@@ -224,12 +224,13 @@ function NewServiceDialog({ sector, count }: { sector: Sector; count: number }) 
   );
 }
 
-// One plan: name, price, duration, sessions and its switch, saved in place.
+// One plan: name, description, price, duration, sessions and its switch, saved in place.
 // Delete asks first and fails softly when the plan has turnos.
 function ServiceRow({ service, sector }: { service: Service; sector: Sector }) {
   const router = useRouter();
   const supabase = createClient();
   const [name, setName] = useState(service.name);
+  const [desc, setDesc] = useState(service.description ?? "");
   const [price, setPrice] = useState(String(service.price_ars));
   const [dur, setDur] = useState(String(service.duration_minutes));
   const [sessions, setSessions] = useState(String(service.sessions_included));
@@ -243,6 +244,7 @@ function ServiceRow({ service, sector }: { service: Service; sector: Sector }) {
   const isPack = !monthly && Number(sessions) > 1;
   const dirty =
     name !== service.name ||
+    desc !== (service.description ?? "") ||
     price !== String(service.price_ars) ||
     dur !== String(service.duration_minutes) ||
     sessions !== String(service.sessions_included) ||
@@ -256,6 +258,7 @@ function ServiceRow({ service, sector }: { service: Service; sector: Sector }) {
       .from("services")
       .update({
         name,
+        description: desc.trim() || null,
         price_ars: Number(price) || 0,
         duration_minutes: Number(dur) || 60,
         sessions_included: monthly ? 1 : Math.max(1, Number(sessions) || 1),
@@ -294,6 +297,13 @@ function ServiceRow({ service, sector }: { service: Service; sector: Sector }) {
         </span>
       </div>
       <Input value={name} onChange={(e) => setName(e.target.value)} aria-label="Nombre" />
+      <Textarea
+        placeholder="Descripción (opcional)"
+        value={desc}
+        onChange={(e) => setDesc(e.target.value)}
+        aria-label="Descripción"
+        rows={2}
+      />
       <div className="grid grid-cols-3 gap-3">
         <div>
           <Label htmlFor={`${service.id}-price`} className="text-xs text-fg-muted">
