@@ -9,6 +9,7 @@ import { useProgressStore } from "../progress-store";
 import { PHASES, phaseLocal, roomLevel } from "@/lib/experience/config";
 import { E } from "@/lib/experience/easing";
 import { LIGHTS, introSeconds, stage } from "@/lib/experience/intro";
+import { Floor } from "./floor";
 
 // One-time three.js global LUT upload required before the first RectAreaLight
 // material compiles. Module scope is safe: this file only loads in the browser
@@ -23,7 +24,6 @@ const BASE = {
   ambient: 0.05,
   fill: 0.08,
   spot: 190,
-  underglow: 3.6,
   key: 5.5,
   rim: 2.6,
 } as const;
@@ -151,20 +151,13 @@ function StageSpot() {
 export function Lighting() {
   const ambientRef = useRef<THREE.AmbientLight>(null);
   const fillRef = useRef<THREE.DirectionalLight>(null);
-  const underglowRef = useRef<THREE.PointLight>(null);
 
-  // The room bleeding up: ambient, fill and under-glow rise together and first,
-  // before the spot strikes over them.
+  // The room bleeding up: ambient and fill rise together and first, before the
+  // spot strikes over them.
   useFrame(() => {
-    const t = introT();
-    const dim = roomDim();
-    const bleed = E.expoOut(stage(t, LIGHTS.fill)) * dim;
-    const glow = E.expoOut(stage(t, LIGHTS.underglow)) * dim;
+    const bleed = E.expoOut(stage(introT(), LIGHTS.fill)) * roomDim();
     if (ambientRef.current) ambientRef.current.intensity = BASE.ambient * bleed;
     if (fillRef.current) fillRef.current.intensity = BASE.fill * bleed;
-    if (underglowRef.current) {
-      underglowRef.current.intensity = BASE.underglow * glow;
-    }
   });
 
   return (
@@ -182,18 +175,6 @@ export function Lighting() {
 
       <KeyAndRim />
       <RevealKey />
-
-      {/* Under-glow: a soft diffused source beneath the product with smooth
-          physical falloff — lights the floor around it so the bath reads as
-          GROUNDED, not suspended in a void. */}
-      <pointLight
-        ref={underglowRef}
-        position={[0, -4.4, -6]}
-        intensity={0}
-        distance={18}
-        decay={2}
-        color="#dfe8e1"
-      />
 
       {/* Very dim environment, asymmetric: one faint GREEN strip (the only green
           source — it lives in reflections/particles, not the whole scene) and a
@@ -219,24 +200,7 @@ export function Lighting() {
         />
       </Environment>
 
-      {/* Floor: a plain dark surface. A MeshReflectorMaterial used to live here,
-          but it re-rendered the whole scene into a second target every frame and
-          blurred it — the single most expensive thing in the frame. The bath is
-          welded to the floor by the light pool and contact shadow in
-          <Atmosphere/>, which cost almost nothing. */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -5, 0]}>
-        <planeGeometry args={[140, 140]} />
-        {/* Polished concrete, not matte paint. At roughness 0.55 the floor
-            returned almost no specular, so the panel lights landed as a flat grey
-            wash with no direction and the whole room read as CG. Dropping
-            roughness and lifting metalness lets those lights leave soft elongated
-            speculars, which is what tells the eye the floor is a surface. */}
-        <meshStandardMaterial
-          color="#080b0e"
-          roughness={0.34}
-          metalness={0.42}
-        />
-      </mesh>
+      <Floor />
     </>
   );
 }

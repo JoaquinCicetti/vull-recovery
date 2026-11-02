@@ -25,6 +25,14 @@ export const VERT = /* glsl */ `
   }
 `;
 
+export const VERT_WORLD_XZ = /* glsl */ `
+  varying vec2 vWorldXZ;
+  void main() {
+    vWorldXZ = (modelMatrix * vec4(position, 1.0)).xz;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
 export function makeMat(
   frag: string,
   color: string,

@@ -35,32 +35,6 @@ const MIST_FRAG = /* glsl */ `
   }
 `;
 
-// Floor light pool: soft radial gradient hugging the floor under the product —
-// grounds the bath (contact light instead of a void beneath it).
-const POOL_FRAG = /* glsl */ `
-  varying vec2 vUv;
-  uniform float uOpacity;
-  uniform vec3 uColor;
-  void main() {
-    float d = length(vUv - 0.5) * 2.0;
-    float a = pow(max(0.0, 1.0 - d), 1.9) * uOpacity;
-    gl_FragColor = vec4(uColor * a, a);
-  }
-`;
-
-// Contact shadow: NORMAL-blended dark ellipse tight under the bath's footprint.
-// Darkening against the lit pool/stage ellipse is the strongest "it stands on
-// the floor" cue there is.
-const SHADOW_FRAG = /* glsl */ `
-  varying vec2 vUv;
-  uniform float uOpacity;
-  void main() {
-    float d = length(vUv - 0.5) * 2.0;
-    float a = smoothstep(1.0, 0.25, d) * uOpacity;
-    gl_FragColor = vec4(vec3(0.0), a);
-  }
-`;
-
 // Light beam: brightest at the source (uv.y = 0), fading along its length and
 // toward its sides, with a whisper of noise so it feels like lit haze.
 const BEAM_FRAG = /* glsl */ `
@@ -91,7 +65,7 @@ function beamTransform(from: THREE.Vector3, to: THREE.Vector3) {
 }
 
 export function Atmosphere() {
-  const { mists, beamMat, poolMat, shadowMat, beamL, beamR } = useMemo(() => {
+  const { mists, beamMat, beamL, beamR } = useMemo(() => {
     // Slightly more present than before — the haze is what gives light its
     // visible depth. Green tint lives HERE (scattered light), not on the scene.
     const mists = [
@@ -100,14 +74,8 @@ export function Atmosphere() {
       makeMat(MIST_FRAG, "#93b49e", 0.05, 0.016),
     ];
     const beamMat = makeMat(BEAM_FRAG, "#b7d3c0", 0.05);
-    // The pool is what makes the floor READ as floor around the product; without
-    // enough of it the tub's base ends in black and looks like it is floating.
-    const poolMat = makeMat(POOL_FRAG, "#a8bfae", 0.21);
-    // Was 0.55 over an 11×7 ellipse — wider than the 9×5.3 tub, so it painted a
-    // black halo AROUND the base and erased the very ground it was meant to imply.
-    const shadowMat = makeMat(SHADOW_FRAG, "#000000", 0.34, 0, THREE.NormalBlending);
     // Shafts follow the LOWER lights (lighting.tsx): the main one rides the
-    // lower-left key toward the bath; a fainter one rises from the under-glow.
+    // lower-left key toward the bath; a fainter one rises from behind the tub.
     const beamL = beamTransform(
       new THREE.Vector3(-14, -4.6, 6),
       new THREE.Vector3(0, -2, -6),
@@ -116,7 +84,7 @@ export function Atmosphere() {
       new THREE.Vector3(6, -4.9, -10),
       new THREE.Vector3(-1, -1.5, -6),
     );
-    return { mists, beamMat, poolMat, shadowMat, beamL, beamR };
+    return { mists, beamMat, beamL, beamR };
   }, []);
 
   useFrame((state) => {
@@ -136,33 +104,6 @@ export function Atmosphere() {
       </mesh>
       <mesh position={[4, -3.2, -2]} material={mists[2]}>
         <planeGeometry args={[30, 3.6]} />
-      </mesh>
-
-      {/* Contact light pool + contact shadow under the bath — light around it,
-          dark right beneath it: the pair that makes it STAND on the floor.
-          renderOrder forces the shadow to composite over the pool. */}
-      <mesh
-        rotation={[-Math.PI / 2, 0, 0]}
-        position={[0, -4.96, -6]}
-        material={poolMat}
-        renderOrder={1}
-      >
-        {/* Widened from 24² so ONE pool covers the whole room — the foreground
-            crate at z −2 through the shelf at z −17. The old radius reached zero
-            by z ≈ 0, leaving the floor in front of the tub black while the lit
-            band sat behind it; the eye read that band as the ground and the tub's
-            base, below it, as floating. */}
-        <planeGeometry args={[44, 44]} />
-      </mesh>
-      <mesh
-        rotation={[-Math.PI / 2, 0, 0]}
-        position={[0, -4.94, -6]}
-        material={shadowMat}
-        renderOrder={2}
-      >
-        {/* Hugs the tub's contact patch rather than exceeding it — the footprint
-            is ~9 x 5.3 at the rim but the base tapers well inside that. */}
-        <planeGeometry args={[8, 4.8]} />
       </mesh>
 
       {/* Faint beams rising from the rim lights through the haze. */}
