@@ -21,7 +21,6 @@ export type Stage = readonly [delay: number, duration: number];
 // [delay, duration] in seconds. Read as a lighting board being walked up: the room
 // bleeds in, the overhead spot strikes, the key rakes across, the rim separates last.
 export const LIGHTS = {
-  underglow: [0.0, 0.9],
   fill: [0.0, 0.9],
   spot: [0.3, 0.7],
   key: [0.65, 0.8],

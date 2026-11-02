@@ -461,8 +461,8 @@ function foreground(): Part[] {
 // ─── lighting + volumetrics ─────────────────────────────────────────────────
 
 // Two soft panel lights, one per cluster. The scene's own rig is aimed tightly at
-// the bath — the stage spot's cone dies by z ≈ −17 and the underglow has a hard
-// distance cutoff of 18 — so out here the props received ~14% of bath-level
+// the bath — the stage spot's cone dies by z ≈ −17 — so out here the props
+// received ~14% of bath-level
 // irradiance and read as pure black on a black floor. These rake ACROSS the props
 // rather than lighting the room.
 const PANELS = [
@@ -540,6 +540,21 @@ const GLOW_FRAG = /* glsl */ `
   }
 `;
 
+// The red-light panel's LEDs, on one quad: an 8 x 13 grid of blurred dots, each
+// with a faint halo so the array reads as glowing rather than printed on.
+const LED_FRAG = /* glsl */ `
+  varying vec2 vUv;
+  uniform float uOpacity;
+  uniform vec3 uColor;
+  void main() {
+    float d = length(fract(vUv * vec2(8.0, 13.0)) - 0.5);
+    float dots = smoothstep(0.36, 0.04, d) * 0.7 + exp(-5.0 * d * d) * 0.14;
+    vec2 edge = smoothstep(vec2(0.0), vec2(0.04), vUv) * smoothstep(vec2(1.0), vec2(0.96), vUv);
+    float a = dots * edge.x * edge.y * uOpacity;
+    gl_FragColor = vec4(uColor * a, a);
+  }
+`;
+
 const PALETTE = {
   // Warm/red practicals are extra hues in a one-green system. They stay
   // legitimate as MOTIVATED light — the equipment itself glowing — and are held
@@ -588,15 +603,16 @@ export function RoomProps() {
       tape: new THREE.MeshStandardMaterial({
         color: "#5e6461", roughness: 0.62, metalness: 0.1, transparent: true,
       }),
-      // Compression-boot nylon: matte black synthetic with a subtle sheen —
-      // enough that every padded chamber catches a soft highlight, never plastic.
+      // Compression-boot nylon: cool charcoal synthetic with a subtle sheen, enough
+      // that every padded chamber catches a soft highlight, never plastic. Lighter
+      // than the floor so the boots don't merge into it.
       nylon: new THREE.MeshStandardMaterial({
-        color: "#111413", roughness: 0.6, metalness: 0.05, transparent: true,
+        color: "#31363b", roughness: 0.55, metalness: 0.05, transparent: true,
       }),
-      // Recliner upholstery: dark vinyl, a step glossier than the boot nylon so
-      // the two blacks separate.
+      // Recliner upholstery: dark warm leather, glossier than the boot nylon. The
+      // warm hue is what separates it from the slate floor.
       vinyl: new THREE.MeshStandardMaterial({
-        color: "#1c201f", roughness: 0.5, metalness: 0.04, transparent: true,
+        color: "#3e2a1f", roughness: 0.42, metalness: 0.04, transparent: true,
       }),
       // Placeholder; the "led" slot is swapped for an emissive below.
       led: new THREE.MeshStandardMaterial({ transparent: true }),
@@ -665,6 +681,17 @@ export function RoomProps() {
         size: [8.5, 8.5] as [number, number],
         rotY: P_YAW,
         mat: makeMat(GLOW_FRAG, "#ff4a3a", 0.16),
+      },
+      {
+        // The LED array, just off the panel's front face (0.13 along its yaw).
+        pos: [
+          P[0] + 0.13 * Math.sin(P_YAW),
+          FLOOR_Y + 3.9,
+          P[2] + 0.13 * Math.cos(P_YAW),
+        ] as [number, number, number],
+        size: [2.4, 3.9] as [number, number],
+        rotY: P_YAW,
+        mat: makeMat(LED_FRAG, "#ff5a3c", 0.8),
       },
     ];
 
