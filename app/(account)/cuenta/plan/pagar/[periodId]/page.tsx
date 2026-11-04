@@ -19,7 +19,7 @@ import { PaymentPanel } from "@/components/payment/payment-panel";
 import { HoldCountdown } from "@/components/hold-countdown";
 import { MembershipScheduleChips } from "@/components/membership/schedule-chips";
 import { PeriodAmount } from "@/components/membership/period-amount";
-import type { TaloTransfer } from "@/components/talo-transfer-panel";
+import { restoreTransfer, TALO_ROW_COLS } from "@/lib/talo-transfer";
 
 type MembershipRow = {
   id: string;
@@ -55,7 +55,7 @@ export default async function PagarCuotaPage({
       .maybeSingle<MembershipPeriod & { membership_id: string; late_fee_pct: number }>(),
     supabase
       .from("payments")
-      .select("talo_cvu, talo_alias, talo_expires_at, amount_ars")
+      .select(TALO_ROW_COLS)
       .eq("membership_period_id", periodId)
       .eq("provider", "talo")
       .eq("status", "pending")
@@ -83,16 +83,7 @@ export default async function PagarCuotaPage({
   ]);
   if (!mem) notFound();
 
-  const talo: TaloTransfer | null =
-    taloRow && (taloRow.talo_cvu || taloRow.talo_alias)
-      ? {
-          cvu: (taloRow.talo_cvu as string) ?? null,
-          alias: (taloRow.talo_alias as string) ?? null,
-          amount: (taloRow.amount_ars as number) ?? 0,
-          expiresAt: (taloRow.talo_expires_at as string) ?? null,
-          paymentUrl: null,
-        }
-      : null;
+  const talo = restoreTransfer(taloRow, Boolean(inFlight));
 
   const sector = mem.sectors;
   const plan = mem.services?.name ?? "Abono";

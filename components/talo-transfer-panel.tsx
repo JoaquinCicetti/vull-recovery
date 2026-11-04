@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CheckIcon, CopyIcon, ExternalLinkIcon } from "lucide-react";
+import { CheckIcon, CopyIcon } from "lucide-react";
 import { DEV_MODE, formatARS } from "@/lib/site";
+import { Button } from "@/components/ui/button";
 import { DevFakePayment } from "@/components/dev-fake-payment";
 import { fmtTime } from "@/lib/format";
 
@@ -12,12 +13,42 @@ export type TaloTransfer = {
   amount: number;
   expiresAt: string | null;
   paymentUrl: string | null;
+  /** The full price and the percent off it, when a coupon applied. */
+  listAmount: number | null;
+  couponPct: number | null;
 };
 
-// The one-time CVU/alias a client transfers to. Talo settles it automatically;
-// the parent polls for the confirmation. Rendered instead of the manual
-// "Transferí a: <alias>" block — NEVER next to it: the manual alias and this CVU
-// are different bank accounts, and showing both is how a client pays the wrong one.
+/** The price in the panel's heading: the discount, once the server applied one. */
+export function TransferPrice({
+  transfer,
+  amount,
+}: {
+  transfer: TaloTransfer | null;
+  amount: number;
+}) {
+  return (
+    <>
+      {transfer?.listAmount != null && (
+        <span className="mr-1.5 font-mono font-normal text-fg-faint line-through">
+          {formatARS(transfer.listAmount)}
+        </span>
+      )}
+      <span className="font-mono text-accent">{formatARS(transfer?.amount ?? amount)}</span>
+      {transfer?.couponPct != null && (
+        <span className="ml-1.5 font-mono text-sm font-normal text-fg-muted">
+          −{transfer.couponPct}%
+        </span>
+      )}
+    </>
+  );
+}
+
+// A live transfer, when the client comes back to it. The way to pay is Talo's
+// hosted page, which has the live status and sends them back here once paid. The
+// one-time CVU/alias stays available by hand; settlement is the same either way.
+// Rendered instead of the manual "Transferí a: <alias>" block — NEVER next to it:
+// the manual alias and this CVU are different bank accounts, and showing both is
+// how a client pays the wrong one.
 function CopyRow({ label, value }: { label: string; value: string }) {
   const [copied, setCopied] = useState(false);
   useEffect(() => {
@@ -66,7 +97,7 @@ export function TaloTransferPanel({
   /** Talo already recorded a transfer on its way (booking `awaiting_payment`). */
   detected?: boolean;
 }) {
-  const { cvu, alias, amount, expiresAt, paymentUrl } = transfer;
+  const { paymentUrl, expiresAt } = transfer;
 
   if (detected) {
     return (
@@ -76,6 +107,39 @@ export function TaloTransferPanel({
       </div>
     );
   }
+
+  // Rows from before the page URL was stored have nowhere to send the client.
+  if (!paymentUrl) return <ManualTransfer transfer={transfer} />;
+
+  return (
+    <div>
+      <Button asChild size="lg" className="w-full">
+        <a href={paymentUrl}>Continuar el pago</a>
+      </Button>
+      <p className="mt-2 text-center text-xs text-fg-faint">
+        Se abre la página de pago de Talo, con el estado en vivo.
+        {expiresAt && (
+          <>
+            {" "}
+            Te guardamos el lugar hasta las{" "}
+            <span className="font-mono text-fg-muted">{fmtTime(expiresAt)}</span>.
+          </>
+        )}
+      </p>
+      <details className="mt-4 text-sm" open={DEV_MODE}>
+        <summary className="cursor-pointer text-fg-muted hover:text-fg">
+          Prefiero transferir a mano
+        </summary>
+        <div className="mt-3">
+          <ManualTransfer transfer={transfer} />
+        </div>
+      </details>
+    </div>
+  );
+}
+
+function ManualTransfer({ transfer }: { transfer: TaloTransfer }) {
+  const { cvu, alias, amount, expiresAt } = transfer;
 
   return (
     <div>
@@ -91,16 +155,6 @@ export function TaloTransferPanel({
       <div className="mt-3 flex flex-col gap-2">
         {alias && <CopyRow label="Alias" value={alias} />}
         {cvu && <CopyRow label="CVU" value={cvu} />}
-        {!alias && !cvu && paymentUrl && (
-          <a
-            href={paymentUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-sm font-medium text-accent underline underline-offset-4"
-          >
-            Ver los datos para transferir
-          </a>
-        )}
       </div>
 
       <p className="mt-3 text-xs leading-relaxed text-fg-faint">
@@ -113,17 +167,6 @@ export function TaloTransferPanel({
           </>
         )}
       </p>
-
-      {paymentUrl && (alias || cvu) && (
-        <a
-          href={paymentUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-2 inline-flex items-center gap-1 text-xs text-fg-faint underline underline-offset-4 hover:text-fg-muted"
-        >
-          Abrir en Talo <ExternalLinkIcon size={12} />
-        </a>
-      )}
 
       {DEV_MODE && cvu && <DevFakePayment cvu={cvu} />}
     </div>

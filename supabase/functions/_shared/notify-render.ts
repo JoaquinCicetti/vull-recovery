@@ -133,6 +133,19 @@ async function loadBookingCtx(admin: SupabaseClient, bookingId: string | null): 
   };
 }
 
+/** What a confirmed turno really cost: a coupon makes it less than the plan's price. */
+async function paidFor(admin: SupabaseClient, c: BookingCtx): Promise<number> {
+  const { data } = await admin
+    .from("payments")
+    .select("amount_ars")
+    .eq("booking_id", c.bookingId)
+    .eq("status", "approved")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return data?.amount_ars ?? c.price;
+}
+
 const turnoUrl = (c: BookingCtx) => `${appUrl()}/turno/${c.bookingId}`;
 
 /** SESSION_BRIEFING as two email sections: what to bring, then health caveats. */
@@ -180,6 +193,7 @@ const bookingConfirmedUser: Renderer = async (admin, row) => {
   if (!c) return null;
   const credit = row.payload.funded === "credit";
   const left = Number(row.payload.remaining ?? 0);
+  const paid = credit ? 0 : await paidFor(admin, c);
   return {
     subject: `Turno confirmado · VULL (${c.ref})`,
     html: shell({
@@ -193,7 +207,7 @@ const bookingConfirmedUser: Renderer = async (admin, row) => {
         { label: "Fecha y hora", value: c.when },
         credit
           ? { label: "Te quedan", value: sessions(left), mono: true }
-          : { label: "Pagado", value: money(c.price), mono: true },
+          : { label: "Pagado", value: money(paid), mono: true },
         { label: "Comprobante", value: c.ref, mono: true },
       ],
       // The pre-session briefing describes the recovery circuit; other sectors
@@ -282,6 +296,7 @@ const bookingConfirmedAdmins: Renderer = async (admin, row) => {
     ? `${c.clientName} usó 1 sesión de su pack (quedan ${left}).`
     : `${c.clientName} reservó y pagó ${c.svc}.`;
   const heading = credit ? "Turno con sesión de pack ✓" : "Nuevo turno pagado ✓";
+  const paid = credit ? 0 : await paidFor(admin, c);
   return {
     subject: `Nuevo turno · VULL (${c.ref})`,
     html: shell({
@@ -293,7 +308,7 @@ const bookingConfirmedAdmins: Renderer = async (admin, row) => {
         { label: "Fecha y hora", value: c.when },
         credit
           ? { label: "Quedan", value: sessions(left), mono: true }
-          : { label: "Importe", value: money(c.price), mono: true },
+          : { label: "Importe", value: money(paid), mono: true },
         { label: "Reserva", value: c.ref, mono: true },
       ],
       cta: panel(),

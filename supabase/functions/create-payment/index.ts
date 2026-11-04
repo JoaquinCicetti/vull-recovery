@@ -12,12 +12,14 @@
 // (The legacy Mobbex method is gone with its webhook; ADR 0010.)
 //
 // The amount is ALWAYS taken server-side from the services row, never from the
-// client.
+// client. A turno or pack may carry a `coupon_code` (ADR 0016): the discounted
+// price becomes payments.amount_ars and Talo's price, which always move together.
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { responder, errMessage } from "../_shared/cors.ts";
 import { adminClient, userClient } from "../_shared/supabase.ts";
 import { MEMBERSHIP_ACTIVE_LIST, PAYABLE_LIST } from "../_shared/booking-status.ts";
 import { canUseSector, type Sector } from "../_shared/sector.ts";
+import { discounted, normalizeCode } from "../_shared/coupon.ts";
 import {
   createTaloPayment,
   getTaloPayment,
@@ -27,7 +29,7 @@ import {
 } from "../_shared/talo.ts";
 
 const PAY_COLS =
-  "id, status, amount_ars, talo_payment_id, talo_cvu, talo_alias, talo_expires_at";
+  "id, status, amount_ars, talo_payment_id, talo_cvu, talo_alias, talo_expires_at, talo_payment_url, coupon_id, coupon_pct, list_amount_ars";
 
 type PayRow = {
   id: string;
@@ -37,7 +39,46 @@ type PayRow = {
   talo_cvu: string | null;
   talo_alias: string | null;
   talo_expires_at: string | null;
+  talo_payment_url: string | null;
+  coupon_id: string | null;
+  coupon_pct: number | null;
+  list_amount_ars: number | null;
 };
+
+type Coupon = { id: string; percent: number };
+
+/** The payments columns that hold the price. Written as one, so a row can never
+ *  say one amount and another discount. */
+function priced(list: number, coupon: Coupon | null) {
+  return coupon
+    ? {
+      amount_ars: discounted(list, coupon.percent),
+      coupon_id: coupon.id,
+      coupon_pct: coupon.percent,
+      list_amount_ars: list,
+    }
+    : { amount_ars: list, coupon_id: null, coupon_pct: null, list_amount_ars: null };
+}
+type Priced = ReturnType<typeof priced>;
+
+const COUPON_REJECTED = "Ese código no es válido o ya no está vigente.";
+
+/** An active coupon by what the client typed. Absent input is not an error. */
+async function lookupCoupon(
+  admin: SupabaseClient,
+  raw: unknown,
+): Promise<{ coupon: Coupon | null } | { rejected: true }> {
+  if (raw === undefined || raw === null || raw === "") return { coupon: null };
+  const code = normalizeCode(raw);
+  if (!code) return { rejected: true };
+  const { data } = await admin
+    .from("coupons")
+    .select("id, percent")
+    .eq("code", code)
+    .eq("active", true)
+    .maybeSingle();
+  return data ? { coupon: data as Coupon } : { rejected: true };
+}
 
 // The money window and the slot hold are the SAME instant, so a transfer can
 // never land on a slot we already gave away. Capped an hour before the turno
@@ -99,20 +140,24 @@ type TaloStart =
       cvu: string | null;
       alias: string | null;
       amount: number;
+      list_amount: number | null;
+      coupon_pct: number | null;
       expires_at: string | null;
     };
   }
   | { ok: false; error: string; status: number };
 
-function shape(row: PayRow, url: string | null): TaloStart {
+function shape(row: PayRow): TaloStart {
   return {
     ok: true,
     data: {
       payment_id: row.id,
-      payment_url: url,
+      payment_url: row.talo_payment_url,
       cvu: row.talo_cvu,
       alias: row.talo_alias,
       amount: row.amount_ars,
+      list_amount: row.list_amount_ars,
+      coupon_pct: row.coupon_pct,
       expires_at: row.talo_expires_at,
     },
   };
@@ -138,7 +183,7 @@ async function retire(admin: SupabaseClient, row: PayRow) {
 async function tryReuse(
   admin: SupabaseClient,
   row: PayRow,
-  amount: number,
+  price: Priced,
 ): Promise<"reuse" | "retire"> {
   const v = await getTaloPayment(row.talo_payment_id!);
   // Could not check. Handing back the CVU we already have is strictly safer than
@@ -155,13 +200,15 @@ async function tryReuse(
     new Date(row.talo_expires_at).getTime() <= Date.now()
   ) return "retire";
 
-  if (row.amount_ars !== amount) {
+  if (row.amount_ars !== price.amount_ars || row.coupon_id !== price.coupon_id) {
     // Letting payments.amount_ars and Talo's price diverge would break the
     // settle-time amount check, so they move together or not at all.
-    const priced = await setTaloPrice(row.talo_payment_id!, amount);
-    if (!priced.ok) return "retire";
-    await admin.from("payments").update({ amount_ars: amount }).eq("id", row.id);
-    row.amount_ars = amount;
+    if (row.amount_ars !== price.amount_ars) {
+      const set = await setTaloPrice(row.talo_payment_id!, price.amount_ars);
+      if (!set.ok) return "retire";
+    }
+    await admin.from("payments").update(price).eq("id", row.id);
+    Object.assign(row, price);
   }
   return "reuse";
 }
@@ -182,7 +229,9 @@ async function startTalo(admin: SupabaseClient, opts: {
   periodId?: string;
   /** A pending abono whose hold must follow the CVU (see below). */
   membershipId?: string;
+  /** The full price. The coupon, when there is one, comes off it. */
   amount: number;
+  coupon?: Coupon | null;
   motive: string;
   startsAt?: string | null;
   redirectFor: (paymentRowId: string) => string;
@@ -243,6 +292,8 @@ async function startTalo(admin: SupabaseClient, opts: {
     secret ? `?token=${encodeURIComponent(secret)}` : ""
   }`;
   const expiresAt = taloWindow(opts.startsAt);
+  // The coupon of a CVU retired below, for the row that replaces it.
+  let carried: Coupon | null = null;
 
   for (let attempt = 0; attempt < 2; attempt++) {
     // ── get-or-create OUR row first, so a webhook always has something to find ─
@@ -263,7 +314,7 @@ async function startTalo(admin: SupabaseClient, opts: {
       }
       const { data: made, error: insErr } = await admin
         .from("payments")
-        .insert(insertRow)
+        .insert({ ...insertRow, ...priced(opts.amount, opts.coupon ?? carried) })
         .select(PAY_COLS)
         .single();
       if (made) row = made as PayRow;
@@ -274,18 +325,47 @@ async function startTalo(admin: SupabaseClient, opts: {
     }
     if (!row) return { ok: false, error: "No se pudo iniciar el pago", status: 500 };
 
+    // A new code wins. Without one, a live row keeps its discount even if the
+    // coupon was disabled since: the client may already be transferring that amount.
+    const coupon: Coupon | null = opts.coupon ??
+      (row.coupon_id && row.coupon_pct
+        ? { id: row.coupon_id, percent: row.coupon_pct }
+        : carried);
+    const price = priced(opts.amount, coupon);
+
     if (row.talo_payment_id) {
-      const verdict = await tryReuse(admin, row, opts.amount);
-      // Talo's hosted URL is not stored, and guessing the host would be wrong in
-      // sandbox; the CVU/alias are the primary UX anyway.
-      if (verdict === "reuse") return shape(row, null);
+      const verdict = await tryReuse(admin, row, price);
+      if (verdict === "reuse") return shape(row);
       await retire(admin, row);
+      // The next CVU keeps the discount, unless the coupon was disabled since.
+      if (row.coupon_id) {
+        const { data: still } = await admin
+          .from("coupons")
+          .select("id, percent")
+          .eq("id", row.coupon_id)
+          .eq("active", true)
+          .maybeSingle();
+        carried = (still as Coupon | null) ?? null;
+      }
       continue; // next attempt inserts a fresh row
+    }
+
+    // A row whose mint failed earlier may hold an older price. It has to match
+    // what Talo is about to be told, or the settle-time amount check breaks.
+    if (row.amount_ars !== price.amount_ars || row.coupon_id !== price.coupon_id) {
+      const { data: repriced } = await admin
+        .from("payments")
+        .update(price)
+        .eq("id", row.id)
+        .is("talo_payment_id", null)
+        .select("id")
+        .maybeSingle();
+      if (!repriced) continue; // a concurrent call claimed the row; re-read it
     }
 
     // ── mint the CVU ──────────────────────────────────────────────────────────
     const created = await createTaloPayment({
-      amount: opts.amount,
+      amount: price.amount_ars,
       // external_id is OUR payment row id: a v4 uuid, so outsiders cannot guess
       // it. The paying user CAN read it (payments_select_own, and it appears in
       // /comprar/exito?ref=). That is harmless ONLY because settlement never
@@ -317,6 +397,7 @@ async function startTalo(admin: SupabaseClient, opts: {
         talo_cvu: created.data.cvu,
         talo_alias: created.data.alias,
         talo_expires_at: created.data.expiresAt ?? expiresAt,
+        talo_payment_url: created.data.paymentUrl,
         external_reference: row.id,
       })
       .eq("id", row.id)
@@ -365,7 +446,7 @@ async function startTalo(admin: SupabaseClient, opts: {
       ]);
     }
 
-    return shape(patched as PayRow, created.data.paymentUrl);
+    return shape(patched as PayRow);
   }
 
   return { ok: false, error: "No se pudo iniciar el pago", status: 500 };
@@ -375,13 +456,16 @@ Deno.serve(async (req) => {
   const { json, options } = responder(req);
   if (req.method === "OPTIONS") return options();
   try {
-    const { booking_id, pack_service_id, membership_period_id, method = "talo" } =
+    const { booking_id, pack_service_id, membership_period_id, coupon_code, method = "talo" } =
       await req.json();
     if (!booking_id && !pack_service_id && !membership_period_id) {
       return json({ error: "Falta booking_id, pack_service_id o membership_period_id" }, 400);
     }
     if (method !== "talo") {
       return json({ error: "Método de pago inválido" }, 400);
+    }
+    if (membership_period_id && coupon_code) {
+      return json({ error: "Las cuotas del abono no admiten códigos de descuento." }, 400);
     }
 
     const {
@@ -415,6 +499,8 @@ Deno.serve(async (req) => {
       }
       const amount: number = pack.price_ars ?? 0;
       const target = { serviceId: pack.id, userId: user.id };
+      const found = await lookupCoupon(admin, coupon_code);
+      if ("rejected" in found) return json({ error: COUPON_REJECTED }, 422);
 
       if (method === "talo") {
         const out = await startTalo(admin, {
@@ -424,6 +510,7 @@ Deno.serve(async (req) => {
           kind: "pack",
           serviceId: pack.id,
           amount,
+          coupon: found.coupon,
           motive: `${pack.name} · VULL`,
           redirectFor: (payId) => `${appUrl}/comprar/exito?ref=${payId}`,
         });
@@ -521,6 +608,8 @@ Deno.serve(async (req) => {
 
     const amount: number = booking.services?.price_ars ?? 0;
     const target = { bookingId: booking_id };
+    const found = await lookupCoupon(admin, coupon_code);
+    if ("rejected" in found) return json({ error: COUPON_REJECTED }, 422);
 
     if (method === "talo") {
       const out = await startTalo(admin, {
@@ -530,6 +619,7 @@ Deno.serve(async (req) => {
         kind: "booking",
         bookingId: booking_id,
         amount,
+        coupon: found.coupon,
         motive: `${booking.services?.name ?? "Turno"} · VULL ${booking_id.slice(0, 8)}`,
         startsAt: booking.starts_at,
         redirectFor: () => `${appUrl}/turno/${booking_id}?pago=talo`,

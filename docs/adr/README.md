@@ -21,3 +21,4 @@ consequences, and the alternatives we rejected. Format is lightweight
 | [0013](0013-notification-outbox.md) | Notifications as an outbox written beside the invariant | Accepted |
 | [0014](0014-no-manual-confirmation-admin-slot-blocks.md) | No manual confirmation; cash at the desk is an admin slot block | Accepted |
 | [0015](0015-latency-worker-at-db-region-one-round-trip.md) | Latency: Worker placed at the DB region, local session check, one round trip per page; sa-east-1 move as the structural fix | Accepted |
+| [0016](0016-coupons-and-talo-hosted-page.md) | Discount coupons, and paying on Talo's hosted page | Accepted |

@@ -3,18 +3,25 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { formatARS, TALO_ENABLED, waLink } from "@/lib/site";
+import { TALO_ENABLED, waLink } from "@/lib/site";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { TaloTransferPanel, type TaloTransfer } from "@/components/talo-transfer-panel";
+import {
+  TaloTransferPanel,
+  TransferPrice,
+  type TaloTransfer,
+} from "@/components/talo-transfer-panel";
+import { CouponField } from "@/components/payment/coupon-field";
 import { SettlementPoller } from "@/components/settlement-poller";
 import { readError } from "@/lib/read-error";
+import { goToTalo } from "@/lib/talo-transfer";
 
 // What is being paid: one turno, or one month (cuota) of an abono.
 export type PaymentTarget = { booking_id: string } | { membership_period_id: string };
 
-// One way to pay: the automatic transfer. Talo mints a one-time CVU/alias,
-// the client transfers, Talo settles it and the turno confirms itself. There
+// One way to pay: the automatic transfer. Talo mints a one-time CVU/alias and we
+// send the client to its payment page; they transfer, Talo settles it (webhook)
+// and the turno confirms itself. There
 // is no receipt upload and no manual approval (ADR 0014): cash at the desk is
 // handled by the admin blocking the slot.
 export function PaymentPanel({
@@ -38,12 +45,15 @@ export function PaymentPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [transfer, setTransfer] = useState<TaloTransfer | null>(talo);
+  const [code, setCode] = useState("");
+  // A cuota is charged in full: coupons are for turnos and packs (ADR 0016).
+  const takesCoupon = "booking_id" in target;
 
   async function payWithTalo() {
     setLoading(true);
     setError(null);
     const { data, error } = await supabase.functions.invoke("create-payment", {
-      body: { ...target, method: "talo" },
+      body: { ...target, method: "talo", coupon_code: code.trim() || undefined },
     });
     setLoading(false);
     if (error || !data || (!data.cvu && !data.alias && !data.payment_url)) {
@@ -54,15 +64,20 @@ export function PaymentPanel({
       );
       return;
     }
-    setTransfer({
+    const next: TaloTransfer = {
       cvu: data.cvu ?? null,
       alias: data.alias ?? null,
       amount: data.amount ?? amount,
       expiresAt: data.expires_at ?? null,
       paymentUrl: data.payment_url ?? null,
-    });
+      listAmount: data.list_amount ?? null,
+      couponPct: data.coupon_pct ?? null,
+    };
+    // Set even though we're leaving: the browser's back button lands on this state.
+    setTransfer(next);
     // The hold was just extended to the payment window; re-render the countdown.
     router.refresh();
+    goToTalo(next);
   }
 
   return (
@@ -72,8 +87,7 @@ export function PaymentPanel({
         <SettlementPoller active={Boolean(transfer) || awaiting} />
 
         <p className="font-semibold text-fg">
-          Pagar{" "}
-          <span className="font-mono text-accent">{formatARS(amount)}</span>
+          Pagar <TransferPrice transfer={transfer} amount={amount} />
         </p>
 
         {transfer ? (
@@ -95,11 +109,12 @@ export function PaymentPanel({
           </p>
         ) : (
           <>
+            {takesCoupon && <CouponField value={code} onChange={setCode} disabled={loading} />}
             <Button size="lg" onClick={payWithTalo} disabled={loading} className="mt-4 w-full">
               {loading ? "Generando la transferencia…" : "Pagar por transferencia"}
             </Button>
             <p className="mt-2 text-center text-xs text-fg-faint">
-              Te damos un alias para transferir. Se confirma {what} solo, en general en
+              Te llevamos a la página de pago de Talo. Se confirma {what} solo, en general en
               menos de un minuto.
             </p>
           </>

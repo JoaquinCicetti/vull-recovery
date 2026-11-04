@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { ResourcesEditor, SectorForm } from "./sector-form";
 import { ServicesManager } from "./services-manager";
 import { AdminNotices } from "./admin-notices";
+import { CouponsManager, type CouponRow } from "./coupons-manager";
 import { LoadErrors } from "@/components/admin/load-errors";
 import { Segmented } from "@/components/admin/segmented";
 import { SectionTitle } from "@/components/admin/stat";
@@ -20,7 +21,7 @@ function one(v: string | string[] | undefined): string {
 
 // How the business is set up, one sector at a time: its plans and prices, its
 // agenda (days, hours, slot length, places) and its policies. Below, what is
-// not per sector: the admin's own alerts.
+// not per sector: discount codes and the admin's own alerts.
 export default async function AjustesPage({
   searchParams,
 }: {
@@ -29,9 +30,9 @@ export default async function AjustesPage({
   const supabase = await createClient();
   const loadErrors: string[] = [];
 
-  // The admin check (one profile read) and the five reads go out together:
+  // The admin check (one profile read) and the six reads go out together:
   // this page is one round trip to the database.
-  const [, sp, sectorsRes, resourcesRes, hoursRes, servicesRes, notifRes] = await Promise.all([
+  const [, sp, sectorsRes, resourcesRes, hoursRes, servicesRes, notifRes, couponsRes] = await Promise.all([
     requireAdmin(),
     searchParams,
     supabase.from("sectors").select("*").order("sort_order", { ascending: true }),
@@ -51,6 +52,7 @@ export default async function AjustesPage({
       .not("error", "is", null)
       .order("created_at", { ascending: false })
       .limit(20),
+    supabase.rpc("admin_coupons"),
   ]);
   for (const [label, res] of [
     ["Sectores", sectorsRes],
@@ -58,6 +60,7 @@ export default async function AjustesPage({
     ["Horarios", hoursRes],
     ["Planes", servicesRes],
     ["Avisos", notifRes],
+    ["Cupones", couponsRes],
   ] as const) {
     if (res.error) loadErrors.push(`${label}: ${res.error.message}`);
   }
@@ -143,6 +146,13 @@ export default async function AjustesPage({
           </section>
         </>
       )}
+
+      <section className="mt-12">
+        <SectionTitle>Cupones</SectionTitle>
+        <div className="mt-3 max-w-2xl">
+          <CouponsManager initial={(couponsRes.data ?? []) as CouponRow[]} />
+        </div>
+      </section>
 
       <section className="mt-12">
         <SectionTitle>Avisos</SectionTitle>

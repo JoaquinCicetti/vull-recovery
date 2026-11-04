@@ -19,7 +19,7 @@ import { PageShell } from "@/components/ui/page-shell";
 import { Button } from "@/components/ui/button";
 import type { Booking } from "@/lib/types";
 import { isActiveStatus } from "@/lib/booking-status";
-import type { TaloTransfer } from "@/components/talo-transfer-panel";
+import { restoreTransfer, TALO_ROW_COLS } from "@/lib/talo-transfer";
 
 type BookingWithService = Booking & {
   services: { name: string; price_ars: number; duration_minutes: number } | null;
@@ -55,15 +55,16 @@ export default async function TurnoPage({
       )
       .eq("id", id)
       .single(),
-    // A CVU already minted for this booking (Talo, still open). Lets a reload —
-    // or the return trip from the bank app — show the same alias again instead of
-    // minting a second one. Readable through payments_select_own via the booking.
+    // The live CVU for this booking, or the payment that settled it. Lets a reload
+    // — or the return trip from Talo's page — go back to the same transfer instead
+    // of minting a second one, and tells the price really charged (a coupon lowers
+    // it). Readable through payments_select_own via the booking.
     supabase
       .from("payments")
-      .select("talo_cvu, talo_alias, talo_expires_at, amount_ars")
+      .select(TALO_ROW_COLS)
       .eq("booking_id", id)
       .eq("provider", "talo")
-      .eq("status", "pending")
+      .in("status", ["pending", "approved"])
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle(),
@@ -107,16 +108,7 @@ export default async function TurnoPage({
   const busyDays = ((sameSector ?? []) as { starts_at: string }[]).map((b) =>
     localDate(b.starts_at, tz),
   );
-  const talo: TaloTransfer | null =
-    taloRow && (taloRow.talo_cvu || taloRow.talo_alias)
-      ? {
-          cvu: (taloRow.talo_cvu as string) ?? null,
-          alias: (taloRow.talo_alias as string) ?? null,
-          amount: (taloRow.amount_ars as number) ?? 0,
-          expiresAt: (taloRow.talo_expires_at as string) ?? null,
-          paymentUrl: null,
-        }
-      : null;
+  const talo = restoreTransfer(taloRow, booking.status === "awaiting_payment");
 
   const svcName = booking.services?.name ?? "Servicio";
   const price = booking.services?.price_ars ?? 0;
@@ -201,7 +193,7 @@ export default async function TurnoPage({
             <>
               <span>Total</span>
               <span className="font-mono text-base font-semibold text-fg">
-                {formatARS(price)}
+                {formatARS(taloRow?.amount_ars ?? price)}
               </span>
             </>
           )}

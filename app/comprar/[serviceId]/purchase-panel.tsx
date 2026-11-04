@@ -4,11 +4,17 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { formatARS, TALO_ENABLED, waLink } from "@/lib/site";
+import { TALO_ENABLED, waLink } from "@/lib/site";
 import { readError } from "@/lib/read-error";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { TaloTransferPanel, type TaloTransfer } from "@/components/talo-transfer-panel";
+import {
+  TaloTransferPanel,
+  TransferPrice,
+  type TaloTransfer,
+} from "@/components/talo-transfer-panel";
+import { CouponField } from "@/components/payment/coupon-field";
+import { goToTalo } from "@/lib/talo-transfer";
 
 // Buy a multi-session pack (create-payment with pack_service_id). Same single
 // path as the booking PaymentPanel: the automatic transfer via Talo. On
@@ -27,6 +33,7 @@ export function PurchasePanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [transfer, setTransfer] = useState<(TaloTransfer & { paymentId: string }) | null>(null);
+  const [code, setCode] = useState("");
 
   const requireLogin = () =>
     router.push(`/login?next=${encodeURIComponent(`/comprar/${packId}`)}`);
@@ -36,7 +43,7 @@ export function PurchasePanel({
     setLoading(true);
     setError(null);
     const { data, error } = await supabase.functions.invoke("create-payment", {
-      body: { pack_service_id: packId, method: "talo" },
+      body: { pack_service_id: packId, method: "talo", coupon_code: code.trim() || undefined },
     });
     setLoading(false);
     if (error || !data?.payment_id || (!data.cvu && !data.alias && !data.payment_url)) {
@@ -47,21 +54,26 @@ export function PurchasePanel({
       );
       return;
     }
-    setTransfer({
-      paymentId: data.payment_id,
+    const next = {
+      paymentId: data.payment_id as string,
       cvu: data.cvu ?? null,
       alias: data.alias ?? null,
       amount: data.amount ?? amount,
       expiresAt: data.expires_at ?? null,
       paymentUrl: data.payment_url ?? null,
-    });
+      listAmount: data.list_amount ?? null,
+      couponPct: data.coupon_pct ?? null,
+    };
+    // Set even though we're leaving: the browser's back button lands on this state.
+    setTransfer(next);
+    goToTalo(next);
   }
 
   return (
     <Card className="mt-6 [--card-spacing:--spacing(6)]">
       <CardContent>
         <p className="font-semibold text-fg">
-          Comprar <span className="font-mono text-accent">{formatARS(amount)}</span>
+          Comprar <TransferPrice transfer={transfer} amount={amount} />
         </p>
 
         {transfer ? (
@@ -88,6 +100,7 @@ export function PurchasePanel({
           </p>
         ) : (
           <>
+            {isAuthed && <CouponField value={code} onChange={setCode} disabled={loading} />}
             <Button size="lg" onClick={payWithTalo} disabled={loading} className="mt-4 w-full">
               {loading
                 ? "Generando la transferencia…"
@@ -96,7 +109,7 @@ export function PurchasePanel({
                   : "Pagar por transferencia"}
             </Button>
             <p className="mt-2 text-center text-xs text-fg-faint">
-              Te damos un alias para transferir. Las sesiones se acreditan solas.
+              Te llevamos a la página de pago de Talo. Las sesiones se acreditan solas.
             </p>
           </>
         )}
