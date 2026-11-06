@@ -1,5 +1,9 @@
+import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { AdminTabs } from "@/components/admin/admin-tabs";
+
+// Backstop to the robots.txt disallow: never index the panel.
+export const metadata: Metadata = { robots: { index: false, follow: false } };
 
 // The section bar lives in the layout, so it persists across admin pages
 // (no re-mount, no fade on every navigation) and stays put while a page's

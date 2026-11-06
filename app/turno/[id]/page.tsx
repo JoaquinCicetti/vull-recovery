@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -20,6 +21,8 @@ import { Button } from "@/components/ui/button";
 import type { Booking } from "@/lib/types";
 import { isActiveStatus } from "@/lib/booking-status";
 import { restoreTransfer, TALO_ROW_COLS } from "@/lib/talo-transfer";
+
+export const metadata: Metadata = { title: "Tu turno", robots: { index: false, follow: false } };
 
 type BookingWithService = Booking & {
   services: { name: string; price_ars: number; duration_minutes: number } | null;

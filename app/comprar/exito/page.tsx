@@ -1,8 +1,11 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { PageShell } from "@/components/ui/page-shell";
 import { Button } from "@/components/ui/button";
 import { SettlementPoller } from "@/components/settlement-poller";
+
+export const metadata: Metadata = { title: "Compra confirmada", robots: { index: false, follow: true } };
 
 // Landing page after a pack purchase, reached as ?ref=<payment id> (Talo's
 // redirect_url, and the "Ya transferí" button on the purchase panel).

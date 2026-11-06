@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { requireAdmin } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { ResourcesEditor, SectorForm } from "./sector-form";
@@ -12,6 +13,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { PageShell } from "@/components/ui/page-shell";
 import type { Resource, Sector, SectorHours, Service } from "@/lib/types";
 import type { FailedNotification } from "@/components/admin/failed-notifications";
+
+export const metadata: Metadata = { title: "Ajustes" };
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 

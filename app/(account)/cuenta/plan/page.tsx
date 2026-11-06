@@ -1,8 +1,11 @@
+import type { Metadata } from "next";
 import { requireSession } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { PlanView, type PlanData } from "@/components/account/plan-view";
 import { PageShell } from "@/components/ui/page-shell";
 import type { MembershipPeriod, SwapRequestRow } from "@/lib/membership";
+
+export const metadata: Metadata = { title: "Mi abono" };
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 

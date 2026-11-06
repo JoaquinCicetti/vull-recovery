@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { MEMBERSHIP_ACTIVE } from "@/lib/booking-status";
@@ -29,6 +30,8 @@ import { BlockSlotDialog } from "@/components/admin/block-slot-dialog";
 import { BedWeekGrid, type GridBooking } from "./bed-week-grid";
 import { FlaggedPayments, loadFlaggedPayments } from "./flagged-payments";
 import { NewMembershipDialog } from "./new-membership-dialog";
+
+export const metadata: Metadata = { title: "Agenda" };
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 

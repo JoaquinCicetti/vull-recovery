@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Search } from "lucide-react";
 import { requireAdmin } from "@/lib/auth";
@@ -10,6 +11,8 @@ import { FilterDialog, FilterField, type ActiveFilter } from "@/components/admin
 import { PageShell } from "@/components/ui/page-shell";
 import { UserAvatar } from "@/components/ui/user-avatar";
 import { cn } from "@/lib/utils";
+
+export const metadata: Metadata = { title: "Clientes" };
 
 const PAGE = 25;
 const SORTS = {

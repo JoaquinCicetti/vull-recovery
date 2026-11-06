@@ -1,9 +1,12 @@
+import type { Metadata } from "next";
 import { requireUser } from "@/lib/auth";
 import { fmtDate } from "@/lib/format";
 import { ProfileForm, SignOutButton } from "./profile-form";
 import { Section } from "@/components/account/section";
 import { PageShell } from "@/components/ui/page-shell";
 import { UserAvatar } from "@/components/ui/user-avatar";
+
+export const metadata: Metadata = { title: "Mi cuenta" };
 
 export default async function CuentaPage() {
   const { user, profile } = await requireUser("/cuenta");

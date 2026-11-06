@@ -1,10 +1,10 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { AmbientBackground } from "@/components/ui/ambient-background";
-import { DEV_MODE, SITE_NAME, SITE_TAGLINE } from "@/lib/site";
+import { DEV_MODE, SITE_DESCRIPTION, SITE_NAME, SITE_TITLE, SITE_URL } from "@/lib/site";
 import { DevModeBadge } from "@/components/dev-fake-payment";
 
 const geistSans = Geist({
@@ -17,10 +17,27 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+// Site-wide defaults (docs/seo.md). Pages set their own `title` (the template
+// appends the brand); private and transactional routes add `robots: noindex`.
+// The share image is app/opengraph-image.jpg, picked up by file convention.
 export const metadata: Metadata = {
-  title: SITE_NAME,
-  description: SITE_TAGLINE,
+  metadataBase: new URL(SITE_URL),
+  title: { default: SITE_TITLE, template: `%s · ${SITE_NAME}` },
+  description: SITE_DESCRIPTION,
+  applicationName: SITE_NAME,
+  // No `alternates.canonical` here: children inherit it, so every route would
+  // claim to be "/". The indexable pages (/, /planes) set it themselves.
+  openGraph: {
+    type: "website",
+    locale: "es_AR",
+    siteName: SITE_NAME,
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+  },
+  twitter: { card: "summary_large_image" },
 };
+
+export const viewport: Viewport = { themeColor: "#000000" };
 
 export default function RootLayout({
   children,

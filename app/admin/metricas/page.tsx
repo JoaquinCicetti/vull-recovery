@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { requireAdmin } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -6,6 +7,8 @@ import { LoadErrors } from "@/components/admin/load-errors";
 import { SectionTitle, Stat } from "@/components/admin/stat";
 import { PageShell } from "@/components/ui/page-shell";
 import { cn } from "@/lib/utils";
+
+export const metadata: Metadata = { title: "Métricas" };
 
 const PERIODS = [
   { days: 7, label: "7 días" },

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { requireSession } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { getMyCredits } from "@/lib/credits";
@@ -6,6 +7,8 @@ import type { AccountBooking } from "@/components/account/booking-row";
 import { TurnosView } from "@/components/account/turnos-view";
 import { PageShell } from "@/components/ui/page-shell";
 import type { BookingStatus } from "@/lib/types";
+
+export const metadata: Metadata = { title: "Mis turnos" };
 
 type Row = {
   id: string;

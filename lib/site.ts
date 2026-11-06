@@ -17,6 +17,13 @@ export function getURL(path = "") {
 export const SITE_TAGLINE =
   "Recuperación deportiva. Entrenás al límite, recuperá igual.";
 
+// SEO (docs/seo.md). Absolute origin for canonical / Open Graph / sitemap URLs;
+// NEXT_PUBLIC_SITE_URL is https://www.vull.com.ar in .env.production.
+export const SITE_URL = getURL();
+export const SITE_TITLE = "VULL — Recuperación deportiva en Rosario";
+export const SITE_DESCRIPTION =
+  "Centro de recuperación deportiva en Rosario: inmersión en frío, sauna, compresión, luz roja, masajes y pilates. Reservá y pagá online tu sesión.";
+
 // Public contact details (footer, emails). The phone is the owner's number for
 // "turnos y consultas". Mirrored for the edge functions in
 // supabase/functions/_shared/site.ts. Change one, change both.
@@ -25,6 +32,18 @@ export const CONTACT_WHATSAPP_NUMBER = "5493412102151"; // +54 9 341 210-2151, w
 export const ADDRESS_LINE = "Montevideo 40 | Complejo Loyal";
 export const INSTAGRAM_HANDLE = "@vull.recovery";
 export const INSTAGRAM_URL = "https://instagram.com/vull.recovery";
+
+// The same address, structured, for schema.org and the map link (web only).
+export const ADDRESS = {
+  street: "Montevideo 40",
+  place: "Complejo Loyal",
+  city: "Rosario",
+  region: "Santa Fe",
+  country: "AR",
+} as const;
+export const MAPS_URL = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+  `${ADDRESS.street}, ${ADDRESS.city}, ${ADDRESS.region}, Argentina`,
+)}`;
 
 // Business WhatsApp number, international format without "+", e.g. 5491122334455.
 // The env var still overrides; `||` (not `??`) so the blank

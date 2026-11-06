@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
@@ -23,6 +24,8 @@ import {
   periodStatusLabel,
 } from "@/lib/membership";
 import { UserAvatar } from "@/components/ui/user-avatar";
+
+export const metadata: Metadata = { title: "Cliente" };
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 

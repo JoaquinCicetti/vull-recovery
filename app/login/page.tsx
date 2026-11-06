@@ -1,5 +1,8 @@
+import type { Metadata } from "next";
 import { LoginForm } from "./login-form";
 import { PageShell } from "@/components/ui/page-shell";
+
+export const metadata: Metadata = { title: "Ingresar", robots: { index: false, follow: true } };
 
 export default async function LoginPage({
   searchParams,

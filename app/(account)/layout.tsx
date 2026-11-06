@@ -1,7 +1,11 @@
+import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { getSessionUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { AccountTabs } from "@/components/account/account-tabs";
+
+// Backstop to the robots.txt disallow: never index a client's account.
+export const metadata: Metadata = { robots: { index: false, follow: false } };
 
 // The account bar lives in the layout, so it persists across /mis-turnos and
 // /cuenta/* (no re-mount, no fade on every navigation) and stays put while a

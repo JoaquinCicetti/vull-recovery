@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { MEMBERSHIP_ACTIVE } from "@/lib/booking-status";
 import { getSessionUser, getUserAndProfile } from "@/lib/auth";
@@ -7,6 +8,8 @@ import { formatARS } from "@/lib/site";
 import { localDate } from "@/lib/format";
 import { PageShell } from "@/components/ui/page-shell";
 import { MembershipSignup } from "./membership-signup";
+
+export const metadata: Metadata = { title: "Elegí tus horarios", robots: { index: false, follow: true } };
 
 // Sign up for a monthly plan (abono): start date, renew every month or not,
 // then the weekly schedule. Creating it holds the schedule and goes to the

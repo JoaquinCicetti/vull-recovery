@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { getUserAndProfile, requireSession } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -5,6 +6,8 @@ import {
   type PushDevice,
 } from "@/components/account/notification-center";
 import { PageShell } from "@/components/ui/page-shell";
+
+export const metadata: Metadata = { title: "Notificaciones" };
 
 export default async function NotificacionesPage() {
   // Session verified locally; the profile (for the toggles) and the devices

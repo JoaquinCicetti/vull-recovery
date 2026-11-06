@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { MEMBERSHIP_ACTIVE } from "@/lib/booking-status";
 import { notFound } from "next/navigation";
@@ -20,6 +21,8 @@ import { HoldCountdown } from "@/components/hold-countdown";
 import { MembershipScheduleChips } from "@/components/membership/schedule-chips";
 import { PeriodAmount } from "@/components/membership/period-amount";
 import { restoreTransfer, TALO_ROW_COLS } from "@/lib/talo-transfer";
+
+export const metadata: Metadata = { title: "Pagar cuota" };
 
 type MembershipRow = {
   id: string;

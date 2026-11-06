@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { getService } from "@/lib/services";
 import { getSessionUser, getUserAndProfile } from "@/lib/auth";
@@ -8,6 +9,8 @@ import { formatARS } from "@/lib/site";
 import { localDate } from "@/lib/format";
 import { PageShell } from "@/components/ui/page-shell";
 import { BookingFlow } from "./booking-flow";
+
+export const metadata: Metadata = { title: "Reservar", robots: { index: false, follow: true } };
 
 export default async function ReservarPage({
   params,

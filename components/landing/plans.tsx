@@ -202,7 +202,8 @@ function PlanCard({
         <div className="pointer-events-none absolute -right-12 -top-12 h-44 w-44 rounded-full bg-accent/15 opacity-0 blur-2xl transition-opacity duration-300 group-hover:opacity-100" />
         <CardHeader className="relative gap-0">
           <CardTitle className="text-xl font-semibold text-fg">
-            {s.name}
+            {/* A real heading for the page outline; inherits CardTitle's type. */}
+            <h3>{s.name}</h3>
           </CardTitle>
           {s.description && (
             <CardDescription className="mt-2 leading-relaxed text-fg-muted">

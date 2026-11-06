@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { requireSession } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -6,6 +7,8 @@ import {
   type SessionMovement,
 } from "@/components/account/sesiones-view";
 import { PageShell } from "@/components/ui/page-shell";
+
+export const metadata: Metadata = { title: "Mis sesiones" };
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 

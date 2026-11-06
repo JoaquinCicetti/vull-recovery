@@ -1,9 +1,12 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getService } from "@/lib/services";
 import { getUserAndProfile } from "@/lib/auth";
 import { formatARS } from "@/lib/site";
 import { PageShell } from "@/components/ui/page-shell";
 import { PurchasePanel } from "./purchase-panel";
+
+export const metadata: Metadata = { title: "Comprar pack", robots: { index: false, follow: true } };
 
 export default async function ComprarPage({
   params,
