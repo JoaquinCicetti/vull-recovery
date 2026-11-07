@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
+import Image from "next/image";
 import { useProgress } from "@react-three/drei";
 import { gsap } from "gsap";
 import { ScrollToPlugin } from "gsap/ScrollToPlugin";
@@ -78,7 +79,7 @@ function LoadingScreen() {
   useEffect(() => {
     if (!ready) return;
     beginIntro(); // lights come up behind the last of the fade
-    const t = setTimeout(() => setGone(true), 750); // let the fade finish
+    const t = setTimeout(() => setGone(true), 950); // let the dissolve finish
     return () => clearTimeout(t);
   }, [ready, beginIntro]);
   useEffect(() => {
@@ -93,18 +94,31 @@ function LoadingScreen() {
     return () => clearTimeout(t);
   }, [beginIntro]);
 
+  // The brand mark breathing over a thin green progress line; on ready the mark
+  // swells and dissolves while the veil fades, so the room comes up out of it.
+  // (/logo.svg is drawn on a black square, invisible on this black veil.)
   if (gone) return null;
   return (
     <div
       aria-hidden="true"
-      className={`absolute inset-0 z-40 flex flex-col items-center justify-center gap-6 bg-black transition-opacity duration-700 ${
+      className={`absolute inset-0 z-40 flex flex-col items-center justify-center gap-8 bg-black transition-opacity duration-[900ms] ease-out ${
         ready ? "pointer-events-none opacity-0" : "opacity-100"
       }`}
     >
-      <p className="animate-pulse text-4xl font-extrabold tracking-[0.3em] text-fg">
-        VULL
-      </p>
-      <div className="h-px w-44 overflow-hidden rounded-full bg-white/10">
+      <Image
+        src="/logo.svg"
+        alt=""
+        width={144}
+        height={144}
+        priority
+        unoptimized
+        className={`size-36 ${ready ? "animate-mark-dissolve" : "animate-mark-breathe"}`}
+      />
+      <div
+        className={`h-px w-36 overflow-hidden bg-white/10 transition-opacity duration-300 ${
+          ready ? "opacity-0" : "opacity-100"
+        }`}
+      >
         <div
           className="h-full bg-accent transition-[width] duration-300 ease-out"
           style={{ width: `${Math.round(progress)}%` }}

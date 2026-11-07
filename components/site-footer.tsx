@@ -19,7 +19,7 @@ export function SiteFooter() {
     <footer className="relative z-0 border-t border-border bg-black">
       <div className="mx-auto grid max-w-6xl gap-8 px-5 py-12 sm:grid-cols-2 sm:items-center">
         <div className="flex flex-col items-center gap-4 sm:items-start">
-          <Logo withWordmark />
+          <Logo imgClassName="h-14" />
           <span className="font-mono text-[11px] uppercase tracking-[0.22em] text-fg-faint">
             © {new Date().getFullYear()} {SITE_NAME} · Recuperación deportiva
           </span>

@@ -154,17 +154,54 @@
     transform: scale(1.08);
   }
 }
-/* Hero entrance: rise + un-blur (the blur masks the entrance, reads premium). */
-@keyframes hero-enter {
+/* Experience hero title band: lines rise into place under a hairline that
+   draws across. Opacity and transform only, so nothing reflows. */
+@keyframes rise {
   from {
     opacity: 0;
-    transform: translateY(26px);
-    filter: blur(7px);
+    transform: translateY(14px);
   }
   to {
     opacity: 1;
     transform: none;
-    filter: blur(0);
+  }
+}
+@keyframes draw-x {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+/* Scroll hint: a small arrow nudging down. */
+@keyframes nudge {
+  0%,
+  100% {
+    transform: translateY(-1px);
+  }
+  50% {
+    transform: translateY(3px);
+  }
+}
+/* Loader mark: a slow breath while the scene loads… */
+@keyframes mark-breathe {
+  0%,
+  100% {
+    transform: scale(0.96);
+    opacity: 0.6;
+  }
+  50% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+/* …then it swells and dissolves into the room as the lights come up. */
+@keyframes mark-dissolve {
+  to {
+    transform: scale(1.8);
+    filter: blur(16px);
+    opacity: 0;
   }
 }
 /* Ambient green glow breathing between 0.2 and 0.5 opacity. */
@@ -193,8 +230,20 @@
   .animate-glow-pulse {
     animation: glow-pulse 9s ease-in-out infinite;
   }
-  .animate-hero-enter {
-    animation: hero-enter 0.9s var(--ease-out-expo) both;
+  .animate-rise {
+    animation: rise 1.1s var(--ease-out-expo) both;
+  }
+  .animate-draw-x {
+    animation: draw-x 1.4s var(--ease-out-expo) both;
+  }
+  .animate-nudge {
+    animation: nudge 1.8s ease-in-out infinite;
+  }
+  .animate-mark-breathe {
+    animation: mark-breathe 2.2s ease-in-out infinite;
+  }
+  .animate-mark-dissolve {
+    animation: mark-dissolve 0.9s var(--ease-out-expo) both;
   }
   /* Film-grain overlay (fractal noise). Pair with low opacity + mix-blend. */
   .bg-noise {

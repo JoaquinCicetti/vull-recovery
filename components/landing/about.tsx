@@ -109,9 +109,9 @@ export function About() {
           ))}
         </ol>
 
-        {/* Where + how. */}
-        <div className="mt-20 grid gap-14 lg:grid-cols-12 lg:gap-16">
-          <div className="lg:col-span-5">
+        {/* Where. */}
+        <div className="mt-20">
+          <div>
             <p className="eyebrow">Dónde estamos</p>
             <address className="mt-5 not-italic">
               <span className="block text-3xl font-bold tracking-tight sm:text-4xl">
@@ -140,18 +140,37 @@ export function About() {
               </Button>
             </div>
           </div>
+        </div>
+      </div>
+    </section>
+  );
+}
 
-          <div className="lg:col-span-7">
-            <p className="eyebrow">Preguntas frecuentes</p>
-            <div className="mt-5 border-t border-border">
-              {FAQ.map((f) => (
-                <div key={f.q} className="border-b border-border py-5">
-                  <h3 className="text-lg font-semibold tracking-tight">{f.q}</h3>
-                  <p className="mt-2 max-w-prose leading-relaxed text-fg-muted">{f.a}</p>
-                </div>
-              ))}
+// After the plans: the questions people have once they've seen what it costs.
+export function Faq() {
+  return (
+    <section
+      id="preguntas"
+      aria-labelledby="preguntas-heading"
+      className="relative scroll-mt-16 border-t border-border px-5 py-24 sm:py-32"
+    >
+      <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-12 lg:gap-16">
+        <div className="lg:col-span-4">
+          <p className="eyebrow">Antes de venir</p>
+          <h2
+            id="preguntas-heading"
+            className="mt-5 text-3xl font-extrabold tracking-tight sm:text-4xl"
+          >
+            Preguntas frecuentes
+          </h2>
+        </div>
+        <div className="border-t border-border lg:col-span-8">
+          {FAQ.map((f) => (
+            <div key={f.q} className="border-b border-border py-6">
+              <h3 className="text-lg font-semibold tracking-tight">{f.q}</h3>
+              <p className="mt-2 max-w-prose leading-relaxed text-fg-muted">{f.a}</p>
             </div>
-          </div>
+          ))}
         </div>
       </div>
     </section>
