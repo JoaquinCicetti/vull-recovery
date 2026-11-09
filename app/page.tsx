@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { getActiveServicesStatic } from "@/lib/services";
 import { ExperienceClient } from "@/components/experience/experience-client";
-import { About, Faq } from "@/components/landing/about";
+import { About, Faq, Location } from "@/components/landing/about";
 import { Plans } from "@/components/landing/plans";
 import { LocalBusinessJsonLd } from "@/components/seo/local-business-jsonld";
 
@@ -20,9 +20,10 @@ export default async function Home() {
       <LocalBusinessJsonLd />
       {/* Pinned scroll story (video scrub → WebGL). Flows into plans + CTA below. */}
       <ExperienceClient />
-      {/* Server-rendered, always-visible copy: what VULL is and where (FAQ after the plans). */}
+      {/* Server-rendered, always-visible copy: what VULL is; where and the FAQ after the plans. */}
       <About />
       <Plans initialServices={services} />
+      <Location />
       <Faq />
     </>
   );

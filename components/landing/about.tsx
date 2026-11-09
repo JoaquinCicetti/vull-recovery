@@ -108,9 +108,21 @@ export function About() {
             </li>
           ))}
         </ol>
+      </div>
+    </section>
+  );
+}
 
-        {/* Where. */}
-        <div className="mt-20">
+// After the plans: where to go once you've picked one.
+export function Location() {
+  return (
+    <section
+      id="donde"
+      aria-label="Dónde estamos"
+      className="relative scroll-mt-16 border-t border-border px-5 py-24 sm:py-32"
+    >
+      <div className="mx-auto max-w-6xl">
+        <div>
           <div>
             <p className="eyebrow">Dónde estamos</p>
             <address className="mt-5 not-italic">
