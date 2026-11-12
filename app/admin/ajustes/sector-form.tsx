@@ -88,7 +88,7 @@ function useSectorSave(sector: Sector) {
   return { busy, error, setError, save, setBusy };
 }
 
-type Editor = "hours" | "window" | "rules" | "monthly" | "places" | null;
+type Editor = "hours" | "window" | "rules" | "monthly" | "places" | "survey" | null;
 
 // One sector's agenda, policies and switches as a settings list: each row says
 // what it is set to now and opens its own editor, which saves only its fields.
@@ -159,25 +159,10 @@ export function SectorSettings({
           label="Encuestas post-sesión"
           value={
             sector.survey_enabled
-              ? "Se envían por WhatsApp desde Agenda › Turnos pasados"
+              ? "Activadas · se envían por WhatsApp desde Agenda › Turnos pasados"
               : "Apagadas para este sector"
           }
-          trailing={
-            <>
-              <Button asChild variant="outline" size="sm">
-                <Link href={`/admin/ajustes/encuesta?sector=${sector.slug}`}>
-                  <Eye data-icon="inline-start" aria-hidden />
-                  Vista previa
-                </Link>
-              </Button>
-              <Switch
-              checked={sector.survey_enabled}
-              disabled={toggles.busy}
-                onCheckedChange={(survey_enabled) => toggles.save({ survey_enabled })}
-                aria-label="Encuestas post-sesión"
-              />
-            </>
-          }
+          onEdit={() => setOpen("survey")}
         />
       </SettingsGroup>
       {toggles.error && (
@@ -190,6 +175,38 @@ export function SectorSettings({
       {open === "window" && <WindowDialog sector={sector} onOpenChange={close} />}
       {open === "rules" && <RulesDialog sector={sector} canHide={canHide} onOpenChange={close} />}
       {open === "monthly" && <MonthlyDialog sector={sector} onOpenChange={close} />}
+      <EditDialog
+        open={open === "survey"}
+        onOpenChange={close}
+        title="Encuestas post-sesión"
+        description="Después de una sesión confirmada, el menú … del turno en Agenda › Turnos pasados manda por WhatsApp el link de la encuesta. Las respuestas se ven en Métricas › Encuestas."
+      >
+        <Label className="gap-2.5 text-sm text-fg">
+          <Switch
+            checked={sector.survey_enabled}
+            disabled={toggles.busy}
+            onCheckedChange={(survey_enabled) => toggles.save({ survey_enabled })}
+          />
+          Encuestas activadas para {sector.name}
+        </Label>
+        {toggles.error && (
+          <p role="alert" className="text-sm text-danger">
+            {toggles.error}
+          </p>
+        )}
+        <div className="rounded-md border border-border bg-surface-2/60 p-3">
+          <p className="text-sm text-fg">Probá la encuesta</p>
+          <p className="mt-0.5 text-xs text-fg-faint">
+            El mismo formulario que ve el cliente, con las estaciones de cada plan. No guarda respuestas.
+          </p>
+          <Button asChild variant="outline" size="sm" className="mt-3 w-full sm:w-auto">
+            <Link href={`/admin/ajustes/encuesta?sector=${sector.slug}`}>
+              <Eye data-icon="inline-start" aria-hidden />
+              Vista previa
+            </Link>
+          </Button>
+        </div>
+      </EditDialog>
       <EditDialog
         open={open === "places"}
         onOpenChange={close}
