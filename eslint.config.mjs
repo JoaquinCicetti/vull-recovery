@@ -17,7 +17,7 @@ const eslintConfig = defineConfig([
     ".wrangler/**",
     // Supabase Edge Functions are Deno code, linted/typechecked separately.
     "supabase/**",
-    // Third-party tooling (Claude Code skills, etc.).
+    // Local, untracked editor/agent tooling.
     ".claude/**",
   ]),
 ]);
