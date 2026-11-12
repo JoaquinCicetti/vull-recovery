@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
+import { Eye } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { Resource, Sector, SectorHours } from "@/lib/types";
@@ -161,12 +163,20 @@ export function SectorSettings({
               : "Apagadas para este sector"
           }
           trailing={
-            <Switch
+            <>
+              <Button asChild variant="outline" size="sm">
+                <Link href={`/admin/ajustes/encuesta?sector=${sector.slug}`}>
+                  <Eye data-icon="inline-start" aria-hidden />
+                  Vista previa
+                </Link>
+              </Button>
+              <Switch
               checked={sector.survey_enabled}
               disabled={toggles.busy}
-              onCheckedChange={(survey_enabled) => toggles.save({ survey_enabled })}
-              aria-label="Encuestas post-sesión"
-            />
+                onCheckedChange={(survey_enabled) => toggles.save({ survey_enabled })}
+                aria-label="Encuestas post-sesión"
+              />
+            </>
           }
         />
       </SettingsGroup>

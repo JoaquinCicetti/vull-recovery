@@ -31,12 +31,18 @@ export function SurveyForm({
   bookingId,
   stations,
   prefill,
+  preview = false,
+  onRestart,
 }: {
   bookingId: string;
   /** What the booked plan includes: the options of "lo más beneficioso". */
   stations: string[];
   /** "Sobre vos" from the client's last survey. */
   prefill: Partial<SurveyAnswers>;
+  /** Admin preview: same form, nothing stored (no draft, no submit). */
+  preview?: boolean;
+  /** Preview only: "Probar de nuevo" on the thank-you screen. */
+  onRestart?: () => void;
 }) {
   const draftKey = `vull:survey:${bookingId}`;
   const [answers, setAnswers] = useState<SurveyAnswers>({ ...EMPTY_ANSWERS, ...prefill });
@@ -51,6 +57,7 @@ export function SurveyForm({
 
   // Restore an unsent draft (a reload, an accidental back) once, on mount.
   useEffect(() => {
+    if (preview) return;
     try {
       const raw = sessionStorage.getItem(draftKey);
       if (!raw) return;
@@ -62,16 +69,16 @@ export function SurveyForm({
     } catch {
       /* storage unavailable: start fresh */
     }
-  }, [draftKey]);
+  }, [draftKey, preview]);
 
   useEffect(() => {
-    if (done) return;
+    if (done || preview) return;
     try {
       sessionStorage.setItem(draftKey, JSON.stringify({ answers, step }));
     } catch {
       /* ignore */
     }
-  }, [answers, step, done, draftKey]);
+  }, [answers, step, done, draftKey, preview]);
 
   const set = <K extends keyof SurveyAnswers>(k: K, v: SurveyAnswers[K]) =>
     setAnswers((a) => ({ ...a, [k]: v }));
@@ -84,6 +91,10 @@ export function SurveyForm({
   }
 
   async function submit() {
+    if (preview) {
+      setDone(true);
+      return;
+    }
     setSaving(true);
     setError(null);
     const supabase = createClient();
@@ -104,7 +115,7 @@ export function SurveyForm({
     setDone(true);
   }
 
-  if (done) return <ThankYou />;
+  if (done) return <ThankYou preview={preview} onRestart={onRestart} />;
 
   const valid = stepValid(step, answers);
   const last = step === STEPS.length - 1;
@@ -299,7 +310,15 @@ export function SurveyForm({
   );
 }
 
-export function ThankYou({ again = false }: { again?: boolean }) {
+export function ThankYou({
+  again = false,
+  preview = false,
+  onRestart,
+}: {
+  again?: boolean;
+  preview?: boolean;
+  onRestart?: () => void;
+}) {
   const reduce = useReducedMotion();
   return (
     <motion.div
@@ -319,9 +338,15 @@ export function ThankYou({ again = false }: { again?: boolean }) {
       </p>
       <p className="mt-8 text-xs font-bold uppercase tracking-[0.22em] text-fg">VULL Recovery</p>
       <p className="mt-1 text-xs text-fg-faint">Recuperación deportiva.</p>
-      <Button asChild variant="outline" className="mt-8">
-        <Link href="/mis-turnos">Ir a mis turnos</Link>
-      </Button>
+      {preview ? (
+        <Button variant="outline" className="mt-8" onClick={onRestart}>
+          Probar de nuevo
+        </Button>
+      ) : (
+        <Button asChild variant="outline" className="mt-8">
+          <Link href="/mis-turnos">Ir a mis turnos</Link>
+        </Button>
+      )}
     </motion.div>
   );
 }
