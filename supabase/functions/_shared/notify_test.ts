@@ -29,6 +29,7 @@ const EMITTED: [string, "admins" | "user"][] = [
   ["swap_proposed", "user"],
   ["swap_resolved", "user"],
   ["admin_alert", "admins"],
+  ["survey_submitted", "admins"], // submit_session_survey (20261112120000_session_surveys.sql)
 ];
 
 // The kinds the notifications.kind CHECK allows.
@@ -36,7 +37,7 @@ const KINDS = [
   "booking_received", "booking_confirmed", "booking_cancelled", "booking_rescheduled",
   "payment_to_verify", "payment_rejected", "pack_purchased", "membership_paid",
   "membership_created_by_admin", "membership_cancelled", "class_moved", "swap_proposed",
-  "swap_resolved", "admin_alert",
+  "swap_resolved", "admin_alert", "survey_submitted",
 ];
 
 Deno.test("every emitted (kind, audience) has a renderer", () => {

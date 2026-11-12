@@ -828,6 +828,58 @@ const adminAlert: Renderer = (_admin, row) => {
   });
 };
 
+// ─── surveys: admins ────────────────────────────────────────────────────────
+const LEVEL: Record<string, string> = { amateur: "Amateur", competitivo: "Competitivo", profesional: "Profesional" };
+const YES: Record<string, string> = { si: "Sí", un_poco: "Un poco", no: "No" };
+const esc = (s: string) =>
+  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+const surveySubmittedAdmins: Renderer = async (admin, row) => {
+  const { data: s } = await admin
+    .from("session_surveys")
+    .select(
+      "id, level, sport, experience, nps, post_overall, tension_relief, mobility_gain, best_stations, valued, improve, service:services(name), booking:bookings(starts_at)",
+    )
+    .eq("id", row.subject_id!)
+    .maybeSingle();
+  if (!s) return null;
+  // deno-lint-ignore no-explicit-any
+  const sv = s as any;
+  const name = await who(admin, row.user_id);
+  const when = sv.booking?.starts_at ? classWhen(sv.booking.starts_at, TZ_DEFAULT) : "";
+  const path = `/admin/metricas?ver=encuestas&r=${s.id}`;
+  const rows: Row[] = [
+    { label: "Sesión", value: esc([sv.service?.name, when].filter(Boolean).join(" · ")) },
+    { label: "Experiencia", value: `${s.experience}/10` },
+    { label: "Recomendaría", value: `${s.nps}/10` },
+    { label: "Estado post-sesión", value: `${s.post_overall}/10` },
+    { label: "Menos tensión", value: YES[s.tension_relief] ?? "—" },
+    { label: "Más movilidad", value: YES[s.mobility_gain] ?? "—" },
+  ];
+  if (s.level) rows.push({ label: "Nivel", value: esc([LEVEL[s.level], s.sport].filter(Boolean).join(" · ")) });
+  if (sv.best_stations?.length) rows.push({ label: "Lo mejor", value: esc(sv.best_stations.join(", ")) });
+  const notes = [
+    s.valued ? `<b>Valoró:</b> ${esc(s.valued)}` : "",
+    s.improve ? `<b>Mejoraría:</b> ${esc(s.improve)}` : "",
+  ].filter(Boolean).join("<br/>");
+  return {
+    subject: `Nueva encuesta · ${name} · ${s.experience}/10 · VULL`,
+    html: shell({
+      heading: "Nueva encuesta respondida",
+      lead: `${esc(name)} respondió la encuesta de su sesión.`,
+      rows,
+      note: notes || undefined,
+      cta: appUrl() ? { label: "Ver encuesta", url: `${appUrl()}${path}` } : undefined,
+      accent: GREEN,
+    }),
+    push: {
+      title: "Nueva encuesta",
+      body: `${name} · Experiencia ${s.experience}/10 · Recomendaría ${s.nps}/10`,
+      url: path,
+    },
+  };
+};
+
 // ─── the table ──────────────────────────────────────────────────────────────
 export const RENDERERS: Record<string, Partial<Record<"admins" | "user", Renderer>>> = {
   booking_received: { user: bookingReceived },
@@ -844,6 +896,7 @@ export const RENDERERS: Record<string, Partial<Record<"admins" | "user", Rendere
   swap_proposed: { user: swapProposed },
   swap_resolved: { user: swapResolved },
   admin_alert: { admins: adminAlert },
+  survey_submitted: { admins: surveySubmittedAdmins },
 };
 
 /** The renderer for a row, or undefined for a (kind, audience) nobody emits. */

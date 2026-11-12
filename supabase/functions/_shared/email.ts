@@ -356,7 +356,9 @@ export async function fanOutToAdmins(admin: SupabaseClient, msg: Msg): Promise<F
     .from("push_subscriptions")
     .select("id, endpoint, p256dh, auth")
     .in("user_id", rows.map((a) => a.id));
-  const payload = JSON.stringify({ ...(msg.push ?? { title: msg.subject, body: "" }), url: "/admin" });
+  // An admin push opens the panel unless the renderer names a page in it.
+  const push = msg.push ?? { title: msg.subject, body: "" };
+  const payload = JSON.stringify({ ...push, url: push.url ?? "/admin" });
   await Promise.all([
     ...rows.filter((a) => a.email).map((a) => mail(a.email!, msg, out)),
     pushAll(admin, (subs ?? []) as (PushSub & { id: string })[], payload, out),
