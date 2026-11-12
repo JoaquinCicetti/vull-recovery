@@ -1,28 +1,30 @@
 import { PushManager } from "@/components/push-manager";
+import { SettingRow, SettingsGroup } from "@/components/admin/settings/setting-row";
 import {
   FailedNotifications,
   type FailedNotification,
 } from "@/components/admin/failed-notifications";
 
-// The admin's own alerts: push on this device, and the notices that could not
-// be delivered (with a retry).
+// The admin's own alerts: push on this device, and, only when there are any,
+// the notices that could not be delivered (with a retry).
 export function AdminNotices({ failed }: { failed: FailedNotification[] }) {
   return (
-    <div className="flex flex-col gap-4">
-      <div className="surface-card p-5">
-        <p className="text-sm font-medium text-fg">Este dispositivo</p>
-        <p className="mt-0.5 text-xs text-fg-faint">
-          Recibí un aviso cuando entra una reserva, un pago para revisar o una cancelación.
-        </p>
-        <div className="mt-3">
+    <SettingsGroup title="Avisos">
+      {/* The push control can be a long button or a line of help: it goes under the label. */}
+      <li className="px-4 py-3.5">
+        <p className="text-sm font-medium text-fg">Avisos en este dispositivo</p>
+        <p className="mt-0.5 text-sm text-fg-faint">Reservas, pagos, cancelaciones y encuestas nuevas.</p>
+        <div className="mt-2.5 empty:hidden">
           <PushManager />
         </div>
-      </div>
+      </li>
       {failed.length > 0 ? (
-        <FailedNotifications rows={failed} />
+        <li className="p-4">
+          <FailedNotifications rows={failed} />
+        </li>
       ) : (
-        <p className="text-sm text-fg-faint">Todos los avisos salieron.</p>
+        <SettingRow label="Avisos no enviados" value="Ninguno: todos los avisos salieron." muted />
       )}
-    </div>
+    </SettingsGroup>
   );
 }

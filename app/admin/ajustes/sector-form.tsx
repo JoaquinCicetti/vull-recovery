@@ -11,12 +11,13 @@ import {
   weekHoursError,
   type WeekHours,
 } from "@/components/admin/weekday-hours-editor";
+import { EditDialog, SettingRow, SettingsGroup } from "@/components/admin/settings/setting-row";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { WEEK_ORDER, WEEKDAY_LONG, hm } from "@/lib/membership";
+import { WEEK_ORDER, WEEKDAY_LONG, WEEKDAY_SHORT, hm } from "@/lib/membership";
 import {
   Select,
   SelectContent,
@@ -35,55 +36,218 @@ const TIMEZONES = [
 
 const digits = (v: string) => v.replace(/\D/g, "");
 
-// One sector's agenda, policies and launch switch. Recovery is the business
-// itself, so it has no "visible" switch: hiding it would take the site offline.
-// `hasMonthly` shows the abono billing policy (due day, surcharge, release day).
-export function SectorForm({
+/** "Lun–Vie 08:00–20:00 · Sáb 09:00–13:00": consecutive days with the same ranges merge. */
+function hoursSummary(week: WeekHours): string {
+  const key = (d: number) => week[d].map((r) => `${r.opens}–${r.closes}`).join(", ");
+  const parts: string[] = [];
+  let i = 0;
+  while (i < WEEK_ORDER.length) {
+    const d = WEEK_ORDER[i];
+    let j = i;
+    while (j + 1 < WEEK_ORDER.length && key(WEEK_ORDER[j + 1]) === key(d)) j++;
+    if (week[d].length) {
+      const days = i === j ? WEEKDAY_SHORT[d] : `${WEEKDAY_SHORT[d]}–${WEEKDAY_SHORT[WEEK_ORDER[j]]}`;
+      parts.push(`${days} ${key(d)}`);
+    }
+    i = j + 1;
+  }
+  if (!parts.length) return "Cerrado todos los días";
+  const slots = new Set(WEEK_ORDER.flatMap((d) => week[d].map((r) => r.slot_minutes)));
+  parts.push(slots.size === 1 ? `turnos de ${[...slots][0]} min` : "turnos de distinta duración");
+  return parts.join(" · ");
+}
+
+function windowSummary(s: Sector): string {
+  return s.booking_window === "rolling"
+    ? `Próximos ${s.rolling_days} días`
+    : `Semana en curso · la siguiente abre el ${WEEKDAY_LONG[s.next_week_opens_dow].toLowerCase()} ${hm(s.next_week_opens_at)}`;
+}
+
+type Patch = Partial<Omit<Sector, "id" | "slug" | "name" | "sort_order">>;
+
+/** Saves one setting's columns of the sector; returns an error message or null. */
+function useSectorSave(sector: Sector) {
+  const router = useRouter();
+  const supabase = createClient();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function save(patch: Patch): Promise<boolean> {
+    setBusy(true);
+    setError(null);
+    const { error } = await supabase.from("sectors").update(patch).eq("id", sector.id);
+    setBusy(false);
+    if (error) {
+      setError(error.message);
+      return false;
+    }
+    router.refresh();
+    return true;
+  }
+  return { busy, error, setError, save, setBusy };
+}
+
+type Editor = "hours" | "window" | "rules" | "monthly" | "places" | null;
+
+// One sector's agenda, policies and switches as a settings list: each row says
+// what it is set to now and opens its own editor, which saves only its fields.
+// Recovery is the business itself, so it has no "visible" switch: hiding it
+// would take the site offline. `hasMonthly` shows the abono billing policy.
+export function SectorSettings({
   sector,
   hours,
+  resources,
   hasMonthly,
 }: {
   sector: Sector;
   hours: SectorHours[];
+  resources: Resource[];
   hasMonthly: boolean;
+}) {
+  const [open, setOpen] = useState<Editor>(null);
+  const toggles = useSectorSave(sector);
+  const canHide = sector.slug !== "recovery";
+  const week = toWeekHours(hours);
+  const activePlaces = resources.filter((r) => r.active);
+  const close = (o: boolean) => !o && setOpen(null);
+
+  return (
+    <>
+      <SettingsGroup
+        title={`Disponibilidad · ${sector.name}`}
+        description="Cuándo se puede reservar, de cuántos minutos es cada turno y cuántos entran a la vez."
+      >
+        {canHide && (
+          <SettingRow
+            label="Visible para clientes"
+            value={sector.active ? "Sí: los planes se ven en la web" : "No: solo los admins ven sus planes"}
+            trailing={
+              <Switch
+                checked={sector.active}
+                disabled={toggles.busy}
+                onCheckedChange={(active) => toggles.save({ active })}
+                aria-label="Visible para clientes"
+              />
+            }
+          />
+        )}
+        <SettingRow label="Horarios" value={hoursSummary(week)} onEdit={() => setOpen("hours")} />
+        <SettingRow label="Ventana de reserva" value={windowSummary(sector)} onEdit={() => setOpen("window")} />
+        <SettingRow
+          label="Reglas de reserva"
+          value={`Anticipación ${sector.lead_minutes} min · sin pagar ${sector.hold_minutes} min · cancelar ${sector.cancel_notice_hours} h${
+            canHide ? ` · mover ${sector.change_notice_hours} h` : ""
+          }`}
+          onEdit={() => setOpen("rules")}
+        />
+        {hasMonthly && (
+          <SettingRow
+            label="Abonos mensuales"
+            value={`Vence el ${sector.due_day} · recargo ${sector.late_fee_pct} % · libera el ${sector.release_day}`}
+            onEdit={() => setOpen("monthly")}
+          />
+        )}
+        <SettingRow
+          label={sector.slug === "pilates" ? "Camas" : "Lugares simultáneos"}
+          value={`${activePlaces.length} ${activePlaces.length === 1 ? "activo" : "activos"}${
+            activePlaces.length ? `: ${activePlaces.map((r) => r.name).join(", ")}` : ""
+          }`}
+          onEdit={() => setOpen("places")}
+        />
+        <SettingRow
+          label="Encuestas post-sesión"
+          value={
+            sector.survey_enabled
+              ? "Se envían por WhatsApp desde Agenda › Turnos pasados"
+              : "Apagadas para este sector"
+          }
+          trailing={
+            <Switch
+              checked={sector.survey_enabled}
+              disabled={toggles.busy}
+              onCheckedChange={(survey_enabled) => toggles.save({ survey_enabled })}
+              aria-label="Encuestas post-sesión"
+            />
+          }
+        />
+      </SettingsGroup>
+      {toggles.error && (
+        <p role="alert" className="mt-2 text-sm text-danger">
+          {toggles.error}
+        </p>
+      )}
+
+      {open === "hours" && <HoursDialog sector={sector} hours={hours} onOpenChange={close} />}
+      {open === "window" && <WindowDialog sector={sector} onOpenChange={close} />}
+      {open === "rules" && <RulesDialog sector={sector} canHide={canHide} onOpenChange={close} />}
+      {open === "monthly" && <MonthlyDialog sector={sector} onOpenChange={close} />}
+      <EditDialog
+        open={open === "places"}
+        onOpenChange={close}
+        title={sector.slug === "pilates" ? "Camas" : "Lugares simultáneos"}
+        description="Cuántos turnos entran en un mismo horario. Para un turno suelto se asigna el primero libre; un abono elige el suyo."
+      >
+        <ResourcesEditor sector={sector} resources={resources} />
+      </EditDialog>
+    </>
+  );
+}
+
+function HoursDialog({
+  sector,
+  hours,
+  onOpenChange,
+}: {
+  sector: Sector;
+  hours: SectorHours[];
+  onOpenChange: (o: boolean) => void;
 }) {
   const router = useRouter();
   const supabase = createClient();
-  const [active, setActive] = useState(sector.active);
   const [week, setWeek] = useState<WeekHours>(() => toWeekHours(hours));
-  const [tz, setTz] = useState(sector.timezone);
-  const [bookingWin, setBookingWin] = useState(sector.booking_window);
-  const [rollingDays, setRollingDays] = useState(String(sector.rolling_days));
-  const [opensDow, setOpensDow] = useState(String(sector.next_week_opens_dow));
-  const [opensAt, setOpensAt] = useState(hm(sector.next_week_opens_at));
-  const [lead, setLead] = useState(String(sector.lead_minutes));
-  const [hold, setHold] = useState(String(sector.hold_minutes));
-  const [notice, setNotice] = useState(String(sector.cancel_notice_hours));
-  const [change, setChange] = useState(String(sector.change_notice_hours));
-  const [dueDay, setDueDay] = useState(String(sector.due_day));
-  const [lateFee, setLateFee] = useState(String(sector.late_fee_pct));
-  const [releaseDay, setReleaseDay] = useState(String(sector.release_day));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
-  const canHide = sector.slug !== "recovery";
 
-  function touch<T>(set: (v: T) => void) {
-    return (v: T) => {
-      setSaved(false);
-      set(v);
-    };
-  }
-
-  async function save(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-
+  async function save() {
     const hoursError = weekHoursError(week);
     if (hoursError) {
       setError(hoursError);
       return;
     }
+    setBusy(true);
+    setError(null);
+    const { error } = await supabase.rpc("set_sector_hours", { p_sector: sector.id, p_hours: fromWeekHours(week) });
+    setBusy(false);
+    if (error) {
+      setError(error.code === "23P01" ? "Dos rangos del mismo día se superponen." : error.message);
+      return;
+    }
+    onOpenChange(false);
+    router.refresh();
+  }
+
+  return (
+    <EditDialog
+      open
+      onOpenChange={onOpenChange}
+      title={`Horarios · ${sector.name}`}
+      description="Los rangos de cada día se cortan en turnos de la duración elegida."
+      onSave={save}
+      busy={busy}
+      error={error}
+    >
+      <WeekdayHoursEditor idPrefix={sector.id} value={week} onChange={setWeek} />
+    </EditDialog>
+  );
+}
+
+function WindowDialog({ sector, onOpenChange }: { sector: Sector; onOpenChange: (o: boolean) => void }) {
+  const { busy, error, setError, save } = useSectorSave(sector);
+  const [bookingWin, setBookingWin] = useState(sector.booking_window);
+  const [rollingDays, setRollingDays] = useState(String(sector.rolling_days));
+  const [opensDow, setOpensDow] = useState(String(sector.next_week_opens_dow));
+  const [opensAt, setOpensAt] = useState(hm(sector.next_week_opens_at));
+
+  async function submit() {
     const days = Number(rollingDays);
     if (bookingWin === "rolling" && !(days >= 1 && days <= 90)) {
       setError("Se puede reservar con entre 1 y 90 días de anticipación.");
@@ -93,134 +257,120 @@ export function SectorForm({
       setError("Elegí a qué hora se habilita la semana siguiente.");
       return;
     }
+    const ok = await save({
+      booking_window: bookingWin,
+      ...(bookingWin === "rolling"
+        ? { rolling_days: days }
+        : { next_week_opens_dow: Number(opensDow), next_week_opens_at: opensAt }),
+    });
+    if (ok) onOpenChange(false);
+  }
+
+  return (
+    <EditDialog open onOpenChange={onOpenChange} title="Ventana de reserva" onSave={submit} busy={busy} error={error}>
+      <Select value={bookingWin} onValueChange={(v) => setBookingWin(v as Sector["booking_window"])}>
+        <SelectTrigger className="w-full" aria-label="Ventana de reserva">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="week">Semana actual, lunes a domingo</SelectItem>
+          <SelectItem value="rolling">Próximos N días</SelectItem>
+        </SelectContent>
+      </Select>
+      {bookingWin === "rolling" ? (
+        <NumberField id={`${sector.id}-rolling`} label="Días" value={rollingDays} onChange={setRollingDays} />
+      ) : (
+        <div className="flex flex-wrap items-end gap-4">
+          <Field id={`${sector.id}-opens-dow`} label="La semana siguiente se habilita el">
+            <Select value={opensDow} onValueChange={setOpensDow}>
+              <SelectTrigger id={`${sector.id}-opens-dow`} className="w-fit">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {WEEK_ORDER.map((d) => (
+                  <SelectItem key={d} value={String(d)}>
+                    {WEEKDAY_LONG[d]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field id={`${sector.id}-opens-at`} label="a las">
+            <Input
+              id={`${sector.id}-opens-at`}
+              type="time"
+              className="w-fit font-mono"
+              value={opensAt}
+              onChange={(e) => setOpensAt(e.target.value)}
+              required
+            />
+          </Field>
+        </div>
+      )}
+      <p className="text-xs text-fg-faint">
+        {bookingWin === "rolling"
+          ? `Los clientes pueden reservar en los próximos ${rollingDays || "—"} días.`
+          : `Los clientes reservan dentro de la semana en curso. La semana siguiente se habilita el ${WEEKDAY_LONG[Number(opensDow)].toLowerCase()} a las ${opensAt || "—"}.`}{" "}
+        Los admins pueden reprogramar más adelante.
+      </p>
+    </EditDialog>
+  );
+}
+
+function RulesDialog({
+  sector,
+  canHide,
+  onOpenChange,
+}: {
+  sector: Sector;
+  canHide: boolean;
+  onOpenChange: (o: boolean) => void;
+}) {
+  const { busy, error, setError, save } = useSectorSave(sector);
+  const [tz, setTz] = useState(sector.timezone);
+  const [lead, setLead] = useState(String(sector.lead_minutes));
+  const [hold, setHold] = useState(String(sector.hold_minutes));
+  const [notice, setNotice] = useState(String(sector.cancel_notice_hours));
+  const [change, setChange] = useState(String(sector.change_notice_hours));
+
+  async function submit() {
     if (Number(hold) < 1) {
       setError("La reserva sin pagar tiene que durar al menos 1 minuto.");
       return;
     }
-    const due = Number(dueDay);
-    const release = Number(releaseDay);
-    if (hasMonthly && !(due >= 1 && due < release && release <= 28)) {
-      setError("El vencimiento tiene que ser anterior al día de liberar el lugar (máximo 28).");
-      return;
-    }
-    if (hasMonthly && Number(lateFee) > 100) {
-      setError("El recargo no puede superar el 100 %.");
-      return;
-    }
-
-    setBusy(true);
-    const [{ error: sectorError }, { error: hoursErr }] = await Promise.all([
-      supabase
-        .from("sectors")
-        .update({
-          active: canHide ? active : true,
-          timezone: tz,
-          booking_window: bookingWin,
-          ...(bookingWin === "rolling"
-            ? { rolling_days: days }
-            : { next_week_opens_dow: Number(opensDow), next_week_opens_at: opensAt }),
-          lead_minutes: Number(lead) || 0,
-          hold_minutes: Number(hold),
-          cancel_notice_hours: Number(notice) || 0,
-          change_notice_hours: Number(change) || 0,
-          ...(hasMonthly
-            ? { due_day: due, late_fee_pct: Number(lateFee) || 0, release_day: release }
-            : {}),
-        })
-        .eq("id", sector.id),
-      supabase.rpc("set_sector_hours", { p_sector: sector.id, p_hours: fromWeekHours(week) }),
-    ]);
-    setBusy(false);
-    const err = sectorError ?? hoursErr;
-    if (err) {
-      setError(
-        err.code === "23P01" ? "Dos rangos del mismo día se superponen." : err.message,
-      );
-      return;
-    }
-    setSaved(true);
-    router.refresh();
+    const ok = await save({
+      timezone: tz,
+      lead_minutes: Number(lead) || 0,
+      hold_minutes: Number(hold),
+      cancel_notice_hours: Number(notice) || 0,
+      change_notice_hours: Number(change) || 0,
+    });
+    if (ok) onOpenChange(false);
   }
 
   return (
-    <form onSubmit={save} className="flex flex-col gap-5">
-      {canHide && (
-        <Label className="gap-2.5 text-fg-muted">
-          <Switch checked={active} onCheckedChange={touch(setActive)} />
-          <span>
-            <span className="font-medium text-fg">Visible para clientes</span>
-            <span className="block text-xs text-fg-faint">
-              Apagado: solo los admins ven sus planes y pueden reservar.
-            </span>
-          </span>
-        </Label>
-      )}
-
-      <WeekdayHoursEditor idPrefix={sector.id} value={week} onChange={touch(setWeek)} />
-
-      <fieldset className="flex flex-col gap-3">
-        <legend className="mb-2 text-sm text-fg-muted">Ventana de reserva</legend>
-        <div className="flex flex-wrap items-end gap-4">
-          <Select
-            value={bookingWin}
-            onValueChange={(v) => touch(setBookingWin)(v as Sector["booking_window"])}
-          >
-            <SelectTrigger className="w-full sm:w-fit" aria-label="Ventana de reserva">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="week">Semana actual, lunes a domingo</SelectItem>
-              <SelectItem value="rolling">Próximos N días</SelectItem>
-            </SelectContent>
-          </Select>
-          {bookingWin === "rolling" ? (
-            <NumberField
-              id={`${sector.id}-rolling`}
-              label="Días"
-              value={rollingDays}
-              onChange={touch(setRollingDays)}
-            />
-          ) : (
-            <>
-              <Field id={`${sector.id}-opens-dow`} label="La semana siguiente se habilita el">
-                <Select value={opensDow} onValueChange={touch(setOpensDow)}>
-                  <SelectTrigger id={`${sector.id}-opens-dow`} className="w-fit">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {WEEK_ORDER.map((d) => (
-                      <SelectItem key={d} value={String(d)}>
-                        {WEEKDAY_LONG[d]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
-              <Field id={`${sector.id}-opens-at`} label="a las">
-                <Input
-                  id={`${sector.id}-opens-at`}
-                  type="time"
-                  className="w-fit font-mono"
-                  value={opensAt}
-                  onChange={(e) => touch(setOpensAt)(e.target.value)}
-                  required
-                />
-              </Field>
-            </>
-          )}
-        </div>
-        <p className="text-xs text-fg-faint">
-          {bookingWin === "rolling"
-            ? `Los clientes pueden reservar en los próximos ${rollingDays || "—"} días.`
-            : `Los clientes reservan dentro de la semana en curso. La semana siguiente se habilita el ${WEEKDAY_LONG[Number(opensDow)].toLowerCase()} a las ${opensAt || "—"}.`}{" "}
-          Los admins pueden reprogramar más adelante.
-        </p>
-      </fieldset>
-
+    <EditDialog open onOpenChange={onOpenChange} title="Reglas de reserva" onSave={submit} busy={busy} error={error}>
+      <div className="grid grid-cols-2 gap-4">
+        <NumberField id={`${sector.id}-lead`} label="Anticipación mínima (min)" value={lead} onChange={setLead} />
+        <NumberField id={`${sector.id}-hold`} label="Reserva sin pagar (min)" value={hold} onChange={setHold} />
+        <NumberField id={`${sector.id}-notice`} label="Aviso para cancelar (h)" value={notice} onChange={setNotice} />
+        {canHide && (
+          <NumberField
+            id={`${sector.id}-change`}
+            label="Aviso para mover o cambiar (h)"
+            value={change}
+            onChange={setChange}
+          />
+        )}
+      </div>
+      <p className="text-xs text-fg-faint">
+        Si el cliente cancela un turno pago con al menos ese aviso, recupera la sesión como crédito.
+        {canHide && " Las clases de un abono se pueden mover o intercambiar hasta ese aviso."}
+      </p>
       <div className="flex flex-col gap-1.5">
         <Label className="text-fg-muted">Zona horaria</Label>
-        <Select value={tz} onValueChange={touch(setTz)}>
-          <SelectTrigger className="w-full sm:w-fit">
+        <Select value={tz} onValueChange={setTz}>
+          <SelectTrigger className="w-full">
             <SelectValue placeholder="Zona horaria" />
           </SelectTrigger>
           <SelectContent>
@@ -232,84 +382,48 @@ export function SectorForm({
           </SelectContent>
         </Select>
       </div>
+    </EditDialog>
+  );
+}
 
-      <div className="flex flex-wrap gap-4">
+function MonthlyDialog({ sector, onOpenChange }: { sector: Sector; onOpenChange: (o: boolean) => void }) {
+  const { busy, error, setError, save } = useSectorSave(sector);
+  const [dueDay, setDueDay] = useState(String(sector.due_day));
+  const [lateFee, setLateFee] = useState(String(sector.late_fee_pct));
+  const [releaseDay, setReleaseDay] = useState(String(sector.release_day));
+
+  async function submit() {
+    const due = Number(dueDay);
+    const release = Number(releaseDay);
+    if (!(due >= 1 && due < release && release <= 28)) {
+      setError("El vencimiento tiene que ser anterior al día de liberar el lugar (máximo 28).");
+      return;
+    }
+    if (Number(lateFee) > 100) {
+      setError("El recargo no puede superar el 100 %.");
+      return;
+    }
+    const ok = await save({ due_day: due, late_fee_pct: Number(lateFee) || 0, release_day: release });
+    if (ok) onOpenChange(false);
+  }
+
+  return (
+    <EditDialog open onOpenChange={onOpenChange} title="Abonos mensuales" onSave={submit} busy={busy} error={error}>
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+        <NumberField id={`${sector.id}-due`} label="Pagar antes del día" value={dueDay} onChange={setDueDay} />
+        <NumberField id={`${sector.id}-fee`} label="Recargo por atraso (%)" value={lateFee} onChange={setLateFee} />
         <NumberField
-          id={`${sector.id}-lead`}
-          label="Anticipación mínima (min)"
-          value={lead}
-          onChange={touch(setLead)}
+          id={`${sector.id}-release`}
+          label="Liberar lugar desde el día"
+          value={releaseDay}
+          onChange={setReleaseDay}
         />
-        <NumberField
-          id={`${sector.id}-hold`}
-          label="Reserva sin pagar (min)"
-          value={hold}
-          onChange={touch(setHold)}
-        />
-        <NumberField
-          id={`${sector.id}-notice`}
-          label="Aviso para cancelar (h)"
-          value={notice}
-          onChange={touch(setNotice)}
-        />
-        {canHide && (
-          <NumberField
-            id={`${sector.id}-change`}
-            label="Aviso para mover o cambiar (h)"
-            value={change}
-            onChange={touch(setChange)}
-          />
-        )}
       </div>
-      <p className="-mt-2 text-xs text-fg-faint">
-        Si el cliente cancela un turno pago con al menos ese aviso, recupera la sesión
-        como crédito.{canHide && " Las clases de un abono se pueden mover o intercambiar hasta ese aviso."}
+      <p className="text-xs text-fg-faint">
+        La cuota de cada mes vence el {dueDay || "—"}. Después se cobra {lateFee || "0"} % de recargo. Desde el{" "}
+        {releaseDay || "—"}, las cuotas impagas se filtran en Agenda › Abonos para liberar el lugar a mano.
       </p>
-
-      {hasMonthly && (
-        <fieldset className="flex flex-col gap-3 border-t border-border pt-5">
-          <legend className="text-sm font-medium text-fg">Abonos mensuales</legend>
-          <div className="flex flex-wrap gap-4">
-            <NumberField
-              id={`${sector.id}-due`}
-              label="Pagar antes del día"
-              value={dueDay}
-              onChange={touch(setDueDay)}
-            />
-            <NumberField
-              id={`${sector.id}-fee`}
-              label="Recargo por atraso (%)"
-              value={lateFee}
-              onChange={touch(setLateFee)}
-            />
-            <NumberField
-              id={`${sector.id}-release`}
-              label="Liberar lugar desde el día"
-              value={releaseDay}
-              onChange={touch(setReleaseDay)}
-            />
-          </div>
-          <p className="text-xs text-fg-faint">
-            La cuota de cada mes vence el {dueDay || "—"}. Después se cobra {lateFee || "0"} % de
-            recargo. Desde el {releaseDay || "—"}, las cuotas impagas se filtran en Agenda ›
-            Abonos para liberar el lugar a mano.
-          </p>
-        </fieldset>
-      )}
-
-      <div className="flex items-center gap-3">
-        <Button className="self-start" disabled={busy}>
-          {busy ? "Guardando…" : "Guardar"}
-        </Button>
-        {saved && <span className="text-sm text-accent">Guardado ✓</span>}
-      </div>
-
-      {error && (
-        <p role="alert" className="text-sm text-danger">
-          {error}
-        </p>
-      )}
-    </form>
+    </EditDialog>
   );
 }
 

@@ -1,15 +1,13 @@
 import type { Metadata } from "next";
 import { requireAdmin } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { ResourcesEditor, SectorForm } from "./sector-form";
+import { SectorSettings } from "./sector-form";
 import { ServicesManager } from "./services-manager";
 import { AdminNotices } from "./admin-notices";
 import { CouponsManager, type CouponRow } from "./coupons-manager";
 import { LoadErrors } from "@/components/admin/load-errors";
 import { Segmented } from "@/components/admin/segmented";
-import { SectionTitle } from "@/components/admin/stat";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
 import { PageShell } from "@/components/ui/page-shell";
 import type { Resource, Sector, SectorHours, Service } from "@/lib/types";
 import type { FailedNotification } from "@/components/admin/failed-notifications";
@@ -99,70 +97,31 @@ export default async function AjustesPage({
       )}
 
       {sector && (
-        <>
-          <section>
-            <div className="flex items-center gap-3">
-              <SectionTitle>Planes y precios · {sector.name}</SectionTitle>
-              {!sector.active && (
-                <Badge variant="outline" className="font-mono text-xs text-fg-muted">
-                  Solo admin
-                </Badge>
-              )}
-            </div>
-            <div className="mt-3 max-w-2xl">
-              <ServicesManager
-                key={sector.id}
-                initial={services.filter((s) => s.sector_id === sector.id)}
-                sector={sector}
-              />
-            </div>
-          </section>
-
-          <section className="mt-12">
-            <SectionTitle>Disponibilidad · {sector.name}</SectionTitle>
-            <p className="mt-2 max-w-prose text-sm text-fg-muted">
-              Los días y horarios en que se puede reservar, de cuántos minutos es cada turno
-              y cuántos entran a la vez. Esto controla la disponibilidad que ven los clientes.
-            </p>
-            <Card className="mt-4 max-w-2xl [--card-spacing:--spacing(5)]">
-              <CardContent className="flex flex-col gap-5">
-                <SectorForm
-                  key={sector.id}
-                  sector={sector}
-                  hours={((hoursRes.data ?? []) as SectorHours[]).filter(
-                    (h) => h.sector_id === sector.id,
-                  )}
-                  hasMonthly={services.some(
-                    (s) => s.sector_id === sector.id && s.billing === "monthly",
-                  )}
-                />
-                <div className="border-t border-border pt-5">
-                  <ResourcesEditor
-                    sector={sector}
-                    resources={((resourcesRes.data ?? []) as Resource[]).filter(
-                      (r) => r.sector_id === sector.id,
-                    )}
-                  />
-                </div>
-              </CardContent>
-            </Card>
-          </section>
-        </>
+        <div className="flex flex-col gap-10">
+          {!sector.active && (
+            <Badge variant="outline" className="w-fit font-mono text-xs text-fg-muted">
+              {sector.name}: solo admin (oculto en la web)
+            </Badge>
+          )}
+          <ServicesManager
+            key={`svc-${sector.id}`}
+            initial={services.filter((s) => s.sector_id === sector.id)}
+            sector={sector}
+          />
+          <SectorSettings
+            key={`sec-${sector.id}`}
+            sector={sector}
+            hours={((hoursRes.data ?? []) as SectorHours[]).filter((h) => h.sector_id === sector.id)}
+            resources={((resourcesRes.data ?? []) as Resource[]).filter((r) => r.sector_id === sector.id)}
+            hasMonthly={services.some((s) => s.sector_id === sector.id && s.billing === "monthly")}
+          />
+        </div>
       )}
 
-      <section className="mt-12">
-        <SectionTitle>Cupones</SectionTitle>
-        <div className="mt-3 max-w-2xl">
-          <CouponsManager initial={(couponsRes.data ?? []) as CouponRow[]} />
-        </div>
-      </section>
-
-      <section className="mt-12">
-        <SectionTitle>Avisos</SectionTitle>
-        <div className="mt-3 max-w-2xl">
-          <AdminNotices failed={failed} />
-        </div>
-      </section>
+      <div className="mt-10 flex flex-col gap-10">
+        <CouponsManager initial={(couponsRes.data ?? []) as CouponRow[]} />
+        <AdminNotices failed={failed} />
+      </div>
     </PageShell>
   );
 }

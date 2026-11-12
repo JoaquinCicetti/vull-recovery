@@ -18,6 +18,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { SettingsGroup } from "@/components/admin/settings/setting-row";
 
 export type CouponRow = {
   id: string;
@@ -43,23 +44,36 @@ type CouponUse = {
 // the only change is turning it off, which leaves transfers already generated
 // at their price. A "use" is a payment that went through with the code.
 export function CouponsManager({ initial }: { initial: CouponRow[] }) {
+  const [showOff, setShowOff] = useState(false);
+  const on = initial.filter((c) => c.active);
+  const off = initial.filter((c) => !c.active);
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex justify-end">
-        <NewCouponDialog />
-      </div>
+    <SettingsGroup title="Cupones" action={<NewCouponDialog />}>
       {initial.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-fg-faint">
-          Todavía no hay cupones.
-        </p>
+        <li className="px-4 py-8 text-center text-sm text-fg-faint">Todavía no hay cupones.</li>
       ) : (
-        <ul className="surface-card divide-y divide-border">
-          {initial.map((c) => (
+        <>
+          {on.length === 0 && <li className="px-4 py-3 text-sm text-fg-faint">Ningún cupón activo.</li>}
+          {on.map((c) => (
             <CouponItem key={c.id} coupon={c} />
           ))}
-        </ul>
+          {off.length > 0 &&
+            (showOff ? (
+              off.map((c) => <CouponItem key={c.id} coupon={c} />)
+            ) : (
+              <li>
+                <button
+                  type="button"
+                  onClick={() => setShowOff(true)}
+                  className="w-full px-4 py-3 text-left text-sm text-fg-faint transition-colors hover:text-fg"
+                >
+                  Ver inactivos <span className="font-mono">({off.length})</span>
+                </button>
+              </li>
+            ))}
+        </>
       )}
-    </div>
+    </SettingsGroup>
   );
 }
 
