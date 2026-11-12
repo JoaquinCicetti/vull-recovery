@@ -15,7 +15,7 @@ consequences, and the alternatives we rejected. Format is lightweight
 | [0007](0007-db-level-no-double-booking.md) | DB-level no-double-booking + lazy hold expiry | Accepted |
 | [0008](0008-resend-email-provider.md) | Resend as the email provider (own domain) | Accepted |
 | [0009](0009-booking-invariants-enforcement.md) | One-per-day at the DB; re-validate booking rules at the edge | Accepted |
-| [0010](0010-payments-talo-transfers.md) | Payments via Talo automatic bank transfers (manual receipt fallback superseded by 0014) | Accepted |
+| [0010](0010-payments-talo-transfers.md) | Payments via Talo automatic bank transfers (its manual receipt fallback is removed by 0014) | Accepted |
 | [0011](0011-memberships-as-materialized-bookings.md) | Monthly plans (abonos) as materialized bookings | Accepted |
 | [0012](0012-admin-defined-slots-and-booking-window.md) | Admin-defined slots and a weekly client booking window | Accepted |
 | [0013](0013-notification-outbox.md) | Notifications as an outbox written beside the invariant | Accepted |
@@ -23,3 +23,10 @@ consequences, and the alternatives we rejected. Format is lightweight
 | [0015](0015-latency-worker-at-db-region-one-round-trip.md) | Latency: Worker placed at the DB region, local session check, one round trip per page; sa-east-1 move as the structural fix | Accepted |
 | [0016](0016-coupons-and-talo-hosted-page.md) | Discount coupons, and paying on Talo's hosted page | Accepted |
 | [0017](0017-manual-whatsapp-surveys.md) | Post-session surveys sent by hand over WhatsApp, one per booking | Accepted |
+
+## Adding an ADR
+
+Copy the structure of a recent one (Status, Date, Context, Decision,
+Consequences, Alternatives rejected), number it after the highest file here,
+and add a row to the table above. Details: [development.md › When to write an
+ADR](../development.md#when-to-write-an-adr).

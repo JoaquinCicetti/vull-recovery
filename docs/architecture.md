@@ -7,15 +7,14 @@ monthly cost**, simple to operate. The "why" behind each choice is in the
 ## Overview
 
 ```
-Next.js (Vercel, free)            Supabase (free tier)            External
-─────────────────────             ────────────────────            ────────
+Next.js 16 (Cloudflare Worker)    Supabase (free tier, us-west-2)  External
+─────────────────────────────     ───────────────────────────────  ────────
 Landing + plans           ──▶     Postgres + RLS
-Email-OTP login           ──▶     Auth (email OTP)
-Booking / My bookings     ──▶     Storage (receipts)
-Admin panel               ──▶     Edge Functions:                 Google Calendar
-                                   • availability      ─────────▶  (freeBusy)
-                                   • create-booking
-                                   • create-payment    ─────────▶  Talo (CVU/alias)
+Email-OTP / Google login  ──▶     Auth
+Booking / My bookings     ──▶     Edge Functions:                 Google Calendar
+Survey form               ──▶      • availability      ─────────▶  (freeBusy)
+Admin panel                        • create-booking
+                                   • create-payment    ─────────▶  Talo (CVU + hosted page)
                                    • talo-webhook      ◀─────────  Talo (notification)
                                    • talo-reconcile    ─────────▶  Talo (GET /payments)
                                    • admin-payment
@@ -27,7 +26,8 @@ Admin panel               ──▶     Edge Functions:                 Google C
 
 Sensitive logic lives in **Edge Functions** (Deno) using the service-role key, so
 secrets stay server-side and webhooks have a stable URL. The browser uses the
-Supabase client (anon key + RLS) for auth and reads.
+Supabase client (publishable key + RLS) for auth and reads. Deploys:
+[deploy.md](deploy.md).
 
 ## Data model (`supabase/migrations/`)
 
@@ -44,8 +44,12 @@ Supabase client (anon key + RLS) for auth and reads.
 | `memberships` / `membership_slots` / `membership_periods` | Monthly plans (abonos): the client's weekly pattern, and one cuota per month. Each class is a `bookings` row with `membership_id` (ADR 0011) |
 | `swap_requests` | Offers to swap a class between two members (propose → accept) |
 | `notifications` | Outbox: one row per notice (kind, subject, audience, actor), with what was sent or why not (ADR 0013) |
+| `coupons` | Admin-defined percent discounts; the discounted price is stored on the payment (ADR 0016) |
+| `session_surveys` | One post-session survey per booking: sent count, typed answers, `submitted_at` (ADR 0017). `services.stations` lists what each plan includes |
 
-Booking lifecycle: `pending → awaiting_payment → confirmed` (or `cancelled` / `expired`).
+Booking lifecycle: `pending → confirmed` (or `cancelled` / `expired`). A turno is
+confirmed only by its payment or a pack credit (ADR 0014); `awaiting_payment`
+only survives on legacy receipt rows.
 
 ## Key mechanisms
 
@@ -92,15 +96,20 @@ Booking lifecycle: `pending → awaiting_payment → confirmed` (or `cancelled` 
 4. Pick a slot → `create-booking` writes the `pending` booking (guarded by the
    `EXCLUDE` constraint) + a tentative Calendar event.
 5. `create-payment`:
-   - **Talo** → inserts the payment row, mints a one-time CVU/alias (`external_id` = row id)
-     and extends the booking hold to the CVU's expiry. The booking stays `pending`.
+   - **Talo** → inserts the payment row (with any coupon discount, ADR 0016), mints a
+     one-time CVU/alias (`external_id` = row id) and extends the booking hold to the
+     CVU's expiry. The client is sent to Talo's hosted payment page. The booking stays `pending`.
    - No manual receipt since ADR 0014: cash at the desk is an admin slot block.
 6. Confirmation:
    - **Talo** → `talo-webhook` (or the `talo-reconcile` cron) re-fetches the payment from
      Talo, checks the amount actually received, confirms the booking, finalizes the event.
    - A Talo payment the settle path could not resolve (underpaid, reversed…) is flagged and shown at the top of the admin agenda (`admin-payment` to resolve).
-7. Client taps **"Confirmar por WhatsApp"** (`wa.me`): by messaging first, we can
+7. Client taps **"Escribinos por WhatsApp"** (`wa.me`): by messaging first, we can
    reply free within the 24h window. See [ADR 0002](adr/0002-whatsapp-client-initiated-window.md).
+
+8. After the session, an admin can send the survey link (`wa.me`, Agenda › past
+   turnos); the client answers at `/encuesta/[bookingId]` and the stats show in
+   Métricas › Encuestas. See [ADR 0017](adr/0017-manual-whatsapp-surveys.md).
 
 ## Edge Functions (`supabase/functions/`)
 
@@ -111,7 +120,7 @@ Booking lifecycle: `pending → awaiting_payment → confirmed` (or `cancelled` 
 | `create-payment` | user | Talo CVU (the only method) |
 | `talo-webhook` | public* | Notification → re-verify with Talo → settle (`_shared/talo-settle.ts`) |
 | `talo-reconcile` | cron* | Re-checks unsettled Talo payments through the same settle path |
-| `admin-payment` | admin | Approve / reject / dismiss a payment needing a human |
+| `admin-payment` | admin | Resolve a flagged Talo payment (or a legacy receipt row): approve / reject / dismiss |
 | `admin-booking` | admin | Block / unblock a slot under a name, no-show, reschedule (no manual confirm: ADR 0014) |
 | `cancel-booking` | user | Client or admin cancel (`cancel_booking` RPC + Talo/Google around it) |
 | `calendar-poll` | cron* | Google Calendar edits back to bookings |
@@ -121,8 +130,9 @@ Booking lifecycle: `pending → awaiting_payment → confirmed` (or `cancelled` 
 | `membership` | user | Create an abono, lock/unlock renewal, drop an unpaid signup |
 | `admin-membership` | admin | Desk sale (creates the client's account if needed), cash cuota, release, lock |
 | `swap-booking` | user | Move an abono class to a free slot; propose/accept/decline/cancel swaps |
-| `membership-cycle` | cron* | Daily roll of recurring members + roll-error alert |
-| `notify-dispatch` | cron* | Sends the notifications outbox every ~5 min (safety net for `kick()`) |
+| `membership-cycle` | cron* | Optional daily roll of recurring members + roll-error alert (the same housekeeping runs lazily) |
+| `notify-dispatch` | cron* | Sends what the notifications outbox still holds, every ~5 min (safety net for `kick()`); also the admin "Reintentar" |
+| `dev-fake-payment` | user | Dev mode only: asks Talo's sandbox faucet to pay a pending CVU |
 
 \* Webhooks authenticate via their own secret/token, not a Supabase JWT.
 

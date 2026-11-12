@@ -1,306 +1,317 @@
-# Step-by-step environment setup
+# Setup, step by step
 
-From an empty machine to a running app, then each integration, then production.
-Commands assume you're in the project root and using **pnpm**.
+From a fresh clone to a working site: the app, the Supabase project, then each
+integration. Commands run from the project root with **pnpm**.
+
+There is **no local Supabase stack**. The app always talks to the cloud
+project, in development too. Deploying is covered in [deploy.md](deploy.md);
+the daily workflow in [development.md](development.md).
 
 ---
 
 ## 0. Prerequisites
 
-- **Node 22+** and **pnpm** (`corepack enable pnpm`).
-- **Docker Desktop running** (the local Supabase stack runs in Docker).
+- **Node 22** and **pnpm** (`corepack enable pnpm`). CI uses Node 22 and pnpm 11.
+- Access to the Supabase project and the Cloudflare account (for deploys).
+- Deno is **not** needed on your PATH: it runs through `pnpm dlx deno@2`.
 
-## 1. Install dependencies
+## 1. Install
 
 ```bash
 pnpm install
 ```
 
-## 2. Start the local Supabase stack
+This also installs the Supabase CLI (`pnpm exec supabase`) and Wrangler
+(`pnpm exec wrangler`) as dev dependencies.
+
+## 2. Link the Supabase project
 
 ```bash
-pnpm dlx supabase start
+pnpm exec supabase login
+pnpm exec supabase link --project-ref <project-ref>
 ```
 
-First run pulls Docker images (a few minutes). When done it prints local values —
-keep them:
-
-- `API URL` → http://127.0.0.1:54321
-- `anon key`, `service_role key`
-- `Studio URL` → http://127.0.0.1:54323
-- `Mailpit/Inbucket URL` → http://127.0.0.1:54324 (where OTP emails land)
-
-## 3. Create `.env.local` (frontend)
+For a brand-new project, create one first (free tier) in the Supabase
+dashboard, then apply the schema:
 
 ```bash
-NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321
-NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon key from step 2>
+pnpm exec supabase migration list    # what is applied vs. what is in the repo
+pnpm exec supabase db push           # apply supabase/migrations/*
+pnpm exec supabase config push       # Auth settings + code-only email template
+```
+
+## 3. Frontend env: `.env.local`
+
+```bash
+cp .env.example .env.local
+```
+
+The minimum for `pnpm dev`:
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...   # Settings → API Keys
 NEXT_PUBLIC_SITE_URL=http://localhost:3000
-# optional in dev:
-NEXT_PUBLIC_WHATSAPP_BUSINESS_NUMBER=
+NEXT_PUBLIC_TALO_ENABLED=true     # shows the pay button
 ```
 
-## 4. Apply the schema
+Only `NEXT_PUBLIC_*` variables reach the app; everything else in `.env.example`
+is an edge-function secret, listed there for reference. Every variable is in the
+[reference table](#environment-variable-reference) below.
+
+## 4. Run
 
 ```bash
-pnpm dlx supabase db reset
+pnpm dev     # http://localhost:3000
 ```
 
-Runs the migrations (tables, RLS, the `EXCLUDE` no-overlap constraint, the
-`receipts` Storage bucket) and seeds example services.
+Sign in with a real email: the code arrives by email (through Resend once
+step 6 is done). `http://localhost:3000/**` is already an allowed Auth redirect
+(`supabase/config.toml`).
 
-## 5. Run the app
+## 5. Make yourself admin
 
-```bash
-pnpm dev
-```
-
-- App → http://localhost:3000
-- Studio → http://localhost:54323
-- **OTP codes** → http://localhost:54324 (Mailpit)
-
-Sign in with any email, grab the 6-digit code from Mailpit, and you're in.
-
-## 6. Make yourself admin
-
-After logging in once, in Studio's SQL editor:
+Sign in once, then in the dashboard's SQL editor (or
+`pnpm exec supabase db query --linked "…"`):
 
 ```sql
 update public.profiles set is_admin = true
 where id = (select id from auth.users where email = 'you@example.com');
 ```
 
-Then `/admin` (the agenda) and `/admin/ajustes` unlock.
+`/admin` (Agenda, Clientes, Métricas, Ajustes) unlocks. In **Ajustes**, set up
+each sector (Recovery, Pilates): opening hours and slot length, booking window,
+active beds/places, and the plans. Opening hours are not env vars (see the note
+under the reference table).
 
-## 7. Edge Function secrets (local)
+## 6. Edge-function secrets
 
-The core flow (availability + booking) needs **no** external secrets. For Google
-/ Talo / email / WhatsApp, put them in `supabase/functions/.env` and serve
-functions with that file. Every edge secret, by name, is in
-`supabase/.env.secrets.example`:
-
-```bash
-# supabase/functions/.env  (SUPABASE_URL/keys are injected automatically)
-GOOGLE_CLIENT_EMAIL=
-GOOGLE_PRIVATE_KEY=
-GOOGLE_CALENDAR_ID=
-APP_URL=http://localhost:3000
-NOTIFY_DISPATCH_TOKEN=some-random-string
-WHATSAPP_VERIFY_TOKEN=
-```
+Edge functions run on the cloud project and read their config from Supabase
+secrets. The canonical list, with comments, is
+`supabase/.env.secrets.example`; everything above `# @optional` is required in
+production.
 
 ```bash
-pnpm dlx supabase functions serve --env-file supabase/functions/.env
+pnpm exec supabase secrets set KEY=value ...
+pnpm exec supabase secrets list
 ```
 
-> Webhooks (Talo/WhatsApp) need a **public URL**. Locally, expose the functions
-> port with a tunnel (e.g. `ngrok http 54321`) and point the provider at the
-> tunneled `…/functions/v1/<name>` URL.
+`SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` are injected
+by the platform; don't set them. The Talo account keys, `TALO_TEST` and
+`DEV_MODE` are pushed by `scripts/deploy.sh` from `supabase/.env.prod` or
+`supabase/.env.dev` (see [deploy.md](deploy.md)). Deploy the functions with
+`pnpm exec supabase functions deploy`.
 
-**Transactional email locally (dev only).** Booking emails go through Resend;
-without `RESEND_API_KEY`/`EMAIL_FROM` each one fails and is listed on /admin
-("Avisos no enviados"). To see them instead, add
-`EMAIL_SINK_URL=http://host.docker.internal:54324/api/v1/send` to
-`supabase/functions/.env`: `sendMail()` then posts every email to Mailpit's send
-API instead of Resend (no API key needed) and it shows up at
-http://127.0.0.1:54324 next to the OTP mail. Never set `EMAIL_SINK_URL` as a
-deployed secret.
+## 7. Email (Resend)
 
-## 8. Google Calendar (availability)
+1. Verify the sending domain in Resend and create an API key
+   (details: [deploy.md › Email](deploy.md#email-from-your-own-domain-resend)).
+2. Edge secrets: `RESEND_API_KEY`, `EMAIL_FROM` (a sender on the verified
+   domain, e.g. `VULL <sender@your-domain>`).
+3. Auth SMTP in the dashboard, so sign-in codes go through Resend too.
 
-1. Google Cloud Console → create/select a project.
-2. Enable **Google Calendar API**.
-3. Create a **Service Account** → create a **JSON key** → download it.
-4. In Google Calendar, open the center's calendar → **Settings → Share with
-   specific people** → add the service-account email
-   (`…@<project>.iam.gserviceaccount.com`). Give "Make changes to events" if you
-   want the app to also write/confirm events.
-5. Calendar **Settings → Integrate calendar → Calendar ID** → copy it.
-6. Set the secrets:
-   - `GOOGLE_SERVICE_ACCOUNT_JSON` = the full JSON (single line)
-   - `GOOGLE_CALENDAR_ID` = the calendar id
+Without the edge secrets every notice fails and is listed in Ajustes ›
+"Avisos no enviados". `EMAIL_SINK_URL` exists in `_shared/email.ts` to divert
+mail to a test inbox; **never** set it on the project (`deploy.sh` warns if it
+is).
 
-> Without this, availability is computed from DB bookings only. Working hours,
-> days, slot length and timezone live per sector (Admin → Disponibilidad; see
-> the note under the env var table).
+## 8. Talo (automatic bank transfers)
 
-## 9. Talo (automatic bank transfers)
+Talo is the only way to pay ([ADR 0010](adr/0010-payments-talo-transfers.md),
+[0014](adr/0014-no-manual-confirmation-admin-slot-blocks.md),
+[0016](adr/0016-coupons-and-talo-hosted-page.md)). `create-payment` mints a
+one-time CVU/alias per payment and sends the client to Talo's hosted page;
+`talo-webhook` re-fetches the payment from Talo, checks the amount received and
+confirms the turno, pack or cuota. `talo-reconcile` re-checks anything still
+unsettled. There is no receipt upload and no manual "mark paid"; cash at the
+desk is an admin slot block (Agenda › Bloquear horario).
 
-Talo mints a one-time CVU/alias per payment and notifies us when the transfer
-lands; the booking then confirms itself. See ADR 0010 for the design and the
-list of assumptions the sandbox run below resolves.
-
-1. Create a **sandbox** account at `sandbox.talo.com.ar` (it is separate from a
-   production account) → Dashboard → Usuario → Credenciales → `user_id`,
-   `client_id`, `client_secret`.
-2. Set the Edge Function secrets:
+1. Accounts: a **sandbox** account at `sandbox.talo.com.ar` (separate from
+   production) and the production account. In each: Dashboard → Usuario →
+   Credenciales → `user_id`, `client_id`, `client_secret`.
+2. Put them in the gitignored mode files `scripts/deploy.sh` reads:
+   - `supabase/.env.prod`: production keys, `TALO_TEST=false`, `DEV_MODE=false`
+   - `supabase/.env.dev`: sandbox keys, `TALO_TEST=true`, `DEV_MODE=true`
+3. Our own tokens, set once:
    ```bash
-   pnpm exec supabase secrets set TALO_USER_ID=... TALO_CLIENT_ID=... TALO_CLIENT_SECRET=... \
-     TALO_WEBHOOK_SECRET="$(openssl rand -hex 24)" TALO_RECONCILE_TOKEN="$(openssl rand -hex 24)" \
-     TALO_TEST=true TALO_PAYMENT_MINUTES=30
+   pnpm exec supabase secrets set \
+     TALO_WEBHOOK_SECRET="$(openssl rand -hex 24)" \
+     TALO_RECONCILE_TOKEN="$(openssl rand -hex 24)"
    ```
-   `TALO_WEBHOOK_SECRET` is **required** — `talo-webhook` fails closed without it.
-   Talo does not sign webhooks; every payment is re-fetched from Talo's API before
-   anything is confirmed, so this token only rate-limits who may trigger a check.
-3. Deploy `talo-webhook` and `talo-reconcile` (both `verify_jwt = false`, gated by
-   their own tokens). `create-payment` builds the webhook URL automatically as
-   `${SUPABASE_URL}/functions/v1/talo-webhook?token=…`, which must be publicly
-   reachable — deploy to the cloud project rather than running it locally.
-4. Point an external cron (cron-job.org, GitHub Actions…) at
-   `POST ${SUPABASE_URL}/functions/v1/talo-reconcile?token=$TALO_RECONCILE_TOKEN`
-   every ~10 minutes. The webhook's retry policy is undocumented; this sweep is
-   what guarantees a paid turno is eventually confirmed.
-5. Flip `NEXT_PUBLIC_TALO_ENABLED=true` and run the sandbox checklist:
-   1. Book a turno, choose *Pagar por transferencia*. One `payments` row,
-      `provider='talo'`, `status='pending'`, `talo_payment_id`/`talo_cvu` set;
-      booking still `pending` with `hold_expires_at` ≈ now + 30 min.
-   2. Get a token (`POST /users/{user_id}/tokens`) and simulate the transfer:
-      `curl -X POST https://sandbox-api.talo.com.ar/cvu/<CVU>/faucet -H "Authorization: Bearer TL-…" -d '{"amount": <exact price>}'`
-      → payment `approved`, booking `confirmed`, confirmation email, admin alert.
-   3. Underpay (`price − 1`) → stays `pending`, flagged *pagó de menos*, visible in
-      `/admin`. **Note the field that carried the received amount** — it confirms
-      `parseReceived` in `_shared/talo.ts`.
-   4. Overpay → `approved` + flagged *pagó de más*.
-   5. **Expiry gate:** create, `PUT /payments/{id}/expiration` to now + 60 s, wait,
-      then faucet. Whether the transfer bounces or credits decides whether the
-      `EXPIRED → rejected` branch may stay as written (ADR 0010, assumption 4).
-   6. Two concurrent *Pagar* clicks → one row, one CVU, both responses identical.
-   7. Re-POST the same webhook body five times → one email, one credit-ledger row.
-   8. Webhook without `?token=` → 401; with a bogus `paymentId` → 200 and no writes.
-   9. Cancel a booking that has a live CVU → the CVU is expired at Talo.
-   10. Stop the webhook (bad URL), faucet, invoke `talo-reconcile` → same end state.
-6. For production: repeat with a production account, `TALO_TEST=false`, and a
-   fresh `TALO_WEBHOOK_SECRET`.
+   `TALO_WEBHOOK_SECRET` is **required**: `talo-webhook` fails closed without
+   it. Talo doesn't sign webhooks, and every payment is re-fetched from Talo
+   before anything is confirmed, so the token only gates who may trigger a
+   check. `create-payment` builds the webhook URL
+   (`${SUPABASE_URL}/functions/v1/talo-webhook?token=…`) itself.
+4. Optional: `TALO_PAYMENT_MINUTES` (default 30), how long the client has to
+   transfer. It is also how long the slot stays held.
+5. Schedule `talo-reconcile` every ~10 min ([deploy.md › Crons](deploy.md#crons)).
+6. `NEXT_PUBLIC_TALO_ENABLED=true` in `.env.production` (and `.env.local` to pay
+   locally). With it false the pay button becomes a "write us on WhatsApp" line.
 
-## 10. WhatsApp
+**Sandbox run.** `pnpm deploy:dev` switches the site and the functions to the
+sandbox account and shows **"Simular pago"** on the payment screen
+(`dev-fake-payment`, which asks Talo's sandbox faucet to send the money; the
+real webhook then confirms). Things to check:
 
-- Set `NEXT_PUBLIC_WHATSAPP_BUSINESS_NUMBER` (international, no `+`). This powers
-  the `wa.me` links and is all v1 needs.
-- *(Optional, Cloud API)* set `WHATSAPP_VERIFY_TOKEN` and register the Meta webhook
-  at `${SUPABASE_URL}/functions/v1/whatsapp-webhook` (GET verify + POST messages).
+1. Book a turno and pay: one `payments` row (`provider='talo'`,
+   `status='pending'`, `talo_payment_id` set); the booking stays `pending` with
+   `hold_expires_at` at the CVU's expiry.
+2. "Simular pago" → payment `approved`, booking `confirmed`, client and admin
+   notified.
+3. Underpay → stays `pending`, flagged *pagó de menos* at the top of the
+   Agenda. Overpay → `approved` and flagged *pagó de más*.
+4. Two concurrent clicks on pay → one row, one CVU.
+5. Replaying the same webhook, or running `talo-reconcile` → still one
+   confirmation, one notice.
+6. Webhook without `?token=` → 401.
+7. Cancel a booking with a live CVU → the CVU is expired at Talo.
 
-## 11. Production deploy
+Then `pnpm deploy` to go back to production. A payment started in one mode
+won't settle in the other.
 
-**Supabase (free cloud project):**
+## 9. Web push (VAPID)
 
 ```bash
-pnpm dlx supabase link --project-ref <ref>
-pnpm dlx supabase db push
-pnpm dlx supabase functions deploy
-# Every name in supabase/.env.secrets.example above "@optional":
-pnpm dlx supabase secrets set \
-  APP_URL=https://tu-dominio RESEND_API_KEY=re_... EMAIL_FROM="VULL <hola@tu-dominio>" \
-  VAPID_PUBLIC_KEY=... VAPID_PRIVATE_KEY=... VAPID_SUBJECT=mailto:... \
-  TALO_WEBHOOK_SECRET=... TALO_RECONCILE_TOKEN=... MEMBERSHIP_CYCLE_TOKEN=... \
-  NOTIFY_DISPATCH_TOKEN=...
+npx web-push generate-vapid-keys
 ```
 
-`scripts/deploy.sh` warns about any required secret missing from the project
-(`--strict` makes it fail).
+- Browser: `NEXT_PUBLIC_VAPID_PUBLIC_KEY` (in `.env.production` / `.env.local`).
+- Edge secrets: `VAPID_PUBLIC_KEY` (the same public key), `VAPID_PRIVATE_KEY`,
+  `VAPID_SUBJECT` (`mailto:` address).
 
-**Frontend (Vercel):** import the repo and set `NEXT_PUBLIC_SUPABASE_URL`,
-`NEXT_PUBLIC_SUPABASE_ANON_KEY` (from the cloud project), `NEXT_PUBLIC_SITE_URL`
-(prod domain), `NEXT_PUBLIC_WHATSAPP_BUSINESS_NUMBER`.
+The browser key and the edge key must be the same pair. Admins turn push on per
+device in Ajustes ("Activar notificaciones en este dispositivo"); clients on
+`/cuenta/notificaciones`. iOS needs the installed app (16.4+).
 
-**keep-alive:** schedule a weekly GET to
-`${SUPABASE_URL}/functions/v1/keep-alive` (cron-job.org or a GitHub Actions cron)
-so the free project doesn't pause.
+## 10. Google Calendar (optional)
 
-**Abonos need no cron.** The monthly roll, the late surcharge and the bed
-release are derived from today's date at query time, and every booking/abono
-function runs the same housekeeping lazily (ADR 0011). `membership-cycle` is
-only a manual kick (`?token=MEMBERSHIP_CYCLE_TOKEN`) if you ever want to force
-it.
+Recovery availability subtracts the calendar's busy blocks, and bookings create
+events. Without it, availability comes from the database only.
 
-**notify-dispatch (optional):** notifications are sent immediately by the
-function that emits them. A cron every ~5 min at
-`POST ${SUPABASE_URL}/functions/v1/notify-dispatch?token=$NOTIFY_DISPATCH_TOKEN`
-only retries what failed or was lost (see [Notifications](#notifications) and
-ADR 0013). Without it, failed rows wait on /admin "Avisos no enviados" for a
-"Reintentar" (same function, admin session instead of the token).
+1. Google Cloud Console → a project → enable the **Google Calendar API**.
+2. Create a **service account** and a **JSON key**.
+3. Share the centre's calendar with the service account's email ("Make changes
+   to events").
+4. Calendar settings → Integrate calendar → copy the **Calendar ID**.
+5. Edge secrets, from the key JSON:
+   ```bash
+   pnpm exec supabase secrets set GOOGLE_CLIENT_EMAIL=... \
+     GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n" \
+     GOOGLE_CALENDAR_ID=...
+   ```
 
-**External crons, all together:** `keep-alive` weekly, `talo-reconcile` every
-~10 min; optionally `notify-dispatch` every 5 min.
+**Sync-back (manual).** `calendar-poll` applies Google edits back to bookings:
+an event deleted in Calendar cancels its booking; a paid booking whose event was
+moved is flagged, not moved. It is not scheduled; run it when needed with
+`POST ${SUPABASE_URL}/functions/v1/calendar-poll?token=$CALENDAR_POLL_TOKEN`
+(set `CALENDAR_POLL_TOKEN` first; it fails closed).
+
+## 11. WhatsApp
+
+- `wa.me` links (booking confirmations, survey links) use
+  `NEXT_PUBLIC_WHATSAPP_BUSINESS_NUMBER` (international, no `+`). Unset, it
+  falls back to the public number in `lib/site.ts`.
+- Optional inbound webhook (`whatsapp-webhook`, Meta Cloud API): set
+  `WHATSAPP_VERIFY_TOKEN` (GET handshake) and `WHATSAPP_APP_SECRET` (verifies
+  `X-Hub-Signature-256` on POST; fails closed), and register
+  `${SUPABASE_URL}/functions/v1/whatsapp-webhook` with Meta.
+
+## 12. Bot protection (optional)
+
+Cloudflare Turnstile on the login form: set `NEXT_PUBLIC_TURNSTILE_SITE_KEY`
+(browser) and `TURNSTILE_SECRET`, uncomment `[auth.captcha]` in
+`supabase/config.toml` (provider `turnstile`, `secret = "env(TURNSTILE_SECRET)"`)
+and run `pnpm exec supabase config push`. With no site key, captcha stays off.
+
+## 13. Crons
+
+`talo-reconcile` (~10 min), `keep-alive` (weekly), and optionally
+`notify-dispatch` (~5 min) and `membership-cycle` (daily). Endpoints and tokens:
+[deploy.md › Crons](deploy.md#crons).
 
 ---
 
 ## Environment variable reference
 
-| Variable | Scope | Where it comes from |
-|----------|-------|---------------------|
-| `NEXT_PUBLIC_SUPABASE_URL` | Frontend | `supabase status` (local) / project API settings (cloud) |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Frontend | same as above |
-| `NEXT_PUBLIC_SITE_URL` | Frontend | your site URL (`http://localhost:3000` in dev) |
-| `NEXT_PUBLIC_WHATSAPP_BUSINESS_NUMBER` | Frontend | business WhatsApp, intl format, no `+` |
-| `SUPABASE_URL` / `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` | Edge Function | **injected automatically** by Supabase — don't set manually |
-| `GOOGLE_SERVICE_ACCOUNT_JSON` | Edge Function | GCP service-account JSON key (step 8) |
-| `GOOGLE_CALENDAR_ID` | Edge Function | Google Calendar → Integrate calendar |
-| `APP_URL` | Edge Function | site URL: Talo redirect, links in emails, CORS |
-| `RESEND_API_KEY` | Edge Function + Auth SMTP | resend.com → API Keys (free tier, own domain) |
-| `EMAIL_FROM` | Edge Function | sender on the Resend-verified domain, e.g. `VULL <hola@tu-dominio>` |
-| `WHATSAPP_VERIFY_TOKEN` | Edge Function | Meta webhook verify token (GET handshake) |
-| `WHATSAPP_APP_SECRET` | Edge Function | Meta App Secret — **required for the POST webhook** (verifies the `X-Hub-Signature-256` HMAC; fails closed without it) |
-| `WHATSAPP_TOKEN` / `WHATSAPP_PHONE_NUMBER_ID` | Edge Function | Meta Cloud API (optional, fase 2) |
-| `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | Frontend | Web Push public key (`npx web-push generate-vapid-keys`) |
-| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` | Edge Function | Web Push VAPID keys + `mailto:` subject (admin push) |
-| `MAX_ACTIVE_HOLDS` | Edge Function | max concurrent unconfirmed holds per user (default 3) |
-| `BOOKING_THROTTLE_SECONDS` | Edge Function | min seconds between a user's bookings (default 5) |
-| `CORS_EXTRA_ORIGINS` | Edge Function | extra browser origins allowed to call functions (comma-separated) |
-| `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | Frontend | Cloudflare Turnstile site key (optional, enables login captcha) |
-| `TURNSTILE_SECRET` | Auth | Cloudflare Turnstile secret (with `[auth.captcha]`) |
-| `MEMBERSHIP_CYCLE_TOKEN` | Edge Function | random string; gates the `membership-cycle` cron (fails closed) |
-| `NOTIFY_DISPATCH_TOKEN` | Edge Function | random string; gates the `notify-dispatch` cron (fails closed) |
-| `CALENDAR_POLL_TOKEN` | Edge Function | random string; gates the `calendar-poll` cron (fails closed) |
-| `EMAIL_SINK_URL` | Edge Function (local only) | Mailpit send API; **never** a deployed secret |
+**Browser** (`NEXT_PUBLIC_*`, inlined at build time; production values live in
+`.env.production`):
 
-The full list of edge secrets, by name, is `supabase/.env.secrets.example`.
+| Variable | Required | Purpose |
+|----------|----------|---------|
+| `NEXT_PUBLIC_SUPABASE_URL` | yes | Project URL |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | yes | Publishable key (`sb_publishable_…`) |
+| `NEXT_PUBLIC_SITE_URL` | yes | Site origin: Auth redirects, canonical/OG URLs. `http://localhost:3000` locally, the `https://` www URL in production |
+| `NEXT_PUBLIC_TALO_ENABLED` | yes in prod | `true` shows the pay button; Talo is the only way to pay |
+| `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | for push | Web push public key |
+| `NEXT_PUBLIC_WHATSAPP_BUSINESS_NUMBER` | no | Overrides the `wa.me` number in `lib/site.ts` |
+| `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | no | Turns on the login captcha |
+| `NEXT_PUBLIC_DEV_MODE` | no | Set by `deploy.sh`: DEV badge + "Simular pago". Never `true` in production |
+| `NEXT_PUBLIC_BLUR_TEXT` | no | Demo only: blurs all text |
 
-> Opening hours are **not** env vars: each sector has per-weekday ranges in the
-> `sector_hours` table, edited in Admin → Disponibilidad. Each range has its
-> turno length (`slot_minutes`, "Turnos de 30 min"), and a turno takes one slot;
-> a plan's duration is only shown to the client. How far ahead clients book
-> (`sectors.booking_window`: this Mon–Sun week, or the next N days) and the
-> number of simultaneous turnos (active `resources`) are edited there too. The
-> abono billing policy (due day, late fee, release day) lives on the `sectors`
-> row. See ADR 0012.
+**Edge-function secrets** (`supabase secrets set`; canonical list in
+`supabase/.env.secrets.example`):
+
+| Secret | Required | Purpose |
+|--------|----------|---------|
+| `SUPABASE_URL` / `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` | injected | Set by the platform |
+| `APP_URL` | yes | Site URL: Talo redirect, links in emails, CORS allow-list |
+| `RESEND_API_KEY` / `EMAIL_FROM` | yes | Email via Resend |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` | yes | Web push |
+| `TALO_USER_ID` / `TALO_CLIENT_ID` / `TALO_CLIENT_SECRET` | yes | Talo API credentials (pushed by `deploy.sh`) |
+| `TALO_TEST` | yes | `true` → Talo sandbox. Must match the deploy mode (pushed by `deploy.sh`) |
+| `TALO_WEBHOOK_SECRET` | yes | `?token=` of the Talo webhook URL |
+| `TALO_RECONCILE_TOKEN` | yes | Gates the `talo-reconcile` cron |
+| `NOTIFY_DISPATCH_TOKEN` | no | Gates the `notify-dispatch` cron |
+| `MEMBERSHIP_CYCLE_TOKEN` | no | Gates `membership-cycle` |
+| `DEV_MODE` | no | `true` enables `dev-fake-payment` (also needs `TALO_TEST=true`); pushed by `deploy.sh` |
+| `TALO_PAYMENT_MINUTES` | no | Minutes to transfer, also the slot hold (default 30) |
+| `GOOGLE_CLIENT_EMAIL` / `GOOGLE_PRIVATE_KEY` / `GOOGLE_CALENDAR_ID` | no | Google Calendar availability and events |
+| `CALENDAR_POLL_TOKEN` | no | Gates `calendar-poll` |
+| `WHATSAPP_VERIFY_TOKEN` / `WHATSAPP_APP_SECRET` | no | Inbound WhatsApp webhook |
+| `CORS_EXTRA_ORIGINS` | no | Extra browser origins allowed to call the functions (comma-separated) |
+| `MAX_ACTIVE_HOLDS` | no | Max unconfirmed holds per user (default 3) |
+| `BOOKING_THROTTLE_SECONDS` | no | Min seconds between a user's bookings (default 5) |
+| `EMAIL_SINK_URL` | never deployed | Diverts mail to a test sink; `deploy.sh` warns if set |
+
+**Auth** (`supabase/config.toml`, `env(...)`): `TURNSTILE_SECRET` for the
+captcha, and the Resend API key as the SMTP password (set in the dashboard).
+
+> **Not env vars:** each sector's opening hours (`sector_hours`, several ranges
+> per weekday, each with its `slot_minutes`), the booking window
+> (`sectors.booking_window`), the slot hold (`sectors.hold_minutes`), the number
+> of simultaneous turnos (active `resources`) and the abono billing policy (due
+> day, late fee, release day) live in the database and are edited in Ajustes.
+> See [ADR 0012](adr/0012-admin-defined-slots-and-booking-window.md).
+
+---
 
 ## Security hardening
 
-- **CORS** — Edge Functions echo back only allow-listed browser origins (`APP_URL`
-  + `localhost` + any `CORS_EXTRA_ORIGINS`), not `*`. Add every host clients/admin
-  use (apex **and** `www`, plus preview domains) to `CORS_EXTRA_ORIGINS` or
-  browser calls from those hosts are blocked. Webhooks are server-to-server and
-  send no CORS.
-- **Booking anti-abuse** — a user can hold at most `MAX_ACTIVE_HOLDS` unconfirmed
-  turnos at once and must wait `BOOKING_THROTTLE_SECONDS` between bookings (on top
-  of the one-turno-per-day rule).
-- **Bot protection (captcha)** — recommended before launch to stop email
-  enumeration / OTP spam. Create a free **Cloudflare Turnstile** widget, then: (1)
-  set `NEXT_PUBLIC_TURNSTILE_SITE_KEY` (browser) and `TURNSTILE_SECRET`
-  (Edge/Auth); (2) uncomment `[auth.captcha]` in `supabase/config.toml` (provider
-  `turnstile`, `secret = "env(TURNSTILE_SECRET)"`) and push config to the hosted
-  project. The login form sends the token automatically once the site key is set;
-  with no key, captcha is off and login is unchanged. The OTP resend cooldown is
-  `60s` (`[auth.email] max_frequency`).
+- **CORS.** Edge functions echo back only allow-listed origins (`APP_URL`,
+  `localhost`, `CORS_EXTRA_ORIGINS`), never `*`. Webhooks are server-to-server
+  and need none.
+- **Booking anti-abuse.** At most `MAX_ACTIVE_HOLDS` unconfirmed turnos per user,
+  `BOOKING_THROTTLE_SECONDS` between bookings, on top of one turno per day.
+- **Captcha.** Turnstile (step 12) stops email enumeration and code spam. The
+  code resend cooldown is 60 s (`[auth.email] max_frequency`).
 
 ## Notifications
 
 Every notice is a row in the `notifications` outbox, written by the same
-transaction that caused it, and sent by one dispatcher
+transaction that caused it and sent by one dispatcher
 (`supabase/functions/_shared/notify.ts`). Decision record:
 [ADR 0013](adr/0013-notification-outbox.md).
 
-**Who hears what.** An admin's own action never notifies the other admins,
-only the client.
+**Who hears what.** An admin's own action never notifies the other admins, only
+the client.
 
 | Event | Client | Admins |
 |-------|--------|--------|
 | Turno booked, payment pending | "Reserva tomada" (email only) | — |
 | Turno paid (Talo), incl. pay-at-booking | "Turno confirmado" | "Nuevo turno pagado" (one notice for pay + book) |
 | Turno booked with a pack credit | "Turno confirmado" | "X usó 1 sesión de su pack (quedan N)" |
-| Receipt uploaded (turno, pack, cuota) | — | "… por verificar" |
-| Admin approves a receipt / confirms by hand / cash cuota | confirmation | — |
-| Admin rejects a receipt | "Comprobante rechazado" | — |
+| Admin resolves a flagged payment / cash cuota at the desk | confirmation | — |
 | Pack paid (Talo) | "Sesiones acreditadas" | "Pack vendido" |
 | Cuota paid (Talo) | "Abono confirmado" | "Nuevo abono" (first cuota) / "Cuota pagada" |
 | Client cancels | "Turno cancelado" | "Turno cancelado por el cliente" |
@@ -309,72 +320,46 @@ only the client.
 | Client moves or swaps a class | swap: offer + answer to the members | "Clase movida" |
 | Client stops renewing an abono | — | "Abono sin renovación" |
 | Admin releases an abono / sells one at the desk | "Liberamos tu lugar" / "Tu lugar está reservado" (email even with email off) | — |
+| Client answers a post-session survey | — | survey notice; the push opens Métricas › Encuestas (ADR 0017) |
 | Talo anomalies, calendar conflicts, abono roll collisions | — | alert, once per payment+flag / booking+time / member+month |
 
-**Channels.** Clients choose email and/or push on /cuenta/notificaciones; at
-least one stays on (`profiles_one_channel`). Push turns on only after this
-device subscribed: the browser must support it (service worker, PushManager,
-Notification), an iPhone/iPad must run the installed app, and permission must
-be granted; otherwise the reason is shown and push stays off. A **critical**
-notice (the centre cancelled or moved the turno) that reaches nobody, because
-email is off and no device took the push, goes by email anyway, recorded as
-`channels.fallback = "email"`. Admins get email + push on every device, no
-preferences.
+The `payment_to_verify` and `payment_rejected` kinds still exist for legacy
+receipt rows from before ADR 0014; nothing new emits them from the app.
 
-- **Email**: Resend (`RESEND_API_KEY` + `EMAIL_FROM`).
-- **Web Push**: `npx web-push generate-vapid-keys`, then set
-  `NEXT_PUBLIC_VAPID_PUBLIC_KEY` (browser) + `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`/
-  `VAPID_SUBJECT` (Edge secrets). The owner enables it from **/admin** ("Activar
-  notificaciones"); iOS 16.4+ requires the installed PWA. Validate against one
-  real device before relying on it (the encryption can't be tested without a
-  live subscription).
+**Channels.** Clients choose email and/or push on `/cuenta/notificaciones`; at
+least one stays on (`profiles_one_channel`). Push turns on only after the
+device subscribed: the browser must support it, an iPhone/iPad must run the
+installed app, and permission must be granted; otherwise the reason is shown. A
+**critical** notice that reaches nobody (email off, no device took the push)
+goes by email anyway, recorded as `channels.fallback = "email"`. Admins get
+email + push on every subscribed device.
 
 **Delivery.** The function that queued a notice sends it right after its
-response (`kick`, the Talo webhook included: Talo must not wait); crons send
-before answering. The
-`notify-dispatch` cron (every 5 min) sends whatever is left. A row that fails
-(e.g. Resend rejects `EMAIL_FROM`) keeps its `error`, is retried up to 5 times,
-and is listed on **/admin → Avisos no enviados** with a "Reintentar" button.
-Every failure is also logged with the `[notify]` prefix in the function logs.
+response (`kick`; the Talo webhook too, so Talo never waits); crons send before
+answering. The `notify-dispatch` cron sends whatever is left. A row that fails
+keeps its `error`, is retried up to 5 times, and is listed in Ajustes ›
+**Avisos no enviados** with a "Reintentar" button. Every failure is logged with
+the `[notify]` prefix in the function logs.
 
-### Verifying notifications locally
+### Verifying notifications
 
-With the local stack running, the migration applied, functions served with
-`EMAIL_SINK_URL` (mail lands in Mailpit, :54324) and Talo sandbox + `DEV_MODE`.
-After each step, `select kind, audience, actor, sent_at, error, channels from
-notifications order by created_at desc;` shows what was queued and sent.
+In dev mode (`pnpm deploy:dev`), after each step run:
 
-1. **Single turno, Talo.** Book, pay with "Simular pago". One `booking_confirmed`
-   for the user and ONE for admins ("reservó y pagó"); nothing for the payment
-   itself. The client email has the briefing (recovery).
-2. **Receipt.** Book, upload a receipt: one `payment_to_verify` (admins).
-   Approve it from /admin: `booking_confirmed` user only (actor `admin`).
-   Repeat and reject instead: `payment_rejected` to the client.
-3. **Pack + 2 credit bookings.** Buy a pack via Talo: `pack_purchased` user +
-   admins. Book twice with credits: each a `booking_confirmed` admins row that
-   reads "usó 1 sesión de su pack (quedan N)" with N going down.
-4. **Client cancel vs admin cancel.** Client cancels: `booking_cancelled` user +
-   admins. Admin cancels another: user only. Then set that client to
-   `notify_email = false, notify_push = true` in SQL with no `push_subscriptions`
-   row, and cancel again as admin: the email still goes out, with
-   `channels.fallback = "email"`.
-5. **Admin reschedule.** `booking_rescheduled` user only, "Antes / Ahora" rows.
-6. **Abono cuota, Talo vs desk.** Sign up and pay via Talo: `membership_paid`
-   user + admins ("Nuevo abono"). Mark next month paid in cash from /admin:
-   user only.
-7. **Failure path.** Serve functions with a bad `EMAIL_FROM` (and no sink):
-   the row gets `error`, appears on /admin "Avisos no enviados". Fix the env,
-   press "Reintentar": it goes out and leaves the list.
-8. **Replay.** Call `talo-webhook` five times for the same paid payment (and run
-   `talo-reconcile`): still exactly one row per (kind, subject, audience).
+```bash
+pnpm exec supabase db query --linked "select kind, audience, actor, sent_at, error, channels from notifications order by created_at desc limit 10"
+```
 
-## Google Calendar sync-back (optional)
+1. **Single turno.** Book and "Simular pago": one `booking_confirmed` for the
+   client and one for admins; nothing separate for the payment.
+2. **Pack + credit bookings.** Buy a pack: `pack_purchased` client + admins.
+   Book twice with credits: each admin row reads "usó 1 sesión… (quedan N)".
+3. **Client cancel vs admin cancel.** Client cancels: `booking_cancelled` client
+   + admins. Admin cancels: client only.
+4. **Admin reschedule.** `booking_rescheduled`, client only.
+5. **Abono cuota.** Pay via Talo: `membership_paid` client + admins. Cash cuota
+   from the panel: client only.
+6. **Survey.** Answer a survey: `survey_submitted`, admins.
+7. **Replay.** Re-run `talo-reconcile` for a paid payment: still one row per
+   (kind, subject, audience).
 
-`calendar-poll` (own `?token=` secret, fail-closed) is a one-shot sync of
-external Google Calendar edits back to bookings: an event deleted/cancelled in
-Calendar cancels the matching booking; a paid booking whose event was moved is
-flagged to the owner (not silently moved); events with no matching booking are
-ignored (they already show as busy via freeBusy). The calendar is not edited by
-hand in practice, so it is not scheduled: run it manually when needed
-(`POST …/functions/v1/calendar-poll?token=$CALENDAR_POLL_TOKEN`). Needs
-`GOOGLE_*` configured + `CALENDAR_POLL_TOKEN`.
+Finish with `pnpm deploy`.
