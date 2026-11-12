@@ -7,6 +7,7 @@ import {
   CalendarClock,
   ExternalLink,
   LockOpen,
+  MessageSquareHeart,
   MoreHorizontal,
   UserX,
   XCircle,
@@ -50,6 +51,7 @@ export function BookingActions({
   membership = false,
   block = false,
   summary,
+  survey,
 }: {
   bookingId: string;
   serviceId: string;
@@ -61,6 +63,12 @@ export function BookingActions({
   block?: boolean;
   /** "Lun 20 oct · 10:00 · Juan Pérez": names the turno inside each dialog. */
   summary: string;
+  /**
+   * The post-session survey (ADR 0017), when this turno can have one and it is
+   * not answered yet. href is the wa.me link with the message, or null when the
+   * client has no usable WhatsApp.
+   */
+  survey?: { href: string | null; sentCount: number };
 }) {
   const router = useRouter();
   const supabase = createClient();
@@ -73,6 +81,15 @@ export function BookingActions({
   const canUnblock = block && isActive;
 
   if (block && !canUnblock) return null;
+
+  // Opens WhatsApp from the tap itself (an awaited window.open is blocked on
+  // iOS), and records the send alongside it.
+  function markSurveySent() {
+    void supabase.rpc("admin_mark_survey_sent", { p_booking: bookingId }).then(({ error }) => {
+      if (error) console.error("[survey] mark sent", error.message);
+      router.refresh();
+    });
+  }
 
   async function run(action: Action): Promise<string | null> {
     const fn = action === "cancel" ? "cancel-booking" : "admin-booking";
@@ -100,6 +117,20 @@ export function BookingActions({
               </Link>
             </DropdownMenuItem>
           )}
+          {survey &&
+            (survey.href ? (
+              <DropdownMenuItem asChild>
+                <a href={survey.href} target="_blank" rel="noopener noreferrer" onClick={markSurveySent}>
+                  <MessageSquareHeart />
+                  {survey.sentCount > 0 ? "Reenviar encuesta" : "Enviar encuesta por WhatsApp"}
+                </a>
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem disabled>
+                <MessageSquareHeart />
+                Encuesta: sin WhatsApp
+              </DropdownMenuItem>
+            ))}
           {canReschedule && (
             <DropdownMenuItem onSelect={() => setDialog("reschedule")}>
               <CalendarClock />

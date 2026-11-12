@@ -7,7 +7,7 @@ import type { BookingStatus } from "@/lib/types";
 // proxy, not the string.
 // The `profiles!user_id` embed disambiguates bookings' two FKs to profiles.
 export const BOOKINGS_SELECT =
-  "id, starts_at, status, service_id, user_id, membership_id, block_label, memberships(locked), services(name, price_ars), sectors(slug, name), resources(name), profiles!user_id(full_name, whatsapp_phone, email)";
+  "id, starts_at, status, service_id, user_id, membership_id, block_label, memberships(locked), services(name, price_ars), sectors(slug, name, survey_enabled), resources(name), profiles!user_id(full_name, whatsapp_phone, email), session_surveys(id, sent_count, submitted_at, experience, nps)";
 
 // Same rows, but only bookings whose client matches a filter on `profiles`
 // (an inner join; the plain embed would keep the booking and null the client).
@@ -34,6 +34,17 @@ export type AdminBookingRow = {
   membership: { locked: boolean } | null;
   /** An admin block: the slot is held under this name, nobody pays (ADR 0014). */
   block: string | null;
+  /**
+   * The post-session survey (ADR 0017): set when the sector asks for one;
+   * whether this turno qualifies (confirmed, past) is decided by the row.
+   */
+  survey: {
+    id: string | null;
+    sentCount: number;
+    submitted: boolean;
+    experience: number | null;
+    nps: number | null;
+  } | null;
 };
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -55,5 +66,14 @@ export function mapBooking(b: any): AdminBookingRow {
     email: (b.profiles?.email as string) ?? null,
     membership: b.membership_id ? { locked: Boolean(b.memberships?.locked) } : null,
     block: (b.block_label as string) ?? null,
+    survey: b.sectors?.survey_enabled
+      ? {
+          id: b.session_surveys?.id ?? null,
+          sentCount: b.session_surveys?.sent_count ?? 0,
+          submitted: Boolean(b.session_surveys?.submitted_at),
+          experience: b.session_surveys?.experience ?? null,
+          nps: b.session_surveys?.nps ?? null,
+        }
+      : null,
   };
 }

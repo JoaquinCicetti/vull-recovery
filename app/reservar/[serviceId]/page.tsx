@@ -9,6 +9,7 @@ import { formatARS } from "@/lib/site";
 import { localDate } from "@/lib/format";
 import { PageShell } from "@/components/ui/page-shell";
 import { BookingFlow } from "./booking-flow";
+import { PlanStations } from "@/components/plan-stations";
 
 export const metadata: Metadata = { title: "Reservar", robots: { index: false, follow: true } };
 
@@ -67,6 +68,7 @@ export default async function ReservarPage({
             {credits > 0 ? "1 crédito" : formatARS(service.price_ars)}
           </span>
           <span className="text-fg-faint"> · {service.duration_minutes} min</span>
+          <PlanStations service={service} className="mt-3" />
           {service.description && (
             <span className="mt-3 block text-sm leading-relaxed text-fg-muted">
               {service.description}

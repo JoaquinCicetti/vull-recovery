@@ -1,9 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
-import { Lock, MessageCircle } from "lucide-react";
+import { Lock, MessageCircle, MessageSquareHeart } from "lucide-react";
 import { fmtTime, fmtDayLabel, fmtDateParts, localDate } from "@/lib/format";
-import { formatARS } from "@/lib/site";
+import { clientWaLink, formatARS, getURL } from "@/lib/site";
+import { surveyMessage } from "@/lib/survey";
+import { SurveyResponseDialog } from "@/components/admin/survey-response-dialog";
 import { StatusBadge } from "@/components/status-badge";
 import { BookingActions } from "@/components/admin/booking-actions";
 import { cn } from "@/lib/utils";
@@ -42,6 +45,37 @@ function BlockTag({ className }: { className?: string }) {
   );
 }
 
+// The survey's state on a past turno: sent (how many times) or answered (the
+// experience score; tapping opens the answers). Nothing before it is sent.
+function SurveyChip({ survey }: { survey: NonNullable<AdminBookingRow["survey"]> }) {
+  const [open, setOpen] = useState(false);
+  if (survey.submitted && survey.id) {
+    return (
+      <>
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="mt-1.5 inline-flex items-center gap-1 rounded-md border border-accent/30 bg-accent/10 px-2 py-0.5 text-xs font-medium text-fg transition-colors hover:border-accent/60"
+        >
+          <MessageSquareHeart className="size-3 text-accent" aria-hidden />
+          Encuesta
+          <span className="font-mono tabular-nums">{survey.experience}/10</span>
+        </button>
+        <SurveyResponseDialog surveyId={survey.id} open={open} onOpenChange={setOpen} />
+      </>
+    );
+  }
+  if (survey.sentCount > 0) {
+    return (
+      <span className="mt-1.5 inline-flex items-center gap-1 rounded-md bg-surface-2 px-2 py-0.5 text-xs text-fg-faint">
+        <MessageSquareHeart className="size-3" aria-hidden />
+        Encuesta enviada{survey.sentCount > 1 && <span className="font-mono"> ×{survey.sentCount}</span>}
+      </span>
+    );
+  }
+  return null;
+}
+
 // One turno as a row, not a card: time | who · what | status | menu. The
 // status badge already says whether it is paid (confirmed = paid, there is
 // no other way to be confirmed), so nothing repeats it. On a phone the badge
@@ -52,6 +86,15 @@ function Row({ b, past }: { b: AdminBookingRow; past?: boolean }) {
   const summary = `${weekday} ${day} ${month} · ${fmtTime(b.startsAt)} · ${b.client}`;
   const isBlock = b.block != null;
   const gone = !["pending", "awaiting_payment", "confirmed"].includes(b.status);
+  // A survey goes to a client after a confirmed session they attended.
+  const surveyable = Boolean(b.survey && past && !isBlock && b.userId && b.status === "confirmed");
+  const surveyLink =
+    surveyable && !b.survey!.submitted
+      ? {
+          href: clientWaLink(b.phone, surveyMessage(b.client.split(" ")[0], getURL(`/encuesta/${b.id}`))),
+          sentCount: b.survey!.sentCount,
+        }
+      : undefined;
   return (
     <li
       className={cn(
@@ -115,6 +158,7 @@ function Row({ b, past }: { b: AdminBookingRow; past?: boolean }) {
         ) : (
           <StatusBadge status={b.status} className="mt-2 sm:hidden" />
         )}
+        {surveyable && <SurveyChip survey={b.survey!} />}
         {b.membership && b.status === "pending" && (
           <p className="mt-1 text-xs text-amber-300">Cuota del mes sin pagar</p>
         )}
@@ -133,6 +177,7 @@ function Row({ b, past }: { b: AdminBookingRow; past?: boolean }) {
           membership={Boolean(b.membership)}
           block={isBlock}
           summary={summary}
+          survey={surveyLink}
         />
       </div>
     </li>

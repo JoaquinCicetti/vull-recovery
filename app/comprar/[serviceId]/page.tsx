@@ -5,6 +5,7 @@ import { getUserAndProfile } from "@/lib/auth";
 import { formatARS } from "@/lib/site";
 import { PageShell } from "@/components/ui/page-shell";
 import { PurchasePanel } from "./purchase-panel";
+import { PlanStations } from "@/components/plan-stations";
 
 export const metadata: Metadata = { title: "Comprar pack", robots: { index: false, follow: true } };
 
@@ -33,6 +34,7 @@ export default async function ComprarPage({
             · {pack.sessions_included} sesiones
             {pack.validity_days ? ` · vencen en ${pack.validity_days} días` : ""}
           </span>
+          <PlanStations service={pack} className="mt-3" />
           {pack.description && (
             <span className="mt-3 block text-sm leading-relaxed text-fg-muted">
               {pack.description}

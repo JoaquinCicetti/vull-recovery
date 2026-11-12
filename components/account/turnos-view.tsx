@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeftRight, ArrowRight, Ticket } from "lucide-react";
+import { ArrowLeftRight, ArrowRight, MessageSquareHeart, Ticket } from "lucide-react";
 import { fmtDateParts, fmtRelativeDay, fmtTime } from "@/lib/format";
 import { BookingRow, type AccountBooking } from "@/components/account/booking-row";
 import { Section } from "@/components/account/section";
@@ -18,6 +18,7 @@ export function TurnosView({
   creditServiceId,
   nowISO,
   swapIncoming = 0,
+  pendingSurveys = [],
 }: {
   upcoming: AccountBooking[];
   history: AccountBooking[];
@@ -28,6 +29,8 @@ export function TurnosView({
   nowISO: string;
   /** Pending swap offers other members sent this client. */
   swapIncoming?: number;
+  /** Booking ids of past sessions with an unanswered survey, newest first. */
+  pendingSurveys?: string[];
 }) {
   const [next, ...later] = upcoming;
   const shownHistory = showAll ? history : history.slice(0, HISTORY_PREVIEW);
@@ -43,6 +46,21 @@ export function TurnosView({
             Tenés {swapIncoming} {swapIncoming === 1 ? "propuesta" : "propuestas"} de intercambio
           </span>
           <span className="text-fg-faint transition-colors group-hover:text-fg">Ver</span>
+          <ArrowRight className="size-4 text-fg-faint" aria-hidden />
+        </Link>
+      )}
+      {pendingSurveys.length > 0 && (
+        <Link
+          href={`/encuesta/${pendingSurveys[0]}`}
+          className="surface-card group mb-3 flex items-center gap-3 border-accent/30 px-4 py-3 text-sm transition-colors duration-150 hover:border-accent/60"
+        >
+          <MessageSquareHeart className="size-4 shrink-0 text-accent" aria-hidden />
+          <span className="flex-1 text-fg">
+            {pendingSurveys.length === 1
+              ? "¿Cómo te fue en tu última sesión? Contanos en 2 minutos"
+              : `Tenés ${pendingSurveys.length} encuestas de sesiones para responder`}
+          </span>
+          <span className="text-fg-faint transition-colors group-hover:text-fg">Responder</span>
           <ArrowRight className="size-4 text-fg-faint" aria-hidden />
         </Link>
       )}

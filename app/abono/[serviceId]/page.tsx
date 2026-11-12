@@ -8,6 +8,7 @@ import { formatARS } from "@/lib/site";
 import { localDate } from "@/lib/format";
 import { PageShell } from "@/components/ui/page-shell";
 import { MembershipSignup } from "./membership-signup";
+import { PlanStations } from "@/components/plan-stations";
 
 export const metadata: Metadata = { title: "Elegí tus horarios", robots: { index: false, follow: true } };
 
@@ -81,6 +82,7 @@ export default async function AbonoPage({
             {" "}
             / mes · {n} {n === 1 ? "clase" : "clases"} por semana · {service.duration_minutes} min
           </span>
+          <PlanStations service={service} className="mt-3" />
           {service.description && (
             <span className="mt-3 block text-sm leading-relaxed text-fg-muted">
               {service.description}

@@ -5,6 +5,8 @@ import { createClient } from "@/lib/supabase/server";
 import { formatARS } from "@/lib/site";
 import { LoadErrors } from "@/components/admin/load-errors";
 import { SectionTitle, Stat } from "@/components/admin/stat";
+import { Segmented } from "@/components/admin/segmented";
+import { SurveysView } from "./surveys-view";
 import { PageShell } from "@/components/ui/page-shell";
 import { cn } from "@/lib/utils";
 
@@ -95,14 +97,39 @@ export default async function MetricasPage({
   const sp = await searchParams;
   const raw = Number.parseInt(String(sp.dias ?? ""), 10);
   const days = PERIODS.some((p) => p.days === raw) ? raw : 30;
+  // Encuestas is a view of Métricas, not a tab (four sections, ADR 0017).
+  const surveys = sp.ver === "encuestas";
+  const openId = typeof sp.r === "string" ? sp.r : null;
 
   const supabase = await createClient();
-  // Admin check and the metrics in one round trip (the RPC is admin-gated itself).
-  const [, { data, error }] = await Promise.all([
+  // Admin check and the data in one round trip (the RPCs are admin-gated themselves).
+  const [, { data, error }, { data: surveySectors }] = await Promise.all([
     requireAdmin(),
-    supabase.rpc("admin_metrics", { p_days: days }),
+    surveys
+      ? Promise.resolve({ data: null, error: null })
+      : supabase.rpc("admin_metrics", { p_days: days }),
+    supabase
+      .from("sectors")
+      .select("id, slug, name")
+      .eq("survey_enabled", true)
+      .order("sort_order"),
   ]);
   const m = data as Metrics | null;
+
+  // Sectors never share a screen: the surveys view is one sector at a time.
+  const sectors = (surveySectors ?? []) as { id: string; slug: string; name: string }[];
+  const sector = sectors.find((x) => x.slug === sp.sector) ?? sectors[0] ?? null;
+  const href = (o: { ver?: string; dias?: number; sector?: string }) => {
+    const q = new URLSearchParams();
+    const ver = o.ver ?? (surveys ? "encuestas" : undefined);
+    const d = o.dias ?? days;
+    const sec = o.sector ?? (surveys && sectors.length > 1 ? sector?.slug : undefined);
+    if (ver === "encuestas") q.set("ver", "encuestas");
+    if (d !== 30) q.set("dias", String(d));
+    if (ver === "encuestas" && sec) q.set("sector", sec);
+    const qs = q.toString();
+    return qs ? `/admin/metricas?${qs}` : "/admin/metricas";
+  };
 
   const held = m ? m.bookings.attended + m.bookings.no_show : 0;
   const maxService = m ? Math.max(1, ...m.services.map((s) => s.count)) : 1;
@@ -111,11 +138,31 @@ export default async function MetricasPage({
     <PageShell size="wide" top="tight" eyebrow="Panel" title="Métricas">
       <LoadErrors errors={error ? [`Métricas: ${error.message}`] : []} />
 
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <Segmented
+          label="Vista"
+          items={[
+            { href: href({ ver: "general" }), label: "General", active: !surveys },
+            { href: href({ ver: "encuestas" }), label: "Encuestas", active: surveys },
+          ]}
+        />
+        {surveys && sectors.length > 1 && (
+          <Segmented
+            label="Sector"
+            items={sectors.map((x) => ({
+              href: href({ sector: x.slug }),
+              label: x.name,
+              active: x.id === sector?.id,
+            }))}
+          />
+        )}
+      </div>
+
       <div className="flex flex-wrap gap-2">
         {PERIODS.map((p) => (
           <Link
             key={p.days}
-            href={p.days === 30 ? "/admin/metricas" : `/admin/metricas?dias=${p.days}`}
+            href={href({ dias: p.days })}
             aria-current={p.days === days ? "true" : undefined}
             className={cn(
               "rounded-md border px-3 py-1.5 text-sm transition-colors",
@@ -129,7 +176,13 @@ export default async function MetricasPage({
         ))}
       </div>
 
-      {!m ? (
+      {surveys ? (
+        sector ? (
+          <SurveysView key={`${sector.id}-${days}`} sectorId={sector.id} days={days} openId={openId} />
+        ) : (
+          <p className="mt-6 text-sm text-fg-faint">Ningún sector tiene encuestas activadas (Ajustes).</p>
+        )
+      ) : !m ? (
         <p className="mt-6 text-sm text-fg-faint">
           {error ? "—" : "Sin datos."}
         </p>

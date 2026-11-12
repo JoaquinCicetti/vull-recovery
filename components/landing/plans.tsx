@@ -17,6 +17,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { PlanStations } from "@/components/plan-stations";
 
 const grid: Variants = {
   hidden: {},
@@ -205,6 +206,7 @@ function PlanCard({
             {/* A real heading for the page outline; inherits CardTitle's type. */}
             <h3>{s.name}</h3>
           </CardTitle>
+          <PlanStations service={s} className="mt-3" />
           {s.description && (
             <CardDescription className="mt-2 leading-relaxed text-fg-muted">
               {s.description}

@@ -36,6 +36,8 @@ export type Sector = {
   due_day: number;
   late_fee_pct: number;
   release_day: number;
+  // Post-session surveys sent by WhatsApp from Agenda (ADR 0017).
+  survey_enabled: boolean;
 };
 
 // One open range of one weekday (table sector_hours). A weekday with no rows is
@@ -77,6 +79,10 @@ export type Service = {
   // weekly classes and pays price_ars per month (see lib/membership.ts).
   billing: "session" | "monthly";
   classes_per_week: number | null;
+  // What the plan includes (stations of the circuit): pills on the public plan
+  // pages when show_stations, and the options of the post-session survey.
+  stations: string[];
+  show_stations: boolean;
 };
 
 export function isMonthly(s: Pick<Service, "billing">): boolean {

@@ -17,9 +17,13 @@ type Row = {
   hold_expires_at: string | null;
   membership_id: string | null;
   services: { name: string } | null;
-  sectors: { slug: string; name: string } | null;
+  sectors: { slug: string; name: string; survey_enabled: boolean } | null;
   resources: { name: string } | null;
+  session_surveys: { submitted_at: string | null } | null;
 };
+
+// A survey is offered for this long after the session (ADR 0017).
+const SURVEY_DAYS = 30;
 
 export default async function MisTurnosPage({
   searchParams,
@@ -36,7 +40,7 @@ export default async function MisTurnosPage({
     supabase
       .from("bookings")
       .select(
-        "id, starts_at, status, hold_expires_at, membership_id, services(name), sectors(slug, name), resources(name)",
+        "id, starts_at, status, hold_expires_at, membership_id, services(name), sectors(slug, name, survey_enabled), resources(name), session_surveys(submitted_at)",
       )
       // Explicit: RLS lets an admin read EVERY booking, and this page is "mine".
       .eq("user_id", user.id)
@@ -52,7 +56,21 @@ export default async function MisTurnosPage({
   const now = Date.now();
   const nowISO = new Date(now).toISOString();
 
-  const all: AccountBooking[] = ((data ?? []) as unknown as Row[]).map((b) => ({
+  const rows = (data ?? []) as unknown as Row[];
+  // Past confirmed sessions of a sector that asks, still unanswered: newest first.
+  const pendingSurveys = rows
+    .filter(
+      (b) =>
+        b.status === "confirmed" &&
+        b.sectors?.survey_enabled &&
+        !b.session_surveys?.submitted_at &&
+        new Date(b.starts_at).getTime() <= now &&
+        now - new Date(b.starts_at).getTime() < SURVEY_DAYS * 86_400_000,
+    )
+    .map((b) => b.id)
+    .reverse();
+
+  const all: AccountBooking[] = rows.map((b) => ({
     id: b.id,
     startsAt: b.starts_at,
     status: b.status,
@@ -84,6 +102,7 @@ export default async function MisTurnosPage({
         creditServiceId={credits[0]?.serviceId ?? null}
         nowISO={nowISO}
         swapIncoming={swapIncoming}
+        pendingSurveys={pendingSurveys}
       />
     </PageShell>
   );
