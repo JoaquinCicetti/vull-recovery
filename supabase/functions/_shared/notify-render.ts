@@ -858,6 +858,10 @@ const surveySubmittedAdmins: Renderer = async (admin, row) => {
   ];
   if (s.level) rows.push({ label: "Nivel", value: esc([LEVEL[s.level], s.sport].filter(Boolean).join(" · ")) });
   if (sv.best_stations?.length) rows.push({ label: "Lo mejor", value: esc(sv.best_stations.join(", ")) });
+  // A public comment waits for an admin's approval before it shows on the web
+  // (ADR 0018). The payload flag is all this needs: the comment is in the panel.
+  const review = row.payload.review_pending === true;
+  if (review) rows.push({ label: "Opinión pública", value: "Dejó un comentario: falta aprobarlo" });
   const notes = [
     s.valued ? `<b>Valoró:</b> ${esc(s.valued)}` : "",
     s.improve ? `<b>Mejoraría:</b> ${esc(s.improve)}` : "",
@@ -874,7 +878,9 @@ const surveySubmittedAdmins: Renderer = async (admin, row) => {
     }),
     push: {
       title: "Nueva encuesta",
-      body: `${name} · Experiencia ${s.experience}/10 · Recomendaría ${s.nps}/10`,
+      body: `${name} · Experiencia ${s.experience}/10 · Recomendaría ${s.nps}/10${
+        review ? " · Opinión pública por aprobar" : ""
+      }`,
       url: path,
     },
   };

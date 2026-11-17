@@ -4,6 +4,8 @@ import { useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { fmtDateParts } from "@/lib/format";
 import { SurveyResponseDialog } from "@/components/admin/survey-response-dialog";
+import { Stars } from "@/components/survey/inputs";
+import { REVIEW_LABEL, type ReviewStatus } from "@/lib/survey";
 import { cn } from "@/lib/utils";
 
 export type SurveyListItem = {
@@ -13,13 +15,16 @@ export type SurveyListItem = {
   service: string;
   experience: number;
   nps: number;
+  rating: number | null;
+  /** State of the public comment; null when the client left none. */
+  review: ReviewStatus | null;
 };
 
 /** Recent answers as rows; a row opens every answer. `openId` (from a notice's link) opens one on arrival. */
 export function SurveyList({ items, openId }: { items: SurveyListItem[]; openId: string | null }) {
   const [open, setOpen] = useState<string | null>(openId);
   if (items.length === 0) {
-    return <p className="mt-3 text-sm text-fg-faint">Sin respuestas en el período.</p>;
+    return <p className="mt-3 text-sm text-fg-faint">Sin respuestas para mostrar.</p>;
   }
   return (
     <>
@@ -39,6 +44,23 @@ export function SurveyList({ items, openId }: { items: SurveyListItem[]; openId:
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium text-fg">{r.client}</span>
                   {r.service && <span className="block truncate text-xs text-fg-muted">{r.service}</span>}
+                  {(r.rating != null || r.review) && (
+                    <span className="mt-1 flex items-center gap-2">
+                      {r.rating != null && <Stars value={r.rating} />}
+                      {r.review && (
+                        <span
+                          className={cn(
+                            "rounded border px-1 font-mono text-[10px] uppercase tracking-wider",
+                            r.review === "pending"
+                              ? "border-accent/40 text-accent"
+                              : "border-border text-fg-faint",
+                          )}
+                        >
+                          {REVIEW_LABEL[r.review]}
+                        </span>
+                      )}
+                    </span>
+                  )}
                 </span>
                 <Pill label="Exp" n={r.experience} always />
                 <Pill label="Rec" n={r.nps} />

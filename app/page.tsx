@@ -3,6 +3,7 @@ import { getActiveServicesStatic } from "@/lib/services";
 import { ExperienceClient } from "@/components/experience/experience-client";
 import { About, Faq, Location } from "@/components/landing/about";
 import { Plans } from "@/components/landing/plans";
+import { Reviews } from "@/components/landing/reviews";
 import { LocalBusinessJsonLd } from "@/components/seo/local-business-jsonld";
 
 // Title and description are the root layout's defaults; this is the one page
@@ -23,6 +24,8 @@ export default async function Home() {
       {/* Server-rendered, always-visible copy: what VULL is; where and the FAQ after the plans. */}
       <About />
       <Plans initialServices={services} />
+      {/* Approved public comments; renders nothing while there are none. */}
+      <Reviews />
       <Location />
       <Faq />
     </>

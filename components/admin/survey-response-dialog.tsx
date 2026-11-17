@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { fmtDateTime } from "@/lib/format";
@@ -11,7 +12,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { LEVEL_LABEL, PRE_KEYS, SCALES, SURVEY_COLUMNS, YES_LABEL, type SurveyRow } from "@/lib/survey";
+import { Button } from "@/components/ui/button";
+import { Stars } from "@/components/survey/inputs";
+import {
+  LEVEL_LABEL,
+  PRE_KEYS,
+  REVIEW_LABEL,
+  SCALES,
+  SURVEY_COLUMNS,
+  YES_LABEL,
+  type ReviewStatus,
+  type SurveyRow,
+} from "@/lib/survey";
 import { cn } from "@/lib/utils";
 
 type Full = SurveyRow & {
@@ -53,6 +65,27 @@ export function SurveyResponseDialog({
 
   const loaded = row && row.id === surveyId ? row : null;
 
+  // Approve or hide the public comment (ADR 0018). The page behind is refreshed
+  // so its list and the "por aprobar" count follow.
+  const router = useRouter();
+  const [saving, setSaving] = useState<ReviewStatus | null>(null);
+  async function moderate(status: "approved" | "hidden") {
+    if (!loaded) return;
+    setSaving(status);
+    setError(null);
+    const { error } = await createClient().rpc("admin_set_review_status", {
+      p_survey: loaded.id,
+      p_status: status,
+    });
+    setSaving(null);
+    if (error) {
+      setError(error.message);
+      return;
+    }
+    setRow({ ...loaded, review_status: status });
+    router.refresh();
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto">
@@ -76,7 +109,44 @@ export function SurveyResponseDialog({
             </div>
           )
         ) : (
-          <SurveyAnswersView s={loaded} />
+          <>
+            <SurveyAnswersView s={loaded} />
+            {loaded.public_comment && loaded.review_status && (
+              <section className="space-y-3 rounded-md border border-border bg-surface-2/50 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="eyebrow">Opinión pública</h3>
+                  <span className="font-mono text-[11px] uppercase tracking-wider text-fg-muted">
+                    {REVIEW_LABEL[loaded.review_status]}
+                  </span>
+                </div>
+                {loaded.rating != null && <Stars value={loaded.rating} />}
+                <p className="whitespace-pre-wrap text-sm text-fg">{loaded.public_comment}</p>
+                <p className="text-xs text-fg-faint">
+                  En la web se muestra con el nombre de pila, las estrellas y el plan.
+                </p>
+                {error && <p className="text-sm text-danger">{error}</p>}
+                <div className="flex gap-2">
+                  {loaded.review_status !== "approved" && (
+                    <Button size="sm" disabled={saving !== null} onClick={() => moderate("approved")}>
+                      {saving === "approved" && <Loader2 className="animate-spin" />}
+                      Aprobar y publicar
+                    </Button>
+                  )}
+                  {loaded.review_status !== "hidden" && (
+                    <Button variant="outline" size="sm" disabled={saving !== null} onClick={() => moderate("hidden")}>
+                      {saving === "hidden" && <Loader2 className="animate-spin" />}
+                      {loaded.review_status === "approved" ? "Quitar de la web" : "No publicar"}
+                    </Button>
+                  )}
+                </div>
+              </section>
+            )}
+            {loaded.rating != null && !loaded.public_comment && (
+              <p className="flex items-center gap-2 text-sm text-fg-muted">
+                <Stars value={loaded.rating} /> Sin comentario público.
+              </p>
+            )}
+          </>
         )}
       </DialogContent>
     </Dialog>

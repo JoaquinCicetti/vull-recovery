@@ -24,10 +24,18 @@ export type SurveyAnswers = {
   valued: string;
   improve: string;
   nps: number | null;
+  /** Optional public review (ADR 0018): 1–5 stars and a comment. */
+  rating: number | null;
+  public_comment: string;
 };
 
+export type ReviewStatus = "pending" | "approved" | "hidden";
+
 /** A stored row (admin dialog, client summary). */
-export type SurveyRow = Omit<SurveyAnswers, "sport" | "best_station_other" | "valued" | "improve"> & {
+export type SurveyRow = Omit<
+  SurveyAnswers,
+  "sport" | "best_station_other" | "valued" | "improve" | "public_comment"
+> & {
   id: string;
   booking_id: string;
   submitted_at: string | null;
@@ -35,10 +43,12 @@ export type SurveyRow = Omit<SurveyAnswers, "sport" | "best_station_other" | "va
   best_station_other: string | null;
   valued: string | null;
   improve: string | null;
+  public_comment: string | null;
+  review_status: ReviewStatus | null;
 };
 
 export const SURVEY_COLUMNS =
-  "id, booking_id, submitted_at, age, sport, level, training_days, pre_fatigue, pre_soreness, pre_tiredness, pre_recovery, pre_sleep, post_overall, tension_relief, mobility_gain, best_stations, best_station_other, experience, valued, improve, nps";
+  "id, booking_id, submitted_at, age, sport, level, training_days, pre_fatigue, pre_soreness, pre_tiredness, pre_recovery, pre_sleep, post_overall, tension_relief, mobility_gain, best_stations, best_station_other, experience, valued, improve, nps, rating, public_comment, review_status";
 
 export const EMPTY_ANSWERS: SurveyAnswers = {
   age: null,
@@ -59,6 +69,15 @@ export const EMPTY_ANSWERS: SurveyAnswers = {
   valued: "",
   improve: "",
   nps: null,
+  rating: null,
+  public_comment: "",
+};
+
+export const REVIEW_MAX = 600;
+export const REVIEW_LABEL: Record<ReviewStatus, string> = {
+  pending: "Por aprobar",
+  approved: "Publicada",
+  hidden: "Oculta",
 };
 
 export const LEVELS: { value: Level; label: string }[] = [
@@ -111,6 +130,9 @@ export function stepValid(step: number, a: SurveyAnswers): boolean {
       return a.post_overall !== null && a.tension_relief !== null && a.mobility_gain !== null && a.experience !== null;
     case 3:
       return a.nps !== null;
+    case 4:
+      // Optional step: a comment needs its stars, nothing else is required.
+      return a.public_comment.trim() === "" || a.rating !== null;
     default:
       return false;
   }

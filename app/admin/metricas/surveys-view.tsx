@@ -1,8 +1,14 @@
+import Link from "next/link";
+import { Download, MessageSquareText } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { localDate } from "@/lib/format";
 import { LoadErrors } from "@/components/admin/load-errors";
 import { SectionTitle, Stat } from "@/components/admin/stat";
-import { LEVEL_LABEL, PRE_KEYS, SCALES, type Level } from "@/lib/survey";
+import { FilterDialog, FilterField } from "@/components/admin/filter-dialog";
+import { Pager } from "@/components/admin/pager";
+import { FIELD } from "@/components/admin/stat";
+import { Button } from "@/components/ui/button";
+import { LEVEL_LABEL, PRE_KEYS, SCALES, type Level, type ReviewStatus } from "@/lib/survey";
 import { SurveyList, type SurveyListItem } from "./survey-list";
 
 // Shape of public.admin_survey_stats() (session_surveys migration).
@@ -19,6 +25,25 @@ type Stats = {
   other_stations: number;
   by_level: { level: Level; count: number; experience: number | null; nps: number | null }[];
 };
+
+/** ?opiniones= : the answers list narrowed by the state of its public comment. */
+export const REVIEW_FILTERS = ["pendientes", "publicadas", "ocultas"] as const;
+export type ReviewFilter = (typeof REVIEW_FILTERS)[number];
+const REVIEW_FILTER: Record<ReviewFilter, { status: ReviewStatus; label: string }> = {
+  pendientes: { status: "pending", label: "Opiniones por aprobar" },
+  publicadas: { status: "approved", label: "Opiniones publicadas" },
+  ocultas: { status: "hidden", label: "Opiniones ocultas" },
+};
+
+const PAGE = 25;
+const BASE = "/admin/metricas";
+
+function hrefWith(params: Record<string, string | undefined>) {
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) if (v) qs.set(k, v);
+  const s = qs.toString();
+  return s ? `${BASE}?${s}` : BASE;
+}
 
 const fmt1 = (n: number | null | undefined) => (n == null ? "—" : Number(n).toLocaleString("es-AR"));
 
@@ -69,27 +94,45 @@ export async function SurveysView({
   sectorId,
   days,
   openId,
+  review,
+  page,
+  params,
 }: {
   sectorId: string;
   days: number;
   openId: string | null;
+  review: ReviewFilter | null;
+  page: number;
+  /** The view's own query string (ver, dias, sector), carried by every link here. */
+  params: Record<string, string | undefined>;
 }) {
   const now = new Date();
   const to = localDate(now.toISOString());
   const from = localDate(new Date(now.getTime() - (days - 1) * 86_400_000).toISOString());
 
   const supabase = await createClient();
-  const [{ data, error }, { data: recent, error: listError }] = await Promise.all([
+  let list = supabase
+    .from("session_surveys")
+    .select("id, submitted_at, experience, nps, rating, review_status, services(name), profiles(full_name)", {
+      count: "exact",
+    })
+    .eq("sector_id", sectorId)
+    .not("submitted_at", "is", null);
+  // Comments waiting for approval are a queue: show them whatever the period.
+  if (review !== "pendientes") list = list.gte("submitted_at", `${from}T00:00:00-03:00`);
+  if (review) list = list.eq("review_status", REVIEW_FILTER[review].status);
+
+  const [{ data, error }, { data: recent, error: listError, count }, { count: pending }] = await Promise.all([
     supabase.rpc("admin_survey_stats", { p_sector: sectorId, p_from: from, p_to: to }),
+    list.order("submitted_at", { ascending: false }).range((page - 1) * PAGE, page * PAGE - 1),
     supabase
       .from("session_surveys")
-      .select("id, submitted_at, experience, nps, services(name), profiles(full_name)")
+      .select("id", { count: "exact", head: true })
       .eq("sector_id", sectorId)
-      .not("submitted_at", "is", null)
-      .gte("submitted_at", `${from}T00:00:00-03:00`)
-      .order("submitted_at", { ascending: false })
-      .limit(50),
+      .eq("review_status", "pending"),
   ]);
+  const total = count ?? 0;
+  const listParams = { ...params, opiniones: review ?? undefined };
   const s = data as Stats | null;
   const errors = [error && `Encuestas: ${error.message}`, listError && `Respuestas: ${listError.message}`].filter(
     Boolean,
@@ -100,6 +143,8 @@ export async function SurveysView({
     submitted_at: string;
     experience: number;
     nps: number;
+    rating: number | null;
+    review_status: ReviewStatus | null;
     services: { name: string } | null;
     profiles: { full_name: string | null } | null;
   }[]).map((r) => ({
@@ -109,7 +154,50 @@ export async function SurveysView({
     service: r.services?.name ?? "",
     experience: r.experience,
     nps: r.nps,
+    rating: r.rating,
+    review: r.review_status,
   }));
+
+  const answers = (
+    <section className="mt-12">
+      <SectionTitle>Respuestas</SectionTitle>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+        <FilterDialog
+          basePath={BASE}
+          keep={params}
+          active={review ? [{ key: "opiniones", label: REVIEW_FILTER[review].label, clearHref: hrefWith(params) }] : []}
+          clearHref={hrefWith(params)}
+        >
+          <FilterField label="Opinión pública" htmlFor="f-opiniones">
+            <select id="f-opiniones" name="opiniones" defaultValue={review ?? ""} className={FIELD}>
+              <option value="">Todas las respuestas</option>
+              {REVIEW_FILTERS.map((f) => (
+                <option key={f} value={f}>
+                  {REVIEW_FILTER[f].label}
+                </option>
+              ))}
+            </select>
+          </FilterField>
+        </FilterDialog>
+        {total > 0 && (
+          <Button asChild variant="outline" size="sm">
+            {/* A file download, not a page: a plain anchor, never prefetched. */}
+            <a href={`${BASE}/encuestas.csv?${new URLSearchParams({ sector: sectorId, dias: String(days), ...(review ? { opiniones: review } : {}) })}`}>
+              <Download data-icon="inline-start" aria-hidden />
+              Exportar CSV
+            </a>
+          </Button>
+        )}
+      </div>
+      <p className="mt-4 font-mono text-xs text-fg-faint">
+        {total} {total === 1 ? "respuesta" : "respuestas"}
+        {review === "pendientes" ? " · de cualquier fecha" : ""}
+      </p>
+      <SurveyList items={items} openId={openId} />
+      <Pager basePath={BASE} params={listParams} page={page} pageSize={PAGE} total={total} />
+    </section>
+  );
+  const emptyPeriod = Boolean(s) && s!.answered === 0 && s!.sent === 0;
 
   // Stations grouped by plan, each plan's list already sorted by count.
   const plans = new Map<string, { station: string; count: number }[]>();
@@ -120,6 +208,20 @@ export async function SurveysView({
   return (
     <>
       <LoadErrors errors={errors} />
+      {(pending ?? 0) > 0 && review !== "pendientes" && (
+        <Link
+          href={hrefWith({ ...params, opiniones: "pendientes" })}
+          className="surface-card group mt-6 flex items-center gap-3 border-accent/30 px-4 py-3 text-sm transition-colors duration-150 hover:border-accent/60"
+        >
+          <MessageSquareText className="size-4 shrink-0 text-accent" aria-hidden />
+          <span className="flex-1 text-fg">
+            {pending === 1
+              ? "1 opinión pública espera tu aprobación"
+              : `${pending} opiniones públicas esperan tu aprobación`}
+          </span>
+          <span className="text-fg-faint transition-colors group-hover:text-fg">Revisar</span>
+        </Link>
+      )}
       {!s ? (
         <p className="mt-6 text-sm text-fg-faint">{error ? "—" : "Sin datos."}</p>
       ) : s.answered === 0 && s.sent === 0 ? (
@@ -237,12 +339,10 @@ export async function SurveysView({
             </>
           )}
 
-          <section className="mt-12">
-            <SectionTitle>Respuestas</SectionTitle>
-            <SurveyList items={items} openId={openId} />
-          </section>
         </>
       )}
+      {/* The list follows its own filter, so it shows even when the period's stats are empty. */}
+      {(!emptyPeriod || total > 0 || review) && answers}
     </>
   );
 }

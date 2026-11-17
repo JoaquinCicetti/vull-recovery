@@ -22,7 +22,8 @@ type Row = {
   session_surveys: { submitted_at: string | null } | null;
 };
 
-// A survey is offered for this long after the session (ADR 0017).
+// The banner nudges for this long after the session; the link on each past
+// turno never expires (ADR 0017, ADR 0018).
 const SURVEY_DAYS = 30;
 
 export default async function MisTurnosPage({
@@ -57,15 +58,18 @@ export default async function MisTurnosPage({
   const nowISO = new Date(now).toISOString();
 
   const rows = (data ?? []) as unknown as Row[];
-  // Past confirmed sessions of a sector that asks, still unanswered: newest first.
+  // Same rule as survey_booking(): a confirmed session, already started, of a
+  // sector that asks.
+  const surveyOf = (b: Row): AccountBooking["survey"] =>
+    b.status === "confirmed" && b.sectors?.survey_enabled && new Date(b.starts_at).getTime() <= now
+      ? b.session_surveys?.submitted_at
+        ? "done"
+        : "pending"
+      : null;
+  // Recent unanswered ones, newest first, for the banner.
   const pendingSurveys = rows
     .filter(
-      (b) =>
-        b.status === "confirmed" &&
-        b.sectors?.survey_enabled &&
-        !b.session_surveys?.submitted_at &&
-        new Date(b.starts_at).getTime() <= now &&
-        now - new Date(b.starts_at).getTime() < SURVEY_DAYS * 86_400_000,
+      (b) => surveyOf(b) === "pending" && now - new Date(b.starts_at).getTime() < SURVEY_DAYS * 86_400_000,
     )
     .map((b) => b.id)
     .reverse();
@@ -82,6 +86,7 @@ export default async function MisTurnosPage({
       b.sectors && b.sectors.slug !== "recovery"
         ? `${b.sectors.name}${b.resources?.name ? ` · ${b.resources.name}` : ""}`
         : null,
+    survey: surveyOf(b),
   }));
 
   // Upcoming = still holds a slot and has not started. Everything else (past,

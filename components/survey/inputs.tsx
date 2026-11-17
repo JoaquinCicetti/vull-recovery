@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useRef, type KeyboardEvent } from "react";
-import { Check, Minus, Plus } from "lucide-react";
+import { Check, Minus, Plus, Star } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /** Arrow keys move the selection inside a radiogroup (roving tabindex). */
@@ -261,5 +261,73 @@ export function StationChips({
         })}
       </div>
     </Question>
+  );
+}
+
+const STARS = [1, 2, 3, 4, 5];
+
+/** 1–5 stars. Optional: picking the current value again clears it. */
+export function StarInput({
+  label,
+  hint,
+  value,
+  onChange,
+}: {
+  label: string;
+  hint?: string;
+  value: number | null;
+  onChange: (v: number | null) => void;
+}) {
+  const id = useId();
+  const ref = useRef<HTMLDivElement>(null);
+  return (
+    <Question label={label} hint={hint} id={id}>
+      <div
+        ref={ref}
+        role="radiogroup"
+        aria-labelledby={id}
+        className="flex gap-1"
+        onKeyDown={(e) => onArrows(e, STARS, value, onChange, ref.current)}
+      >
+        {STARS.map((n) => {
+          const selected = value === n;
+          const lit = value !== null && n <= value;
+          return (
+            <button
+              key={n}
+              type="button"
+              role="radio"
+              aria-checked={selected}
+              aria-label={n === 1 ? "1 estrella" : `${n} estrellas`}
+              tabIndex={selected || (value === null && n === 1) ? 0 : -1}
+              onClick={() => onChange(selected ? null : n)}
+              className={cn(
+                "flex size-11 items-center justify-center rounded-md",
+                "transition-[color,transform] duration-150 ease-out active:scale-90",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40",
+                lit ? "text-accent" : "text-fg-faint hover:text-fg-muted",
+              )}
+            >
+              <Star className={cn("size-7", lit && "fill-current")} aria-hidden />
+            </button>
+          );
+        })}
+      </div>
+    </Question>
+  );
+}
+
+/** A rating as read-only stars (public reviews, admin list). */
+export function Stars({ value, className }: { value: number; className?: string }) {
+  return (
+    <span role="img" aria-label={`${value} de 5 estrellas`} className={cn("inline-flex gap-0.5", className)}>
+      {STARS.map((n) => (
+        <Star
+          key={n}
+          aria-hidden
+          className={cn("size-3.5", n <= value ? "fill-current text-accent" : "text-fg-faint/50")}
+        />
+      ))}
+    </span>
   );
 }

@@ -209,6 +209,19 @@ The order matters because each layer depends on the one before it:
    WhatsApp with the link; answering at `/encuesta/<id>` notifies admins and
    shows in Métricas › Encuestas; plan pages show the stations as tags.
 
+### Release: public reviews and survey export (ADR 0018, unreleased)
+
+1. `pnpm exec supabase db push` to apply `20261117120000_survey_reviews.sql`
+   (review columns, `submit_session_survey` replaced, `admin_set_review_status`,
+   `public_reviews`). Until it is applied, Métricas › Encuestas and the survey
+   dialog in Agenda error, because they select the new columns.
+2. Redeploy `notify-dispatch` (`notify-render.ts` changed).
+3. `pnpm deploy`.
+4. Check: a past turno in Mis turnos shows "Completar encuesta"; a survey sent
+   with stars and a comment appears in Métricas › Encuestas as "Por aprobar"
+   and not on the home page; approving it shows it on the home page below the
+   plans; "Exportar CSV" downloads the answers.
+
 ---
 
 ## After deploying: smoke test

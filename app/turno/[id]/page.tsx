@@ -32,8 +32,10 @@ type BookingWithService = Booking & {
     timezone: string;
     cancel_notice_hours: number;
     change_notice_hours: number;
+    survey_enabled: boolean;
   } | null;
   resources: { name: string } | null;
+  session_surveys: { submitted_at: string | null } | null;
 };
 
 export default async function TurnoPage({
@@ -54,7 +56,7 @@ export default async function TurnoPage({
     supabase
       .from("bookings")
       .select(
-        "*, services(name, price_ars, duration_minutes), sectors(slug, name, timezone, cancel_notice_hours, change_notice_hours), resources(name)",
+        "*, services(name, price_ars, duration_minutes), sectors(slug, name, timezone, cancel_notice_hours, change_notice_hours, survey_enabled), resources(name), session_surveys(submitted_at)",
       )
       .eq("id", id)
       .single(),
@@ -154,6 +156,17 @@ export default async function TurnoPage({
     !isClass &&
     booking.sectors?.slug === SESSION_BRIEFING.sectorSlug &&
     new Date(booking.starts_at).getTime() > nowMs;
+  // Post-session survey (same rule as survey_booking()), for the client only:
+  // an admin can open this page for someone else's turno.
+  const survey =
+    isConfirmed &&
+    booking.sectors?.survey_enabled &&
+    booking.user_id === profile?.id &&
+    new Date(booking.starts_at).getTime() <= nowMs
+      ? booking.session_surveys?.submitted_at
+        ? "done"
+        : "pending"
+      : null;
   const place =
     booking.sectors && booking.sectors.slug !== "recovery"
       ? `${booking.sectors.name} · ${booking.resources?.name ?? ""}`
@@ -202,6 +215,21 @@ export default async function TurnoPage({
           )}
         </div>
       </div>
+
+      {survey === "pending" && (
+        <div className="surface-card mt-6 border-accent/30 p-5">
+          <p className="font-semibold text-fg">¿Cómo te fue en esta sesión?</p>
+          <p className="mt-1 text-sm text-fg-muted">
+            Contanos en 2 minutos. Nos ayuda a mejorar nuestros protocolos.
+          </p>
+          <Button asChild className="mt-3">
+            <Link href={`/encuesta/${booking.id}`}>Completar encuesta</Link>
+          </Button>
+        </div>
+      )}
+      {survey === "done" && (
+        <p className="mt-4 text-center text-xs text-fg-faint">Ya respondiste la encuesta de esta sesión. ¡Gracias!</p>
+      )}
 
       {isClass && needsPayment && (
         <div className="surface-card mt-6 p-5">

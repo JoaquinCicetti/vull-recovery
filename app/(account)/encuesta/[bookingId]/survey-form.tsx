@@ -8,11 +8,12 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { ChoiceGroup, NumberStepper, Question, ScaleInput, StationChips } from "@/components/survey/inputs";
+import { ChoiceGroup, NumberStepper, Question, ScaleInput, StarInput, StationChips } from "@/components/survey/inputs";
 import {
   EMPTY_ANSWERS,
   LEVELS,
   PRE_KEYS,
+  REVIEW_MAX,
   SCALES,
   stepValid,
   YES_SOME,
@@ -25,6 +26,7 @@ const STEPS = [
   { title: "Antes de la sesión", lead: "¿Cómo llegaste? Del 0 al 10." },
   { title: "Después de la sesión", lead: "¿Cómo te fuiste?" },
   { title: "Tu opinión", lead: "Lo que nos digas nos ayuda a mejorar." },
+  { title: "¿Querés dejar un comentario público?", lead: "Opcional. Podés enviar la encuesta sin completarlo." },
 ];
 
 export function SurveyForm({
@@ -64,7 +66,7 @@ export function SurveyForm({
       const d = JSON.parse(raw) as { answers: SurveyAnswers; step: number };
       // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time restore from storage
       setAnswers((a) => ({ ...a, ...d.answers }));
-      setStep(Math.min(3, Math.max(0, d.step | 0)));
+      setStep(Math.min(STEPS.length - 1, Math.max(0, d.step | 0)));
       setOtherOpen(Boolean(d.answers.best_station_other));
     } catch {
       /* storage unavailable: start fresh */
@@ -133,7 +135,7 @@ export function SurveyForm({
             {Math.round((step / STEPS.length) * 100)}%
           </p>
         </div>
-        <div className="mt-2 grid grid-cols-4 gap-1" aria-hidden>
+        <div className="mt-2 grid grid-cols-5 gap-1" aria-hidden>
           {STEPS.map((_, i) => (
             <div key={i} className="h-1 overflow-hidden rounded-full bg-surface-3">
               <div
@@ -274,6 +276,30 @@ export function SurveyForm({
                 <ScaleInput {...SCALES.nps} value={answers.nps} onChange={(v) => set("nps", v)} />
               </>
             )}
+
+            {step === 4 && (
+              <>
+                <StarInput
+                  label="¿Cuántas estrellas le das a tu sesión?"
+                  value={answers.rating}
+                  onChange={(v) => set("rating", v)}
+                />
+                <Question
+                  label="Tu comentario"
+                  hint="Lo mostramos en la web con tu nombre de pila, después de revisarlo."
+                >
+                  <Textarea
+                    rows={4}
+                    value={answers.public_comment}
+                    onChange={(e) => set("public_comment", e.target.value.slice(0, REVIEW_MAX))}
+                    placeholder="Contale a otros deportistas cómo te fue."
+                  />
+                  <p className="text-right font-mono text-[11px] tabular-nums text-fg-faint">
+                    {answers.public_comment.length}/{REVIEW_MAX}
+                  </p>
+                </Question>
+              </>
+            )}
           </div>
         </motion.section>
       </AnimatePresence>
@@ -304,7 +330,9 @@ export function SurveyForm({
         )}
       </div>
       {!valid && (
-        <p className="mt-2 text-center text-xs text-fg-faint">Respondé las preguntas de este paso para seguir.</p>
+        <p className="mt-2 text-center text-xs text-fg-faint">
+          {last ? "Elegí las estrellas para publicar tu comentario." : "Respondé las preguntas de este paso para seguir."}
+        </p>
       )}
     </div>
   );

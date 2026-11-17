@@ -6,7 +6,7 @@ import { formatARS } from "@/lib/site";
 import { LoadErrors } from "@/components/admin/load-errors";
 import { SectionTitle, Stat } from "@/components/admin/stat";
 import { Segmented } from "@/components/admin/segmented";
-import { SurveysView } from "./surveys-view";
+import { REVIEW_FILTERS, SurveysView } from "./surveys-view";
 import { PageShell } from "@/components/ui/page-shell";
 import { cn } from "@/lib/utils";
 
@@ -100,6 +100,8 @@ export default async function MetricasPage({
   // Encuestas is a view of Métricas, not a tab (four sections, ADR 0017).
   const surveys = sp.ver === "encuestas";
   const openId = typeof sp.r === "string" ? sp.r : null;
+  const review = REVIEW_FILTERS.find((f) => f === sp.opiniones) ?? null;
+  const page = Math.max(1, Number.parseInt(String(sp.pagina ?? ""), 10) || 1);
 
   const supabase = await createClient();
   // Admin check and the data in one round trip (the RPCs are admin-gated themselves).
@@ -178,7 +180,19 @@ export default async function MetricasPage({
 
       {surveys ? (
         sector ? (
-          <SurveysView key={`${sector.id}-${days}`} sectorId={sector.id} days={days} openId={openId} />
+          <SurveysView
+            key={`${sector.id}-${days}`}
+            sectorId={sector.id}
+            days={days}
+            openId={openId}
+            review={review}
+            page={page}
+            params={{
+              ver: "encuestas",
+              dias: days !== 30 ? String(days) : undefined,
+              sector: sectors.length > 1 ? sector.slug : undefined,
+            }}
+          />
         ) : (
           <p className="mt-6 text-sm text-fg-faint">Ningún sector tiene encuestas activadas (Ajustes).</p>
         )
