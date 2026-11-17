@@ -22,6 +22,8 @@ export type ActiveFilter = { key: string; label: string; clearHref: string };
 // fields inside are plain form controls named after the URL params; submitting
 // navigates to `basePath` with the non-empty values (page resets). `keep` are
 // params the dialog does not edit but must not drop (the sector, the view).
+// `compact` leaves only the icon on a phone, for a toolbar that shares its row;
+// `chips={false}` lets the page place <FilterChips> on a line of its own.
 export function FilterDialog({
   basePath,
   keep = {},
@@ -29,6 +31,8 @@ export function FilterDialog({
   clearHref,
   title = "Filtrar",
   description,
+  compact = false,
+  chips = true,
   children,
 }: {
   basePath: string;
@@ -37,6 +41,8 @@ export function FilterDialog({
   clearHref: string;
   title?: string;
   description?: string;
+  compact?: boolean;
+  chips?: boolean;
   children: ReactNode;
 }) {
   const router = useRouter();
@@ -55,13 +61,16 @@ export function FilterDialog({
     router.push(s ? `${basePath}?${s}` : basePath);
   }
 
-  return (
-    <div className="flex flex-wrap items-center gap-2">
+  const dialog = (
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogTrigger asChild>
-          <Button variant="outline" size="sm">
+          <Button
+            variant="outline"
+            size="sm"
+            className={cn(compact && "shrink-0 max-sm:min-w-8 max-sm:px-2!")}
+          >
             <SlidersHorizontal data-icon="inline-start" aria-hidden />
-            {title}
+            <span className={cn(compact && "max-sm:sr-only")}>{title}</span>
             {active.length > 0 && (
               <span className="font-mono text-[11px] text-accent">{active.length}</span>
             )}
@@ -87,21 +96,29 @@ export function FilterDialog({
           </form>
         </DialogContent>
       </Dialog>
-      {active.map((f) => (
-        <Link
-          key={f.key}
-          href={f.clearHref}
-          className={cn(
-            "inline-flex h-8 items-center gap-1.5 rounded-md border border-accent/30 bg-accent/10 pr-1.5 pl-2.5 text-xs text-fg transition-colors hover:border-accent/60",
-          )}
-          aria-label={`Quitar filtro: ${f.label}`}
-        >
-          {f.label}
-          <X className="size-3.5 text-fg-faint" aria-hidden />
-        </Link>
-      ))}
+  );
+  if (!chips) return dialog;
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {dialog}
+      <FilterChips active={active} />
     </div>
   );
+}
+
+// The applied filters as chips; a tap removes one.
+export function FilterChips({ active }: { active: ActiveFilter[] }) {
+  return active.map((f) => (
+    <Link
+      key={f.key}
+      href={f.clearHref}
+      className="inline-flex h-8 items-center gap-1.5 rounded-md border border-accent/30 bg-accent/10 pr-1.5 pl-2.5 text-xs text-fg transition-colors hover:border-accent/60"
+      aria-label={`Quitar filtro: ${f.label}`}
+    >
+      {f.label}
+      <X className="size-3.5 text-fg-faint" aria-hidden />
+    </Link>
+  ));
 }
 
 // A labelled control inside the dialog. Native selects/inputs keep the house

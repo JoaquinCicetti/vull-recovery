@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Search } from "lucide-react";
 import { MEMBERSHIP_ACTIVE } from "@/lib/booking-status";
 import { requireAdmin } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -21,7 +21,7 @@ import { LoadErrors } from "@/components/admin/load-errors";
 import { Pager } from "@/components/admin/pager";
 import { FIELD } from "@/components/admin/stat";
 import { Segmented } from "@/components/admin/segmented";
-import { FilterDialog, FilterField, type ActiveFilter } from "@/components/admin/filter-dialog";
+import { FilterChips, FilterDialog, FilterField, type ActiveFilter } from "@/components/admin/filter-dialog";
 import { MembershipActions } from "@/components/admin/membership-actions";
 import { MembershipScheduleChips } from "@/components/membership/schedule-chips";
 import { Button } from "@/components/ui/button";
@@ -154,7 +154,6 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
 
   const sectorSwitch = (
     <Segmented
-      prominent
       label="Sector"
       items={sectors.map((s) => ({
         href: href({ sector: s.slug }),
@@ -227,29 +226,61 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
     if (status) active.push({ key: "estado", label: STATUS_LABEL[status], clearHref: without("estado") });
     if (from) active.push({ key: "desde", label: `Desde ${fmtDate(dayStart(from))}`, clearHref: without("desde") });
     if (to) active.push({ key: "hasta", label: `Hasta ${fmtDate(dayStart(to))}`, clearHref: without("hasta") });
-    if (q) active.push({ key: "q", label: `“${q}”`, clearHref: without("q") });
     if (clientId) active.push({ key: "cliente", label: "Un cliente", clearHref: without("cliente") });
 
     body = (
       <>
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        {/* One row on a phone: search, filters (icon only), block. The view
+            switch only fits from sm up; below that it is a field of the dialog. */}
+        <div className="flex items-center gap-2">
           <Segmented
             label="Vista"
+            className="shrink-0 max-sm:hidden"
             items={(Object.keys(VIEWS) as View[]).map((v) => ({
               href: href({ ...base, vista: v === "proximos" ? undefined : v, ...filters }),
               label: VIEWS[v],
               active: v === view,
             }))}
           />
-          <div className="flex flex-wrap items-center gap-2">
-          {blockButton}
+          <form method="get" action="/admin/agenda" className="relative min-w-0 flex-1 sm:max-w-56">
+            {Object.entries({ ...params, q: undefined }).map(
+              ([k, v]) => v && <input key={k} type="hidden" name={k} value={v} />,
+            )}
+            <Search
+              className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-fg-faint"
+              aria-hidden
+            />
+            <input
+              type="search"
+              name="q"
+              defaultValue={q}
+              placeholder="Buscar cliente"
+              aria-label="Buscar por nombre, email o teléfono"
+              className={cn(FIELD, "h-8 w-full pl-8")}
+            />
+          </form>
           <FilterDialog
+            compact
+            chips={false}
             basePath="/admin/agenda"
-            keep={{ ...base, vista: params.vista }}
+            keep={{ ...base, q: filters.q }}
             active={active}
-            clearHref={href({ ...base, vista: params.vista })}
+            clearHref={href({ ...base, vista: params.vista, q: filters.q })}
             description={`Turnos de ${sector.name}.`}
           >
+            {/* Hidden from sm up, where the switch does this job; it still
+                submits the current view, so applying filters never resets it. */}
+            <div className="sm:hidden">
+              <FilterField label="Turnos" htmlFor="f-vista">
+                <select id="f-vista" name="vista" defaultValue={params.vista ?? ""} className={FIELD}>
+                  {(Object.keys(VIEWS) as View[]).map((v) => (
+                    <option key={v} value={v === "proximos" ? "" : v}>
+                      {VIEWS[v]}
+                    </option>
+                  ))}
+                </select>
+              </FilterField>
+            </div>
             <FilterField label="Estado" htmlFor="f-estado">
               <select id="f-estado" name="estado" defaultValue={status} className={FIELD}>
                 <option value="">{view === "proximos" ? "Activos" : "Todos"}</option>
@@ -268,24 +299,20 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
                 <input id="f-hasta" type="date" name="hasta" defaultValue={to} className={FIELD} />
               </FilterField>
             </div>
-            <FilterField label="Cliente" htmlFor="f-q">
-              <input
-                id="f-q"
-                type="search"
-                name="q"
-                defaultValue={q}
-                placeholder="Nombre, email o teléfono"
-                className={FIELD}
-              />
-            </FilterField>
             {clientId && <input type="hidden" name="cliente" value={clientId} />}
           </FilterDialog>
-          </div>
+          {blockButton && <div className="ml-auto shrink-0">{blockButton}</div>}
         </div>
+        {active.length > 0 && (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <FilterChips active={active} />
+          </div>
+        )}
 
         <p className="mt-5 font-mono text-xs text-fg-faint">
           {total} {total === 1 ? "turno" : "turnos"}
           {clientId && " de este cliente"}
+          <span className="sm:hidden"> · {VIEWS[view].toLowerCase()}</span>
         </p>
         <div className="mt-2">
           <BookingList rows={rows} nowISO={nowISO} empty="No hay turnos con esos filtros." />
@@ -596,10 +623,15 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
   }
 
   return (
-    <PageShell size="wide" top="tight" eyebrow="Panel" title="Agenda">
+    <PageShell
+      size="wide"
+      top="tight"
+      eyebrow="Panel"
+      title="Agenda"
+      actions={sectors.length > 1 ? sectorSwitch : undefined}
+    >
       <LoadErrors errors={loadErrors} />
       <FlaggedPayments result={flagged} />
-      {sectors.length > 1 && <div className="mb-6">{sectorSwitch}</div>}
       {hasAbonos && (
         <div className="mb-5">
           <Segmented
